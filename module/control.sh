@@ -1,0 +1,70 @@
+#!/system/bin/sh
+# Root-only status and staged feature toggles for KernelSU WebUI.
+set -eu
+M=${0%/*}
+ROM_EXPECT=16OS3.1.260918.151434134.QCPEGL.S
+panel_path=/sys/devices/virtual/mi_display/disp_feature/disp-DSI-0/panel_info
+one_line() { printf '%s\n' "$1" | tr '\r\n' '  '; echo; }
+flag(){ [ -f "$M/$1" ] && echo on || echo off; }
+compat(){ [ "$(getprop ro.product.device)" = kunzite ] && [ "$(getprop ro.board.platform)" = parrot ] && [ "$(getprop ro.system.build.version.incremental)" = "$ROM_EXPECT" ]; }
+status() {
+  if compat; then echo 'device=compatible'; else echo 'device=unsupported_or_updated'; fi
+  echo "wcg_next=$( [ -f "$M/wcg_disabled" ] && echo off || echo on )"
+  echo "wcg_property=$(getprop ro.surface_flinger.has_wide_color_display)"
+  echo "expert_next=$(flag expert_enabled)"
+  echo "hfr_next=$(flag hfr_enabled)"
+  if [ -e /data/adb/metamodule ]; then echo 'metamodule=available'; else echo 'metamodule=missing'; fi
+  if [ -r /product/etc/device_features/kunzite.xml ]; then
+    sed -n 's/.*<bool name="support_display_expert_mode">\(true\|false\)<\/bool>.*/expert_runtime=\1/p' /product/etc/device_features/kunzite.xml | head -n 1
+    sed -n 's/.*<bool name="support_video_hfr_mode">\(true\|false\)<\/bool>.*/hfr_runtime=\1/p' /product/etc/device_features/kunzite.xml | head -n 1
+  fi
+  if [ -r "$panel_path" ]; then
+    sed -n 's/^panel_name=/panel=/p' "$panel_path" | head -n 1
+  fi
+  TMP=/data/local/tmp/kunzite-suite-sf.$$
+  if dumpsys SurfaceFlinger > "$TMP" 2>/dev/null; then
+    sed -n 's/^Device supports wide color: /sf_wcg=/p' "$TMP" | head -n 1
+    if grep -q 'ColorMode::DISPLAY_P3 (9)' "$TMP"; then echo 'p3_available=yes'; else echo 'p3_available=no'; fi
+    sed -n 's/^[[:space:]]*Current color mode: /active_color=/p' "$TMP" | head -n 1
+  else
+    echo 'sf_wcg=unavailable'
+    echo 'p3_available=unavailable'
+  fi
+  rm -f "$TMP"
+  [ -f "$M/boot_result.txt" ] && { echo 'boot_log_start'; cat "$M/boot_result.txt"; echo 'boot_log_end'; }
+  [ -f "$M/recovery_reason" ] && echo 'auto_rollback=yes'
+  echo 'hfr_ui_result=not_verified'
+  echo 'expert_ui_result=not_verified'
+}
+set_feature() {
+  [ "${1:-}" = wcg ] || [ "${1:-}" = expert ] || [ "${1:-}" = hfr ] || { echo 'INVALID_FEATURE'; exit 2; }
+  [ "${2:-}" = on ] || [ "${2:-}" = off ] || { echo 'INVALID_VALUE'; exit 2; }
+  compat || { echo 'BLOCKED: unsupported firmware'; exit 4; }
+  case "$1" in
+    wcg)
+      if [ "$2" = on ]; then rm -f "$M/wcg_disabled"; else : > "$M/wcg_disabled"; fi
+      ;;
+    expert|hfr)
+      if [ "$2" = on ] && [ ! -e /data/adb/metamodule ]; then
+        echo 'BLOCKED: KernelSU metamodule required for XML overlay'; exit 5
+      fi
+      if [ "$2" = on ] && [ -f "$M/recovery_reason" ]; then
+        echo 'BLOCKED: prior experimental boot failed; inspect recovery first'; exit 6
+      fi
+      case "$1" in expert) FLAG=expert_enabled;; hfr) FLAG=hfr_enabled;; esac
+      if [ "$2" = on ]; then : > "$M/$FLAG"; else rm -f "$M/$FLAG"; fi
+      # Generate the staged overlay now, enabling a single reboot for both choices.
+      if ! /system/bin/sh "$M/prepare-overlay.sh"; then
+        rm -f "$M/$FLAG"
+        /system/bin/sh "$M/prepare-overlay.sh" || true
+        echo 'ERROR: overlay validation failed'; exit 7
+      fi
+      ;;
+  esac
+  echo "OK: $1=$2 (effective after next reboot)"
+}
+case "${1:-}" in
+  status) status;;
+  set) set_feature "${2:-}" "${3:-}";;
+  *) echo 'usage: control.sh status | set wcg|expert|hfr on|off'; exit 2;;
+esac

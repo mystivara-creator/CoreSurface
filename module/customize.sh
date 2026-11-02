@@ -1,0 +1,33 @@
+#!/system/bin/sh
+set -eu
+# Installation is device / firmware locked. No changes are made to stock partitions.
+[ "$(getprop ro.product.device)" = kunzite ] || abort 'Only Redmi Note 15 5G / kunzite is supported'
+[ "$(getprop ro.board.platform)" = parrot ] || abort 'Unsupported board'
+ROM=$(getprop ro.system.build.version.incremental)
+[ "$ROM" = 16OS3.1.260918.151434134.QCPEGL.S ] || abort "ROM not audited: $ROM"
+PANEL=/sys/devices/virtual/mi_display/disp_feature/disp-DSI-0/panel_info
+if [ -r "$PANEL" ]; then
+  NAME=$(sed -n 's/^panel_name=//p' "$PANEL" | head -n 1)
+  [ "$NAME" = mdss_dsi_p17_41_02_0a_amoled_dsc_vid ] || abort "Panel not audited: $NAME"
+fi
+[ -s "$MODPATH/baseline/kunzite.xml" ] || abort 'Missing audited baseline XML'
+[ "$(grep -c '<bool name="support_video_hfr_mode">false</bool>' "$MODPATH/baseline/kunzite.xml")" -eq 1 ] || abort 'Baseline HFR flag invalid'
+[ "$(grep -c '<bool name="support_display_expert_mode">false</bool>' "$MODPATH/baseline/kunzite.xml")" -eq 1 ] || abort 'Baseline Expert flag invalid'
+# Upgrade under the existing WCG module ID. Drop stale 0.5.0 overlays and one-shot flags.
+rm -rf "$MODPATH/system" "$MODPATH/arm_once" "$MODPATH/one_boot_pending" "$MODPATH/boot_pending" 2>/dev/null || true
+rm -f "$MODPATH/skip_mount" "$MODPATH/expert_enabled" "$MODPATH/hfr_enabled" "$MODPATH/recovery_reason" 2>/dev/null || true
+: > "$MODPATH/skip_mount"
+# Keep previously selected WCG enable/disable preference where present.
+# Do not carry HFR or Expert from older experimental modules into the new version.
+set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
+set_perm "$MODPATH/service.sh" 0 0 0755
+set_perm "$MODPATH/control.sh" 0 0 0755
+set_perm "$MODPATH/prepare-overlay.sh" 0 0 0755
+ui_print '- One module: existing WCG module will be updated'
+ui_print '- WCG: existing exposure retained'
+ui_print '- Expert and Slow Motion: experimental, OFF by default'
+ui_print '- Systemless XML overlay only after explicit opt-in and compatible metamodule'
+ui_print '- No HDR, 1080p60, overclock or thermal bypass'
+if [ -d /data/adb/modules/kunzite_hfr_probe ] && [ ! -f /data/adb/modules/kunzite_hfr_probe/disable ]; then
+  ui_print '! Standalone HFR module detected: disable it before using HFR in this suite'
+fi

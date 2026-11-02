@@ -1,0 +1,17 @@
+# Generated package and private OEM resources
+/dist/
+module/baseline/
+**/kunzite.xml
+*.apk
+*.so
+*.tar.gz
+*.zip
+*.log
+*.txt.backup
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+.env
+*.key
+*.pem
