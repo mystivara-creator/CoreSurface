@@ -1,4 +1,4 @@
-# Kunzite Capability Suite v0.6.3-preview
+# Kunzite Capability Suite v0.6.4-preview
 
 Target device: Redmi Note 15 5G (`kunzite`, `parrot`). ROM: `16OS3.1.260918.151434134.QCPEGL.S`, panel `mdss_dsi_p17_41_02_0a_amoled_dsc_vid`. Installer fails closed on mismatch.
 

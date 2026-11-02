@@ -52,3 +52,10 @@
 - Fix failed flash under KernelSU-Next: sourced `customize.sh` leaked `set -eu` into the installer and broke KernelSU's optional parameter handling.
 - Add explicit permission failure messages and unique baseline temporary filename.
 - Add actual sourced-shell install tests. Experimental features remain disabled by default.
+
+## v0.6.4-preview (KernelSU-Next WebUI status fix)
+
+- Fix WebUI showing nearly all status fields as "Tidak tersedia" by using KernelSU-Next's `ksu.exec(cmd, callbackName)` API. Its synchronous `ksu.exec(cmd)` uses `fastCmd`, which can return only the last stdout line.
+- Handle full multi-line stdout, shell exit codes, stderr, concurrency, and callback timeout; reject malformed partial status instead of displaying misleading data.
+- Fix Expert/HFR runtime status via exact XML flag checks instead of sed alternatives, with explicit `unknown`/`unavailable` status.
+- Add faithful KernelSU-Next bridge tests, including the broken last-line synchronous mode and real buttons; firmware gates and feature behavior unchanged.

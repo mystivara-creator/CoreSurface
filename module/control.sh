@@ -15,8 +15,16 @@ status() {
   echo "hfr_next=$(flag hfr_enabled)"
   if [ -r /data/adb/metamodule/module.prop ] && grep -qx 'id=meta-overlayfs' /data/adb/metamodule/module.prop; then echo 'metamodule=meta-overlayfs'; else echo 'metamodule=missing_or_unsupported'; fi
   if [ -r /product/etc/device_features/kunzite.xml ]; then
-    sed -n 's/.*<bool name="support_display_expert_mode">\(true\|false\)<\/bool>.*/expert_runtime=\1/p' /product/etc/device_features/kunzite.xml | head -n 1
-    sed -n 's/.*<bool name="support_video_hfr_mode">\(true\|false\)<\/bool>.*/hfr_runtime=\1/p' /product/etc/device_features/kunzite.xml | head -n 1
+    XML=/product/etc/device_features/kunzite.xml
+    for item in 'support_display_expert_mode expert_runtime' 'support_video_hfr_mode hfr_runtime'; do
+      set -- $item
+      if grep -Fq "<bool name=\"$1\">true</bool>" "$XML"; then echo "$2=true"
+      elif grep -Fq "<bool name=\"$1\">false</bool>" "$XML"; then echo "$2=false"
+      else echo "$2=unknown"; fi
+    done
+  else
+    echo 'expert_runtime=unavailable'
+    echo 'hfr_runtime=unavailable'
   fi
   if [ -r "$panel_path" ]; then
     sed -n 's/^panel_name=/panel=/p' "$panel_path" | head -n 1

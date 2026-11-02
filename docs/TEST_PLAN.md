@@ -48,3 +48,10 @@ Host test harus memastikan `product/` dipakai (bukan `system/product/`), `skip_m
 - Test models KernelSU `set_perm` reading optional `$5` with four arguments and confirms source script never leaks `set -e` or `set -u` into the installer shell.
 - Permission failures emit an explicit `abort` message instead of generic flash failure.
 - Firmware gates unchanged. Host simulation does not establish live compatibility with device mounts.
+
+## WebUI bridge bug caught on device (v0.6.4-preview)
+
+- Under KernelSU-Next `WebViewInterface.kt`, synchronous `ksu.exec(cmd)` delegates to `ShellUtils.fastCmd` and may return only **last stdout line**, evidenced by the user seeing only `expert_ui_result=not_verified`.
+- Use callback API `ksu.exec(cmd, callbackName)`, which returns `exitCode`, joined multiline `stdout`, and `stderr`. A 30-second timer handles missing callback response.
+- Tests mimic native method overload and refuse one-argument calls, asserting all status fields/logs are visible, toggle responses still work, and truncated reports produce explicit errors. Android UI should update immediately after installed HTML is refreshed, without reboot.
+- **Do not reboot with Expert/HFR both staged until experimental safety/rollback has been reviewed separately.**
