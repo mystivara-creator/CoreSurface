@@ -2,7 +2,7 @@
 
 Riset dan modul KernelSU untuk mengaudit serta menguji kemampuan yang tidak diekspos firmware **Redmi Note 15 5G** (`kunzite`, Qualcomm `parrot`). Proyek independen oleh **Mystivara**.
 
-> **Status: v0.6.2-preview, belum rilis stabil.** Source disediakan untuk arsip pengembangan dan review. **Tidak ada klaim bahwa semua fitur sudah berhasil dibuka.** Jangan flash hasil build tanpa memeriksa kompatibilitas dan menyiapkan recovery.
+> **Status: v0.6.3-preview, belum rilis stabil.** Source disediakan untuk arsip pengembangan dan review. **Tidak ada klaim bahwa semua fitur sudah berhasil dibuka.** Jangan flash hasil build tanpa memeriksa kompatibilitas dan menyiapkan recovery.
 
 ## Hasil yang sudah dibuktikan
 
@@ -55,7 +55,7 @@ python3 scripts/package.py
 python3 scripts/verify_artifact.py
 ```
 
-Hasil: `dist/kunzite_capability_suite_v0.6.2-preview.zip`. Setelah workflow berhasil, unduh melalui **Actions → workflow run → Artifacts**. Artifact berisi ZIP dan berkas `.sha256` dengan retensi 30 hari. `--stock-xml` opsional hanya untuk verifikasi lokal dan tidak menyertakan XML ke ZIP. Ini **preview**, bukan rilis stabil.
+Hasil: `dist/kunzite_capability_suite_v0.6.3-preview.zip`. Setelah workflow berhasil, unduh melalui **Actions → workflow run → Artifacts**. Artifact berisi ZIP dan berkas `.sha256` dengan retensi 30 hari. `--stock-xml` opsional hanya untuk verifikasi lokal dan tidak menyertakan XML ke ZIP. Ini **preview**, bukan rilis stabil.
 
 ## Keamanan dan rollback
 

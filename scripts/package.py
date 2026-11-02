@@ -9,7 +9,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'module'
 EXPECTED_SHA = '3b434af171d5d14d1a7c4fa40097dc5c6a5b19e8e4dd0515c37a38d23d3fd48f'
-NAME = 'kunzite_capability_suite_v0.6.2-preview.zip'
+NAME = 'kunzite_capability_suite_v0.6.3-preview.zip'
 FILES = ('README.md','module.prop','compat.conf','customize.sh','post-fs-data.sh','service.sh','control.sh','prepare-overlay.sh','stage-meta-overlayfs.sh','webroot/index.html')
 EXECUTABLES = {'customize.sh','post-fs-data.sh','service.sh','control.sh','prepare-overlay.sh','stage-meta-overlayfs.sh'}
 

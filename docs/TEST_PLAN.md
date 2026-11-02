@@ -41,3 +41,10 @@ Sertakan versi modul, ROM, panel, flag/hasil runtime dan langkah reproduksi. Red
 ## Lokasi payload meta-overlayfs
 
 Host test harus memastikan `product/` dipakai (bukan `system/product/`), `skip_mount` **tidak** dilepas selama staging XML biasa, dan hanya dilepas setelah berhasil menyalin ke ext4 image. Validasi perangkat harus memeriksa `/product/etc/device_features/kunzite.xml` efektif serta opsi aplikasi, tanpa mengklaim sukses dari flag tertulis di staging.
+
+## Installer sourced-shell regression (2026-11-02)
+
+- KernelSU-Next loads `customize.sh` via dot-source in its installer, not as an isolated process.
+- Test models KernelSU `set_perm` reading optional `$5` with four arguments and confirms source script never leaks `set -e` or `set -u` into the installer shell.
+- Permission failures emit an explicit `abort` message instead of generic flash failure.
+- Firmware gates unchanged. Host simulation does not establish live compatibility with device mounts.

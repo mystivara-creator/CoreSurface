@@ -46,6 +46,37 @@ esac
                               capture_output=True,text=True,env=self.env)
         self.assertEqual(result.returncode==0,success,result.stdout+result.stderr)
 
+    def test_ksu_sourced_customizer_does_not_change_parent_shell(self):
+        # KernelSU sources customize.sh and set_perm reads optional $5.
+        # The previous set -eu killed the outer installer here.
+        wrapper = ('''
+abort(){ echo "ABORT:$*"; exit 12; }
+ui_print(){ printf '%s\\n' "$1"; }
+set_perm(){ local CON=$5; return 0; }
+. "$1" || exit 87
+case $- in *e*|*u*) echo "UNSAFE_SHELL_FLAGS:$-"; exit 88;; esac
+echo INSTALLER_CONTINUES
+''')
+        p = subprocess.run(['/bin/sh', '-c', wrapper, 'ksu-install', str(self.script)],
+                           capture_output=True, text=True, env=self.env)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn('INSTALLER_CONTINUES', p.stdout)
+        self.assertIn('One module: existing WCG module', p.stdout)
+
+    def test_permission_failure_has_named_abort(self):
+        wrapper = ('''
+abort(){ echo "ABORT:$*"; exit 12; }
+ui_print(){ printf '%s\\n' "$1"; }
+set_perm(){ return 1; }
+. "$1"
+echo INVALID_SUCCESS
+''')
+        p = subprocess.run(['/bin/sh', '-c', wrapper, 'ksu-install', str(self.script)],
+                           capture_output=True, text=True, env=self.env)
+        self.assertEqual(p.returncode, 12, p.stdout + p.stderr)
+        self.assertIn('ABORT:Cannot set post-fs-data permissions', p.stdout)
+        self.assertNotIn('INVALID_SUCCESS', p.stdout)
+
     def test_capture_valid_device_xml(self):
         self.install()
         self.assertEqual((self.mod/'baseline/kunzite.xml').read_bytes(),FIXTURE)

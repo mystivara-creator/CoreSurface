@@ -1,5 +1,8 @@
 #!/system/bin/sh
-set -eu
+# KernelSU-Next sources this script in its installer shell; never set -e/-u.
+# Global shell options would break KernelSU's set_perm optional $5 argument
+# and can terminate installation before our own messages are printed.
+ui_print '- Validating Kunzite firmware and preparing private OEM baseline'
 # Installation is device / firmware locked. No changes are made to stock partitions.
 [ "$(getprop ro.product.device)" = kunzite ] || abort 'Only Redmi Note 15 5G / kunzite is supported'
 [ "$(getprop ro.board.platform)" = parrot ] || abort 'Unsupported board'
@@ -24,7 +27,7 @@ if [ ! -s "$BASE" ]; then
     rm -f "$TMP"
     abort 'Device feature XML changed while being copied'
   fi
-  chmod 0644 "$TMP"
+  chmod 0644 "$TMP" || abort "Cannot set permissions on private XML baseline"
   mv -f "$TMP" "$BASE" || abort 'Cannot store verified baseline'
 fi
 [ "$(sha256sum "$BASE" | cut -d ' ' -f 1)" = "$AUDITED_XML_SHA" ] || abort 'Existing XML baseline differs from audited firmware'
@@ -36,11 +39,11 @@ rm -f "$MODPATH/skip_mount" "$MODPATH/expert_enabled" "$MODPATH/hfr_enabled" "$M
 : > "$MODPATH/skip_mount"
 # Keep previously selected WCG enable/disable preference where present.
 # Do not carry HFR or Expert from older experimental modules into the new version.
-set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
-set_perm "$MODPATH/service.sh" 0 0 0755
-set_perm "$MODPATH/control.sh" 0 0 0755
-set_perm "$MODPATH/prepare-overlay.sh" 0 0 0755
-set_perm "$MODPATH/stage-meta-overlayfs.sh" 0 0 0755
+set_perm "$MODPATH/post-fs-data.sh" 0 0 0755 || abort 'Cannot set post-fs-data permissions'
+set_perm "$MODPATH/service.sh" 0 0 0755 || abort 'Cannot set service permissions'
+set_perm "$MODPATH/control.sh" 0 0 0755 || abort 'Cannot set control permissions'
+set_perm "$MODPATH/prepare-overlay.sh" 0 0 0755 || abort 'Cannot set overlay permissions'
+set_perm "$MODPATH/stage-meta-overlayfs.sh" 0 0 0755 || abort 'Cannot set staging permissions'
 ui_print '- One module: existing WCG module will be updated'
 ui_print '- WCG: existing exposure retained'
 ui_print '- Expert and Slow Motion: experimental, OFF by default'

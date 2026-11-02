@@ -1,6 +1,6 @@
 id=kunzite_wcg_probe
 name=Kunzite Capability Suite
-version=v0.6.2-preview
-versionCode=620
+version=v0.6.3-preview
+versionCode=630
 author=Mystivara
 description=WCG verified at framework level; Xiaomi Expert Mode & HFR are opt-in experiments, off by default.

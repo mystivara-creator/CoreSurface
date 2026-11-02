@@ -46,3 +46,9 @@
 - CI builds a reproducible KernelSU ZIP and uploads it with SHA-256 checksum.
 - No Xiaomi proprietary XML is included: installer captures and validates the on-device baseline during installation.
 - Added install-time checksum and artifact integrity regression tests. Experimental toggles remain OFF.
+
+## v0.6.3-preview (installer-shell fix)
+
+- Fix failed flash under KernelSU-Next: sourced `customize.sh` leaked `set -eu` into the installer and broke KernelSU's optional parameter handling.
+- Add explicit permission failure messages and unique baseline temporary filename.
+- Add actual sourced-shell install tests. Experimental features remain disabled by default.
