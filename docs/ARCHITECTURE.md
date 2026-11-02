@@ -28,3 +28,7 @@ Satu modul, satu pemilik pengaturan, tidak memodifikasi `/product` secara perman
 ## Pengembangan lanjutan
 
 Jangan ekspor *ready/stable* sebelum berhasil: test systemless mount, app menu, rekaman video, compare konfigurasi, pemulihan setelah reboot, dan pembacaan status UI tanpa false-positive.
+
+## Perubahan konfigurasi runtime
+
+WebUI hanya menyimpan pilihan flag eksperimen; tidak membuat atau menghapus berkas overlay ketika Android sudah berjalan. `post-fs-data.sh` menyiapkan XML yang telah diverifikasi **sebelum** `metamount.sh` milik KernelSU. `service.sh` kemudian mengecek nilai flag pada `/product` yang benar-benar ter-mount setelah boot. Ketidakcocokan mempertahankan marker rollback untuk startup berikutnya, tidak melakukan unmount agresif saat berjalan.

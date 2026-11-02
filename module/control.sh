@@ -53,12 +53,9 @@ set_feature() {
       fi
       case "$1" in expert) FLAG=expert_enabled;; hfr) FLAG=hfr_enabled;; esac
       if [ "$2" = on ]; then : > "$M/$FLAG"; else rm -f "$M/$FLAG"; fi
-      # Generate the staged overlay now, enabling a single reboot for both choices.
-      if ! /system/bin/sh "$M/prepare-overlay.sh"; then
-        rm -f "$M/$FLAG"
-        /system/bin/sh "$M/prepare-overlay.sh" || true
-        echo 'ERROR: overlay validation failed'; exit 7
-      fi
+      # Never mutate overlay files while they may be mounted into /product.
+      # post-fs-data.sh regenerates the overlay from the verified baseline
+      # before the metamodule mount on the next boot.
       ;;
   esac
   echo "OK: $1=$2 (effective after next reboot)"

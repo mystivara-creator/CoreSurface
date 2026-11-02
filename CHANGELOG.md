@@ -28,3 +28,8 @@
 - Add host integration tests for experimental XML staging and fail-closed behavior.
 - Add WebUI bridge regression coverage for synchronous and asynchronous response shapes.
 - Extend the source validation gate and test plan; no feature toggles or runtime defaults changed.
+
+- Verify effective Expert/HFR XML after Android boot before clearing rollback marker; report and schedule rollback when systemless mount is missing or partial.
+- Exercise the root control shell command with host tests for WCG state, malformed inputs, wrong firmware, and absent metamodule.
+- Test post-boot verification with synthetic mounted-XML fixtures, including partial/missing mounts. No additional device writes or default feature changes.
+- Prevent WebUI toggles from rewriting/deleting potentially live mounted overlay backing files; prepare the new configuration only before the next KernelSU mount.

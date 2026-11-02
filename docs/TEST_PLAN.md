@@ -33,3 +33,7 @@ Sertakan versi modul, ROM, panel, flag/hasil runtime dan langkah reproduksi. Red
 - `scripts/validate.py` memastikan gate SHA-256 ada di installer dan tahap boot.
 - `scripts/tests/webui_bridge.cjs` menguji pembacaan status WebUI dengan respons bridge KernelSU string, object, dan Promise (jika Node.js tersedia).
 - Pengujian host **tidak** memastikan OverlayFS terpasang di perangkat, menu Xiaomi tampil, ataupun akurasi warna. Eksperimen perangkat tetap memerlukan rencana rollback.
+
+## Runtime overlay verification gate (host simulation)
+
+`test_service.py` simulates the real service shell script using a fixture XML at a test-only path, without touching the Android device. It checks that boot completion does not count as feature activation unless each opted-in flag appears in the mounted XML. On mismatch, the `boot_pending` marker stays in place and a recovery reason is stored for rollback at the next boot. **This is not an on-device mount test.**
