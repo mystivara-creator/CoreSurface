@@ -17,3 +17,10 @@
 
 - HFR unlock dibatalkan karena menu Slow Motion sudah tersedia secara bawaan. Tidak perlu reboot atau perubahan kamera untuk fitur tersebut.
 - Prioritas berikutnya: memastikan WebUI membaca status penuh dan menguji Expert Mode sendiri dengan rencana rollback.
+
+## Prioritas Vulkan capabilities
+
+- [ ] Ambil Vulkan extensions, feature bits dan properties dari driver asli.
+- [ ] Bedakan Vulkan 1.3, VRS, timeline semaphore, descriptor indexing, dynamic rendering, ray tracing dan mesh shaders berdasarkan output API.
+- [ ] Bandingkan driver dan Android feature flags. Jangan membuat unlock tanpa bukti dukungan serta pembatasan nyata.
+- [ ] Jika ada kandidat: uji perangkat dengan rollback dan pengukuran sebelum rilis.

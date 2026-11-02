@@ -4,6 +4,10 @@ Riset dan modul KernelSU untuk mengaudit serta menguji kemampuan yang tidak diek
 
 > **Status: v0.6.5-preview, belum rilis stabil.** Source disediakan untuk arsip pengembangan dan review. **Tidak ada klaim bahwa semua fitur sudah berhasil dibuka.** Jangan flash hasil build tanpa memeriksa kompatibilitas dan menyiapkan recovery.
 
+## Fokus Vulkan capabilities
+
+Prioritas sekarang adalah **audit native Vulkan Adreno 710**, bukan WCG atau kamera. Gunakan `scripts/collect-vulkan.sh` (read-only) dan [protokol audit Vulkan](docs/VULKAN_AUDIT.md). Belum ada modifikasi Vulkan driver atau spoof extension dalam suite.
+
 ## Hasil yang sudah dibuktikan
 
 - **Wide Color Gamut (WCG):** Setelah perubahan properti `ro.surface_flinger.has_wide_color_display`, Android Framework dan SurfaceFlinger mengekspos `ColorMode::DISPLAY_P3 (9)` pada panel yang diaudit. **Belum membuktikan aplikasi merender P3 atau akurasi warna fisik panel.** Mode aktif default sRGB itu normal.
