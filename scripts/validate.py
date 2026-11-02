@@ -22,6 +22,11 @@ def main():
     for file in ['customize.sh','post-fs-data.sh','service.sh','control.sh','prepare-overlay.sh']:
         p=subprocess.run(['sh','-n',str(MOD/file)],capture_output=True,text=True)
         verify(p.returncode==0, file+' invalid syntax: '+p.stderr)
+    installer=(MOD/'customize.sh').read_text()
+    boot=(MOD/'post-fs-data.sh').read_text()
+    for shell_text in (installer, boot):
+        verify('AUDITED_XML_SHA=' in shell_text and 'sha256sum' in shell_text,
+               'missing source/firmware checksum gate')
     ui=(MOD/'webroot/index.html').read_text()
     for required in ['sf_wcg','wcg_property','active_color','p3_available']:
         verify(required in ui,'missing WebUI status: '+required)

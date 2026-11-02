@@ -13,8 +13,8 @@ if [ "$EXPERT" -eq 0 ] && [ "$HFR" -eq 0 ]; then
   exit 0
 fi
 [ -s "$BASE" ] || exit 10
-[ "$(grep -c '<bool name="support_display_expert_mode">false</bool>' "$BASE")" -eq 1 ] || exit 11
-[ "$(grep -c '<bool name="support_video_hfr_mode">false</bool>' "$BASE")" -eq 1 ] || exit 12
+[ "$(grep -o '<bool name="support_display_expert_mode">false</bool>' "$BASE" | wc -l)" -eq 1 ] || exit 11
+[ "$(grep -o '<bool name="support_video_hfr_mode">false</bool>' "$BASE" | wc -l)" -eq 1 ] || exit 12
 DSTDIR="$M/system/product/etc/device_features"
 mkdir -p "$DSTDIR"
 TMP="$DSTDIR/kunzite.xml.tmp"

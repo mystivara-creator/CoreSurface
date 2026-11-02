@@ -26,3 +26,10 @@ Jika fitur tidak memenuhi **kriteria hasil nyata**, label tetap *experimental/no
 ## Diagnostik yang boleh dibagikan
 
 Sertakan versi modul, ROM, panel, flag/hasil runtime dan langkah reproduksi. Redaksi serial, perangkat jaringan, informasi akun, lokasi, token, atau log kamera berisi data pribadi.
+
+## Pengujian host tambahan (2026-11-02)
+
+- `scripts/tests/test_overlay.py` menjalankan skrip staging sungguhan dengan XML sintetis: default tanpa mount; Expert saja; HFR saja; keduanya; nonaktifkan kembali; baseline duplikat/hilang ditolak.
+- `scripts/validate.py` memastikan gate SHA-256 ada di installer dan tahap boot.
+- `scripts/tests/webui_bridge.cjs` menguji pembacaan status WebUI dengan respons bridge KernelSU string, object, dan Promise (jika Node.js tersedia).
+- Pengujian host **tidak** memastikan OverlayFS terpasang di perangkat, menu Xiaomi tampil, ataupun akurasi warna. Eksperimen perangkat tetap memerlukan rencana rollback.

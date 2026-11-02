@@ -11,8 +11,13 @@ if [ -r "$PANEL" ]; then
   [ "$NAME" = mdss_dsi_p17_41_02_0a_amoled_dsc_vid ] || abort "Panel not audited: $NAME"
 fi
 [ -s "$MODPATH/baseline/kunzite.xml" ] || abort 'Missing audited baseline XML'
-[ "$(grep -c '<bool name="support_video_hfr_mode">false</bool>' "$MODPATH/baseline/kunzite.xml")" -eq 1 ] || abort 'Baseline HFR flag invalid'
-[ "$(grep -c '<bool name="support_display_expert_mode">false</bool>' "$MODPATH/baseline/kunzite.xml")" -eq 1 ] || abort 'Baseline Expert flag invalid'
+AUDITED_XML_SHA=3b434af171d5d14d1a7c4fa40097dc5c6a5b19e8e4dd0515c37a38d23d3fd48f
+STOCK_XML=/product/etc/device_features/kunzite.xml
+[ -r "$STOCK_XML" ] || abort 'Cannot read live product feature XML'
+[ "$(sha256sum "$MODPATH/baseline/kunzite.xml" | cut -d ' ' -f 1)" = "$AUDITED_XML_SHA" ] || abort 'Bundled XML does not match audited baseline'
+[ "$(sha256sum "$STOCK_XML" | cut -d ' ' -f 1)" = "$AUDITED_XML_SHA" ] || abort 'Live product XML differs from audited firmware; disable conflicting overlays or re-audit ROM'
+[ "$(grep -o '<bool name="support_video_hfr_mode">false</bool>' "$MODPATH/baseline/kunzite.xml" | wc -l)" -eq 1 ] || abort 'Baseline HFR flag invalid'
+[ "$(grep -o '<bool name="support_display_expert_mode">false</bool>' "$MODPATH/baseline/kunzite.xml" | wc -l)" -eq 1 ] || abort 'Baseline Expert flag invalid'
 # Upgrade under the existing WCG module ID. Drop stale 0.5.0 overlays and one-shot flags.
 rm -rf "$MODPATH/system" "$MODPATH/arm_once" "$MODPATH/one_boot_pending" "$MODPATH/boot_pending" 2>/dev/null || true
 rm -f "$MODPATH/skip_mount" "$MODPATH/expert_enabled" "$MODPATH/hfr_enabled" "$MODPATH/recovery_reason" 2>/dev/null || true

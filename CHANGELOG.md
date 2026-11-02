@@ -21,3 +21,10 @@
 ## Camera HFR probe v0.1.0 (historis)
 
 - Test perubahan `support_video_hfr_mode`, **bukan** bukti Slow Motion berhasil.
+
+## Unreleased: source hardening
+
+- Verify exact OEM XML SHA-256 at installation and early boot before applying any overlays or WCG property.
+- Add host integration tests for experimental XML staging and fail-closed behavior.
+- Add WebUI bridge regression coverage for synchronous and asynchronous response shapes.
+- Extend the source validation gate and test plan; no feature toggles or runtime defaults changed.
