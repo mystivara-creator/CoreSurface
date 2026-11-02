@@ -23,9 +23,9 @@ class ControlTests(unittest.TestCase):
         getprop = commands / 'getprop'
         getprop.write_text('''#!/bin/sh
 case "$1" in
-ro.product.device) printf '%s\\n' "${TEST_DEVICE:-kunzite}";;
-ro.board.platform) printf '%s\\n' "${TEST_BOARD:-parrot}";;
-ro.system.build.version.incremental) printf '%s\\n' "${TEST_ROM:-16OS3.1.260918.151434134.QCPEGL.S}";;
+ro.product.device) printf '%s\n' "${TEST_DEVICE:-kunzite}";;
+ro.board.platform) printf '%s\n' "${TEST_BOARD:-parrot}";;
+ro.system.build.version.incremental) printf '%s\n' "${TEST_ROM:-16OS3.1.260918.151434134.QCPEGL.S}";;
 ro.surface_flinger.has_wide_color_display) echo false;;
 esac
 ''')

@@ -25,7 +25,7 @@ class ServiceTests(unittest.TestCase):
         command_dir = self.root / 'bin'
         command_dir.mkdir()
         getprop = command_dir / 'getprop'
-        getprop.write_text('#!/bin/sh\\n[ "$1" = sys.boot_completed ] && echo 1\\n')
+        getprop.write_text('#!/bin/sh\n[ "$1" = sys.boot_completed ] && echo 1\n')
         getprop.chmod(0o755)
         self.env = dict(os.environ, PATH=str(command_dir) + os.pathsep + os.environ.get('PATH', ''))
 
