@@ -1,4 +1,4 @@
-# Kunzite Capability Suite v0.6.1-preview
+# Kunzite Capability Suite v0.6.2-preview
 
 Target device: Redmi Note 15 5G (`kunzite`, `parrot`). ROM: `16OS3.1.260918.151434134.QCPEGL.S`, panel `mdss_dsi_p17_41_02_0a_amoled_dsc_vid`. Installer fails closed on mismatch.
 
@@ -13,7 +13,7 @@ Target device: Redmi Note 15 5G (`kunzite`, `parrot`). ROM: `16OS3.1.260918.1514
 
 ## Compatibility and safety
 
-- Packaged `baseline/kunzite.xml` was taken from the user's audited firmware (SHA-256 `3b434af171d5d14d1a7c4fa40097dc5c6a5b19e8e4dd0515c37a38d23d3fd48f`). Experimental overlay is generated only when opted in.
+- `baseline/kunzite.xml` is captured during installation from the audited device firmware (SHA-256 `3b434af171d5d14d1a7c4fa40097dc5c6a5b19e8e4dd0515c37a38d23d3fd48f`). Experimental overlay is generated only when opted in.
 - KernelSU systemless file overlays require an installed meta-overlayfs metamodule. Without one, WCG can run, Expert/HFR toggles are blocked.
 - The module uses `skip_mount` and no `system` overlay by default, avoiding unnecessary changes to device XML. Changes to staged XML become effective after one reboot.
 - On mismatch, the module skips changes. With optional experimental flags, a boot marker is removed after boot completion; if a boot attempt cannot complete, the next boot attempt automatically disables experimental flags. This does **not** replace recovery backup; if first boot is stuck, disable the module in recovery.
@@ -40,3 +40,7 @@ Install one ZIP via KernelSU-Next, replacing existing `kunzite_wcg_probe`. Reboo
 ## Penting: penyimpanan metamodule
 
 meta-overlayfs menyimpan payload partisi pada ext4 image (`/data/adb/metamodule/mnt/<module_id>/product`), bukan di `$MODPATH/system`. Pada boot, suite memasang image lebih awal selama `post-fs-data` (sebelum `metamount.sh`), menyalin XML yang diverifikasi dan **baru melepas `skip_mount` setelah file cocok**. Pengujian host tidak menjamin mount berhasil pada perangkat; jika staging gagal, WCG tetap bisa diterapkan tanpa overlay eksperimen. Hanya meta-overlayfs yang didukung untuk dua eksperimen ini, bukan metamodule generik.
+
+## GitHub Actions artifact
+
+The CI ZIP contains no Xiaomi proprietary XML. During install, `customize.sh` verifies device, ROM, panel and stock XML SHA-256, then stores the baseline privately inside the installed module. Both experiments remain OFF. Artifacts are previews, not stable releases.

@@ -2,7 +2,7 @@
 
 Riset dan modul KernelSU untuk mengaudit serta menguji kemampuan yang tidak diekspos firmware **Redmi Note 15 5G** (`kunzite`, Qualcomm `parrot`). Proyek independen oleh **Mystivara**.
 
-> **Status: v0.6.0-preview, belum rilis stabil.** Source disediakan untuk arsip pengembangan dan review. **Tidak ada klaim bahwa semua fitur sudah berhasil dibuka.** Jangan flash hasil build tanpa memeriksa kompatibilitas dan menyiapkan recovery.
+> **Status: v0.6.2-preview, belum rilis stabil.** Source disediakan untuk arsip pengembangan dan review. **Tidak ada klaim bahwa semua fitur sudah berhasil dibuka.** Jangan flash hasil build tanpa memeriksa kompatibilitas dan menyiapkan recovery.
 
 ## Hasil yang sudah dibuktikan
 
@@ -37,24 +37,25 @@ Lihat [Feature Matrix](docs/FEATURE_MATRIX.md), [Audit Bukti](docs/EVIDENCE_INDE
 ```text
 module/               Modul KernelSU preview (source)
   webroot/             WebUI dan pembacaan status
-scripts/              Paket ZIP dari salinan firmware lokal, validasi
+scripts/              Build ZIP otomatis, validasi, dan tes installer
 scripts/tests/        Pengujian statis di host
 fixtures/             XML sintetis, BUKAN firmware perangkat
 docs/audits/          Laporan audit tersanitasi
 docs/                 Arsitektur, kompatibilitas, pengujian, rollback, risiko
-.github/workflows/    Validasi CI
+.github/workflows/    Validasi CI dan upload ZIP artifact
 ```
 
-## Build tanpa menyebarkan file OEM
+## Build otomatis dan artifact GitHub Actions
 
-Repo **sengaja tidak memuat APK Kamera, data mentah `getprop`, atau XML vendor lengkap**. XML firmware dibaca dari perangkat milik sendiri saat membuat ZIP dan diverifikasi SHA-256:
+ZIP tidak memuat APK Kamera atau XML vendor Xiaomi. Installer `customize.sh` mengambil XML dari perangkat saat instalasi, setelah memverifikasi ROM dan SHA-256.
 
-```bash
+```sh
 python3 scripts/validate.py
-python3 scripts/package.py --stock-xml /path/to/kunzite.xml
+python3 scripts/package.py
+python3 scripts/verify_artifact.py
 ```
 
-Hasil ada di `dist/kunzite_capability_suite_v0.6.0-preview.zip`. `--stock-xml` **wajib**; baca [BUILD](docs/BUILD.md). Tidak ada instalasi otomatis dalam proses build.
+Hasil: `dist/kunzite_capability_suite_v0.6.2-preview.zip`. Setelah workflow berhasil, unduh melalui **Actions → workflow run → Artifacts**. Artifact berisi ZIP dan berkas `.sha256` dengan retensi 30 hari. `--stock-xml` opsional hanya untuk verifikasi lokal dan tidak menyertakan XML ke ZIP. Ini **preview**, bukan rilis stabil.
 
 ## Keamanan dan rollback
 

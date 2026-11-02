@@ -40,3 +40,9 @@
 - Stage XML before metamodule mount, verify byte-for-byte and retain `skip_mount` on failure.
 - Require `meta-overlayfs` by ID for Expert/HFR instead of assuming any metamodule can mount dynamic XML.
 - Preserve WCG property path unchanged; no change to experimental defaults.
+
+## v0.6.2-preview (CI artifact)
+
+- CI builds a reproducible KernelSU ZIP and uploads it with SHA-256 checksum.
+- No Xiaomi proprietary XML is included: installer captures and validates the on-device baseline during installation.
+- Added install-time checksum and artifact integrity regression tests. Experimental toggles remain OFF.

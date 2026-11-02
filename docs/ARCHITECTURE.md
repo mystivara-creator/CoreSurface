@@ -9,13 +9,13 @@ KernelSU-Next
       ├─ prepare-overlay.sh  → salinan XML dari baseline lokal yang diverifikasi
       ├─ control.sh          → status dan staging pilihan eksplisit
       ├─ webroot/index.html  → UI status, tidak menjalankan shell sendiri tanpa bridge
-      └─ baseline/kunzite.xml → disuntikkan saat build lokal, **bukan di Git**
+      └─ baseline/kunzite.xml → ditangkap saat instalasi dari device, bukan di ZIP/Git
 ```
 
 ## Model ancaman
 
 - Salah firmware, panel, atau versi XML dapat menyebabkan opsi tidak kompatibel: **gagal tertutup**, jangan ubah ROM lain.
-- Installer dan `post-fs-data.sh` memverifikasi SHA-256 XML paket **dan** XML `/product` yang terbaca langsung. Jika berubah, seluruh mutasi modul dilewati dan overlay dihapus saat boot. Ini mencegah penerapan salinan konfigurasi OEM yang basi pada OTA parsial atau konflik overlay.
+- Installer memvalidasi XML asli dan menyimpan baseline privat; `post-fs-data.sh` memverifikasi SHA-256 baseline dan XML `/product` yang terbaca langsung. Jika berubah, seluruh mutasi modul dilewati dan overlay dihapus saat boot. Ini mencegah penerapan salinan konfigurasi OEM yang basi pada OTA parsial atau konflik overlay.
 - Perubahan `ro.surface_flinger.has_wide_color_display` harus dilakukan sejak awal boot; jangan menjanjikan toggle realtime.
 - Mount systemless XML bergantung pada KernelSU dan metamodule kompatibel. Kehadiran path `/data/adb/metamodule` bukan bukti mount sukses.
 - Staging pada `post-fs-data.sh` perlu pengujian nyata terhadap urutan mount KernelSU. **Lulus pengujian host bukan berarti staging bekerja di perangkat.**

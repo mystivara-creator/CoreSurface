@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import tempfile
 import unittest
+import zipfile
 P=Path(__file__).resolve().parents[1]/'package.py'
 spec=importlib.util.spec_from_file_location('packager',P)
 packager=importlib.util.module_from_spec(spec)
@@ -24,4 +25,17 @@ class PackageTests(unittest.TestCase):
   self.assertEqual(len(packager.FILES),10)
   self.assertIn('post-fs-data.sh',packager.EXECUTABLES)
   for f in packager.FILES:self.assertTrue((packager.MODULE/f).is_file())
+ def test_artifact_is_firmware_free(self):
+  with tempfile.TemporaryDirectory() as d:
+   output=Path(d)/'suite.zip'
+   packager.pack(output)
+   with zipfile.ZipFile(output) as z:
+    self.assertEqual(set(z.namelist()),set(packager.FILES))
+    self.assertNotIn('baseline/kunzite.xml',z.namelist())
+    self.assertIsNone(z.testzip())
+ def test_reproducible_archive(self):
+  with tempfile.TemporaryDirectory() as d:
+   a=Path(d)/'a.zip'; b=Path(d)/'b.zip'
+   packager.pack(a); packager.pack(b)
+   self.assertEqual(a.read_bytes(),b.read_bytes())
 if __name__=='__main__':unittest.main()

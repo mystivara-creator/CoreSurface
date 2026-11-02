@@ -2,24 +2,19 @@
 
 Butuh Python 3.9+, Bash/POSIX shell, dan tools opsional `node` untuk validasi JavaScript. Tidak butuh Android NDK.
 
-## Menyiapkan source OEM secara lokal
-
-Pada perangkat yang firmware-nya **sama persis** dengan [compatibility](COMPATIBILITY.md), salin XML milik perangkat ke area privat, misalnya:
-
-```sh
-su -c 'cp /product/etc/device_features/kunzite.xml /sdcard/Download/kunzite.xml'
-```
-
-Jangan menaruh `kunzite.xml` di repository publik, issue, atau PR. Salin ke komputer pengembang sendiri, lalu jalankan:
+## Build tanpa file OEM
 
 ```sh
 python3 scripts/validate.py
-python3 scripts/package.py --stock-xml /path/to/private/kunzite.xml
+python3 scripts/package.py
+python3 scripts/verify_artifact.py
 ```
 
-`package.py` melakukan pemeriksaan SHA-256 dan validasi kedua boolean sebelum membuat ZIP. Jika firmware berubah, **jangan bypass checksum**; lakukan audit kompatibilitas baru.
+CI secara otomatis membangun dan mengunggah ZIP plus checksum SHA-256 pada **Actions → workflow run → Artifacts** (retensi 30 hari). Artifact tidak mengandung XML Xiaomi.
 
-ZIP hasil ada di `dist/`. Ini preview, jangan anggap siap flash tanpa pengujian recovery. Baca [TEST_PLAN](TEST_PLAN.md).
+Ketika modul dipasang, `customize.sh` membaca `/product/etc/device_features/kunzite.xml`, memeriksa ROM, panel, dan hash SHA-256 yang diaudit. Hanya XML yang cocok yang disalin ke `$MODPATH/baseline/kunzite.xml`. XML vendor tetap berada di perangkat pengguna. Jika ROM berubah, instalasi gagal tertutup.
+
+Opsi `--stock-xml /path/private/kunzite.xml` tersedia hanya untuk pemeriksaan checksum saat build manual. XML tersebut **tidak dimasukkan ZIP**. Artifact adalah preview dan tidak membuktikan fitur sudah berfungsi di perangkat.
 
 ## Publikasi ke GitHub
 
