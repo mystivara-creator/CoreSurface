@@ -2,6 +2,8 @@
 # Deterministically stage XML from the exact ROM-specific audited baseline.
 set -eu
 M=${0%/*}
+# Fail closed until payload is safely copied to the metamodule image.
+: > "$M/skip_mount"
 BASE="$M/baseline/kunzite.xml"
 EXPERT=0; HFR=0
 [ -f "$M/expert_enabled" ] && EXPERT=1
@@ -9,13 +11,13 @@ EXPERT=0; HFR=0
 if [ "$EXPERT" -eq 0 ] && [ "$HFR" -eq 0 ]; then
   # No XML override at all when both experiments are disabled.
   : > "$M/skip_mount"
-  rm -rf "$M/system" 
+  rm -rf "$M/product" "$M/system" 
   exit 0
 fi
 [ -s "$BASE" ] || exit 10
 [ "$(grep -o '<bool name="support_display_expert_mode">false</bool>' "$BASE" | wc -l)" -eq 1 ] || exit 11
 [ "$(grep -o '<bool name="support_video_hfr_mode">false</bool>' "$BASE" | wc -l)" -eq 1 ] || exit 12
-DSTDIR="$M/system/product/etc/device_features"
+DSTDIR="$M/product/etc/device_features"
 mkdir -p "$DSTDIR"
 TMP="$DSTDIR/kunzite.xml.tmp"
 cp "$BASE" "$TMP"
@@ -29,4 +31,4 @@ if [ "$HFR" -eq 1 ]; then
 fi
 chmod 0644 "$TMP"
 mv -f "$TMP" "$DSTDIR/kunzite.xml"
-rm -f "$M/skip_mount"
+# leave skip_mount in place until image-stage succeeded

@@ -37,3 +37,7 @@ Sertakan versi modul, ROM, panel, flag/hasil runtime dan langkah reproduksi. Red
 ## Runtime overlay verification gate (host simulation)
 
 `test_service.py` simulates the real service shell script using a fixture XML at a test-only path, without touching the Android device. It checks that boot completion does not count as feature activation unless each opted-in flag appears in the mounted XML. On mismatch, the `boot_pending` marker stays in place and a recovery reason is stored for rollback at the next boot. **This is not an on-device mount test.**
+
+## Lokasi payload meta-overlayfs
+
+Host test harus memastikan `product/` dipakai (bukan `system/product/`), `skip_mount` **tidak** dilepas selama staging XML biasa, dan hanya dilepas setelah berhasil menyalin ke ext4 image. Validasi perangkat harus memeriksa `/product/etc/device_features/kunzite.xml` efektif serta opsi aplikasi, tanpa mengklaim sukses dari flag tertulis di staging.

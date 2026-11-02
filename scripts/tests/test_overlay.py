@@ -27,7 +27,7 @@ class OverlayTests(unittest.TestCase):
         return p
 
     def xml(self):
-        return (self.root / 'system/product/etc/device_features/kunzite.xml')
+        return (self.root / 'product/etc/device_features/kunzite.xml')
 
     def test_default_does_not_mount(self):
         self.run_overlay()
@@ -41,7 +41,7 @@ class OverlayTests(unittest.TestCase):
         self.assertIn('name="support_display_expert_mode">true', data)
         self.assertIn('name="support_video_hfr_mode">false', data)
         self.assertIn('name="support_3d_face_beauty">true', data)
-        self.assertFalse((self.root / 'skip_mount').exists())
+        self.assertTrue((self.root / 'skip_mount').exists())
         self.assertEqual((self.root / 'baseline/kunzite.xml').read_text(), BASELINE)
 
     def test_hfr_only_changes_hfr(self):

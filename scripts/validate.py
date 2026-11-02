@@ -12,14 +12,14 @@ REQUIRED=('README.md','CHANGELOG.md','ROADMAP.md','SECURITY.md','LICENSE',
 'docs/FEATURE_MATRIX.md','docs/EVIDENCE_INDEX.md','docs/ROLLBACK.md','docs/ARCHITECTURE.md','docs/TEST_PLAN.md',
 'docs/audits/2026-11-02-capabilities.md','docs/audits/2026-11-02-camera-apk.md',
 'module/README.md','module/module.prop','module/compat.conf','module/customize.sh','module/post-fs-data.sh',
-'module/service.sh','module/control.sh','module/prepare-overlay.sh','module/webroot/index.html')
+'module/service.sh','module/control.sh','module/prepare-overlay.sh','module/stage-meta-overlayfs.sh','module/webroot/index.html')
 def verify(ok,msg):
     if not ok: raise AssertionError(msg)
 def main():
     for path in REQUIRED: verify((ROOT/path).is_file(), 'missing '+path)
     verify(not (MOD/'baseline/kunzite.xml').exists(),'Do not commit proprietary XML')
     verify('id=kunzite_wcg_probe' in (MOD/'module.prop').read_text(),'module ID drift')
-    for file in ['customize.sh','post-fs-data.sh','service.sh','control.sh','prepare-overlay.sh']:
+    for file in ['customize.sh','post-fs-data.sh','service.sh','control.sh','prepare-overlay.sh','stage-meta-overlayfs.sh']:
         p=subprocess.run(['sh','-n',str(MOD/file)],capture_output=True,text=True)
         verify(p.returncode==0, file+' invalid syntax: '+p.stderr)
     installer=(MOD/'customize.sh').read_text()

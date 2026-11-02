@@ -59,7 +59,8 @@ esac
     def test_experimental_toggle_does_not_modify_live_overlay(self):
         # Substitute only the KernelSU metamodule symlink path in test copy.
         fake_meta=self.root/'metamodule'
-        fake_meta.touch()
+        fake_meta.mkdir()
+        (fake_meta/'module.prop').write_text('id=meta-overlayfs\n')
         self.script.write_text(self.script.read_text().replace(
             '/data/adb/metamodule',str(fake_meta)))
         mounted=self.mod/'system/product/etc/device_features'
@@ -85,7 +86,7 @@ esac
         if Path('/data/adb/metamodule').exists():
             self.skipTest('Metamodule detected on host')
         for feature in ('expert','hfr'):
-            self.assertIn('BLOCKED: KernelSU metamodule required',
+            self.assertIn('BLOCKED: compatible meta-overlayfs required',
                           self.run_control('set',feature,'on',ok=False))
             self.assertFalse((self.mod/f'{feature}_enabled').exists())
 

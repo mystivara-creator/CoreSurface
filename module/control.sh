@@ -13,7 +13,7 @@ status() {
   echo "wcg_property=$(getprop ro.surface_flinger.has_wide_color_display)"
   echo "expert_next=$(flag expert_enabled)"
   echo "hfr_next=$(flag hfr_enabled)"
-  if [ -e /data/adb/metamodule ]; then echo 'metamodule=available'; else echo 'metamodule=missing'; fi
+  if [ -r /data/adb/metamodule/module.prop ] && grep -qx 'id=meta-overlayfs' /data/adb/metamodule/module.prop; then echo 'metamodule=meta-overlayfs'; else echo 'metamodule=missing_or_unsupported'; fi
   if [ -r /product/etc/device_features/kunzite.xml ]; then
     sed -n 's/.*<bool name="support_display_expert_mode">\(true\|false\)<\/bool>.*/expert_runtime=\1/p' /product/etc/device_features/kunzite.xml | head -n 1
     sed -n 's/.*<bool name="support_video_hfr_mode">\(true\|false\)<\/bool>.*/hfr_runtime=\1/p' /product/etc/device_features/kunzite.xml | head -n 1
@@ -45,8 +45,8 @@ set_feature() {
       if [ "$2" = on ]; then rm -f "$M/wcg_disabled"; else : > "$M/wcg_disabled"; fi
       ;;
     expert|hfr)
-      if [ "$2" = on ] && [ ! -e /data/adb/metamodule ]; then
-        echo 'BLOCKED: KernelSU metamodule required for XML overlay'; exit 5
+      if [ "$2" = on ] && { [ ! -r /data/adb/metamodule/module.prop ] || ! grep -qx 'id=meta-overlayfs' /data/adb/metamodule/module.prop; }; then
+        echo 'BLOCKED: compatible meta-overlayfs required for XML overlay'; exit 5
       fi
       if [ "$2" = on ] && [ -f "$M/recovery_reason" ]; then
         echo 'BLOCKED: prior experimental boot failed; inspect recovery first'; exit 6

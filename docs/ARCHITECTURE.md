@@ -31,4 +31,8 @@ Jangan ekspor *ready/stable* sebelum berhasil: test systemless mount, app menu, 
 
 ## Perubahan konfigurasi runtime
 
-WebUI hanya menyimpan pilihan flag eksperimen; tidak membuat atau menghapus berkas overlay ketika Android sudah berjalan. `post-fs-data.sh` menyiapkan XML yang telah diverifikasi **sebelum** `metamount.sh` milik KernelSU. `service.sh` kemudian mengecek nilai flag pada `/product` yang benar-benar ter-mount setelah boot. Ketidakcocokan mempertahankan marker rollback untuk startup berikutnya, tidak melakukan unmount agresif saat berjalan.
+WebUI hanya menyimpan pilihan flag eksperimen; tidak membuat atau menghapus berkas overlay ketika Android sudah berjalan. `post-fs-data.sh` menyiapkan XML yang telah diverifikasi di **ext4 image meta-overlayfs** sebelum `metamount.sh` milik KernelSU. `service.sh` kemudian mengecek nilai flag pada `/product` yang benar-benar ter-mount setelah boot. Ketidakcocokan mempertahankan marker rollback untuk startup berikutnya, tidak melakukan unmount agresif saat berjalan.
+
+## Perbaikan lokasi overlay (v0.6.1-preview)
+
+Pada meta-overlayfs v1.3.x, `modules.img` menyimpan konten di `/data/adb/metamodule/mnt/<module_id>/product/...`; hanya metadata/flag yang ada di `/data/adb/modules/<module_id>`. Membuat `$MODPATH/system/product/...` saat boot tidak bisa diandalkan karena payload itu bukan sumber mount. Kini kami membuat XML minimal pada staging privat modul, memasang image meta-overlayfs sebelum `metamount.sh`, menyalin ke path partisi `product` dalam image, memverifikasi kesesuaian, dan membuang `skip_mount` **hanya setelah** salinan selesai. Jika sumber tidak cocok, mount tidak dilakukan. Dinamis tanpa menyentuh `/product` asli; efek baru berlaku pada boot setelah tombol di WebUI ditekan.

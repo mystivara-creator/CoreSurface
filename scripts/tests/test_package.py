@@ -21,7 +21,7 @@ class PackageTests(unittest.TestCase):
    p=Path(d)/'stock.xml';data=b'<root><bool name="support_display_expert_mode">false</bool><bool name="support_video_hfr_mode">false</bool></root>';p.write_bytes(data)
    sha=hashlib.sha256(data).hexdigest();self.assertEqual(packager.verify_stock(p,sha),sha)
  def test_module_manifest(self):
-  self.assertEqual(len(packager.FILES),9)
+  self.assertEqual(len(packager.FILES),10)
   self.assertIn('post-fs-data.sh',packager.EXECUTABLES)
   for f in packager.FILES:self.assertTrue((packager.MODULE/f).is_file())
 if __name__=='__main__':unittest.main()

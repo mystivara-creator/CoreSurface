@@ -33,3 +33,10 @@
 - Exercise the root control shell command with host tests for WCG state, malformed inputs, wrong firmware, and absent metamodule.
 - Test post-boot verification with synthetic mounted-XML fixtures, including partial/missing mounts. No additional device writes or default feature changes.
 - Prevent WebUI toggles from rewriting/deleting potentially live mounted overlay backing files; prepare the new configuration only before the next KernelSU mount.
+
+## v0.6.1-preview (unreleased)
+
+- Correct KernelSU meta-overlayfs content location: dedicated `product` partition in metamodule ext4 image, rather than metadata `system/product` folder.
+- Stage XML before metamodule mount, verify byte-for-byte and retain `skip_mount` on failure.
+- Require `meta-overlayfs` by ID for Expert/HFR instead of assuming any metamodule can mount dynamic XML.
+- Preserve WCG property path unchanged; no change to experimental defaults.

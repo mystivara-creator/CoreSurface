@@ -19,7 +19,7 @@ STOCK_XML=/product/etc/device_features/kunzite.xml
 [ "$(grep -o '<bool name="support_video_hfr_mode">false</bool>' "$MODPATH/baseline/kunzite.xml" | wc -l)" -eq 1 ] || abort 'Baseline HFR flag invalid'
 [ "$(grep -o '<bool name="support_display_expert_mode">false</bool>' "$MODPATH/baseline/kunzite.xml" | wc -l)" -eq 1 ] || abort 'Baseline Expert flag invalid'
 # Upgrade under the existing WCG module ID. Drop stale 0.5.0 overlays and one-shot flags.
-rm -rf "$MODPATH/system" "$MODPATH/arm_once" "$MODPATH/one_boot_pending" "$MODPATH/boot_pending" 2>/dev/null || true
+rm -rf "$MODPATH/product" "$MODPATH/system" "$MODPATH/arm_once" "$MODPATH/one_boot_pending" "$MODPATH/boot_pending" 2>/dev/null || true
 rm -f "$MODPATH/skip_mount" "$MODPATH/expert_enabled" "$MODPATH/hfr_enabled" "$MODPATH/recovery_reason" 2>/dev/null || true
 : > "$MODPATH/skip_mount"
 # Keep previously selected WCG enable/disable preference where present.
@@ -28,10 +28,11 @@ set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
 set_perm "$MODPATH/service.sh" 0 0 0755
 set_perm "$MODPATH/control.sh" 0 0 0755
 set_perm "$MODPATH/prepare-overlay.sh" 0 0 0755
+set_perm "$MODPATH/stage-meta-overlayfs.sh" 0 0 0755
 ui_print '- One module: existing WCG module will be updated'
 ui_print '- WCG: existing exposure retained'
 ui_print '- Expert and Slow Motion: experimental, OFF by default'
-ui_print '- Systemless XML overlay only after explicit opt-in and compatible metamodule'
+ui_print '- Systemless XML overlay only after explicit opt-in and meta-overlayfs metamodule'
 ui_print '- No HDR, 1080p60, overclock or thermal bypass'
 if [ -d /data/adb/modules/kunzite_hfr_probe ] && [ ! -f /data/adb/modules/kunzite_hfr_probe/disable ]; then
   ui_print '! Standalone HFR module detected: disable it before using HFR in this suite'
