@@ -59,3 +59,10 @@
 - Handle full multi-line stdout, shell exit codes, stderr, concurrency, and callback timeout; reject malformed partial status instead of displaying misleading data.
 - Fix Expert/HFR runtime status via exact XML flag checks instead of sed alternatives, with explicit `unknown`/`unavailable` status.
 - Add faithful KernelSU-Next bridge tests, including the broken last-line synchronous mode and real buttons; firmware gates and feature behavior unchanged.
+
+## v0.6.5-preview (stock Slow Motion correction)
+
+- Stock Xiaomi Camera already includes Slow Motion (confirmed by user). Retire HFR unlock instead of changing a working camera feature.
+- Remove HFR activation buttons and XML patching; reject HFR enable, retain safe legacy OFF cleanup, discard old HFR flags during early boot.
+- Preserve v0.6.4 full-stdout KernelSU-Next WebUI fix, WCG exposure, and Expert Mode opt-in.
+- Add host regression tests to prevent HFR mutation, even with stale markers; actual video FPS remains unmeasured.

@@ -1,6 +1,8 @@
 #!/system/bin/sh
 # Early property application. Optional XML overlay is staged before metamodule mount.
 M=${0%/*}
+# Slow Motion is already present in stock Camera; discard legacy HFR requests.
+rm -f "$M/hfr_enabled"
 ROM=$(getprop ro.system.build.version.incremental)
 if [ "$(getprop ro.product.device)" != kunzite ] || [ "$(getprop ro.board.platform)" != parrot ] || [ "$ROM" != 16OS3.1.260918.151434134.QCPEGL.S ]; then
   : > "$M/skip_mount"
@@ -39,7 +41,7 @@ if [ -f "$M/boot_pending" ]; then
   rm -rf "$M/product" "$M/system"
   echo 'AUTO_ROLLBACK: unfinished experimental boot' > "$M/recovery_reason"
 fi
-if [ -f "$M/expert_enabled" ] || [ -f "$M/hfr_enabled" ]; then
+if [ -f "$M/expert_enabled" ]; then
   if [ ! -r /data/adb/metamodule/module.prop ] || ! grep -qx 'id=meta-overlayfs' /data/adb/metamodule/module.prop; then
     : > "$M/skip_mount"
     rm -rf "$M/product" "$M/system"

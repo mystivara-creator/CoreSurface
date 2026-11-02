@@ -17,7 +17,7 @@ Setiap perubahan harus diikat ke **nilai sumber**, **metode verifikasi**, dan **
 4. **Functional:** aplikasi memang menggunakan kemampuan (contoh: layer P3 atau video 720p120 yang tersimpan).
 5. **Measured:** hasil nyata diverifikasi (warna dengan instrumen atau metadata FPS dan hasil frame capture).
 
-WCG baru mencapai **Exposed**; HFR dan Expert Mode belum mencapai Functional.
+WCG baru mencapai **Exposed**. Menu Slow Motion bawaan dikonfirmasi pengguna, namun FPS rekamannya belum diukur. Expert Mode belum terverifikasi.
 
 ## Artefak yang tidak boleh dibuang dari audit
 

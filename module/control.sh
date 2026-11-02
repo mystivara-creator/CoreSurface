@@ -12,7 +12,6 @@ status() {
   echo "wcg_next=$( [ -f "$M/wcg_disabled" ] && echo off || echo on )"
   echo "wcg_property=$(getprop ro.surface_flinger.has_wide_color_display)"
   echo "expert_next=$(flag expert_enabled)"
-  echo "hfr_next=$(flag hfr_enabled)"
   if [ -r /data/adb/metamodule/module.prop ] && grep -qx 'id=meta-overlayfs' /data/adb/metamodule/module.prop; then echo 'metamodule=meta-overlayfs'; else echo 'metamodule=missing_or_unsupported'; fi
   if [ -r /product/etc/device_features/kunzite.xml ]; then
     XML=/product/etc/device_features/kunzite.xml
@@ -41,25 +40,33 @@ status() {
   rm -f "$TMP"
   [ -f "$M/boot_result.txt" ] && { echo 'boot_log_start'; cat "$M/boot_result.txt"; echo 'boot_log_end'; }
   [ -f "$M/recovery_reason" ] && echo 'auto_rollback=yes'
-  echo 'hfr_ui_result=not_verified'
   echo 'expert_ui_result=not_verified'
 }
 set_feature() {
   [ "${1:-}" = wcg ] || [ "${1:-}" = expert ] || [ "${1:-}" = hfr ] || { echo 'INVALID_FEATURE'; exit 2; }
   [ "${2:-}" = on ] || [ "${2:-}" = off ] || { echo 'INVALID_VALUE'; exit 2; }
   compat || { echo 'BLOCKED: unsupported firmware'; exit 4; }
+  if [ "$1" = hfr ]; then
+    if [ "$2" = off ]; then
+      rm -f "$M/hfr_enabled"
+      echo 'OK: hfr=off (stock Slow Motion unchanged)'
+      return 0
+    fi
+    echo 'BLOCKED: Slow Motion already exists in stock Xiaomi Camera'
+    exit 7
+  fi
   case "$1" in
     wcg)
       if [ "$2" = on ]; then rm -f "$M/wcg_disabled"; else : > "$M/wcg_disabled"; fi
       ;;
-    expert|hfr)
+    expert)
       if [ "$2" = on ] && { [ ! -r /data/adb/metamodule/module.prop ] || ! grep -qx 'id=meta-overlayfs' /data/adb/metamodule/module.prop; }; then
         echo 'BLOCKED: compatible meta-overlayfs required for XML overlay'; exit 5
       fi
       if [ "$2" = on ] && [ -f "$M/recovery_reason" ]; then
         echo 'BLOCKED: prior experimental boot failed; inspect recovery first'; exit 6
       fi
-      case "$1" in expert) FLAG=expert_enabled;; hfr) FLAG=hfr_enabled;; esac
+      FLAG=expert_enabled
       if [ "$2" = on ]; then : > "$M/$FLAG"; else rm -f "$M/$FLAG"; fi
       # Never mutate overlay files while they may be mounted into /product.
       # post-fs-data.sh regenerates the overlay from the verified baseline
@@ -71,5 +78,5 @@ set_feature() {
 case "${1:-}" in
   status) status;;
   set) set_feature "${2:-}" "${3:-}";;
-  *) echo 'usage: control.sh status | set wcg|expert|hfr on|off'; exit 2;;
+  *) echo 'usage: control.sh status | set wcg|expert on|off | set hfr off (legacy)'; exit 2;;
 esac

@@ -13,8 +13,6 @@ while [ "$n" -lt 120 ]; do
       PROBLEM='OEM_XML_UNREADABLE'
     elif [ -f "$M/expert_enabled" ] && ! grep -Fq '<bool name="support_display_expert_mode">true</bool>' "$XML"; then
       PROBLEM='EXPERT_FLAG_NOT_MOUNTED'
-    elif [ -f "$M/hfr_enabled" ] && ! grep -Fq '<bool name="support_video_hfr_mode">true</bool>' "$XML"; then
-      PROBLEM='HFR_FLAG_NOT_MOUNTED'
     fi
     if [ -n "$PROBLEM" ]; then
       # Keep boot_pending so post-fs-data can safely unstage the overlay

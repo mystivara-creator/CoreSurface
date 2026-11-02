@@ -2,12 +2,12 @@
 
 Riset dan modul KernelSU untuk mengaudit serta menguji kemampuan yang tidak diekspos firmware **Redmi Note 15 5G** (`kunzite`, Qualcomm `parrot`). Proyek independen oleh **Mystivara**.
 
-> **Status: v0.6.4-preview, belum rilis stabil.** Source disediakan untuk arsip pengembangan dan review. **Tidak ada klaim bahwa semua fitur sudah berhasil dibuka.** Jangan flash hasil build tanpa memeriksa kompatibilitas dan menyiapkan recovery.
+> **Status: v0.6.5-preview, belum rilis stabil.** Source disediakan untuk arsip pengembangan dan review. **Tidak ada klaim bahwa semua fitur sudah berhasil dibuka.** Jangan flash hasil build tanpa memeriksa kompatibilitas dan menyiapkan recovery.
 
 ## Hasil yang sudah dibuktikan
 
 - **Wide Color Gamut (WCG):** Setelah perubahan properti `ro.surface_flinger.has_wide_color_display`, Android Framework dan SurfaceFlinger mengekspos `ColorMode::DISPLAY_P3 (9)` pada panel yang diaudit. **Belum membuktikan aplikasi merender P3 atau akurasi warna fisik panel.** Mode aktif default sRGB itu normal.
-- **Slow Motion:** Kamera HAL mengekspos 720p120/240 pada beberapa Camera ID dan kode Slow Motion ditemukan di APK Kamera. Flag `support_video_hfr_mode=false`, tetapi **belum ditemukan cara tervalidasi untuk menampilkan menu atau merekam**.
+- **Slow Motion:** Pengguna menemukan mode Slow Motion sudah tersedia di Kamera Xiaomi bawaan. HFR tidak memerlukan unlock; nilai `support_video_hfr_mode=false` tidak berarti menu kamera terkunci. FPS aktual hasil rekaman belum diukur.
 - **Xiaomi Display Expert Mode:** `support_display_expert_mode=false` dan APK Settings mereferensikan flag tersebut. Perilaku UI/driver **belum teruji**.
 
 **Tidak termasuk:** spoof HDR/Dolby Vision, 1080p60 tanpa HAL, overclock, thermal bypass, pemaksaan P3 global, OIS atau ray tracing palsu.
@@ -19,7 +19,7 @@ Riset dan modul KernelSU untuk mengaudit serta menguji kemampuan yang tidak diek
 | WCG / deklarasi P3 | Verified Framework | Aktif, hanya pada perangkat/ROM cocok | Ya, deklarasi saja |
 | Rendering dan akurasi P3 | Tidak cukup bukti | Tidak dipaksa | Belum |
 | Display Expert Mode | Kandidat pengaturan Xiaomi | **Opt-in**, default OFF | Belum |
-| Camera Slow Motion 720p | Camera2 high-speed + kode APK | **Opt-in**, default OFF | Belum |
+| Camera Slow Motion | Mode tersedia di aplikasi Xiaomi bawaan | **Tidak dimodifikasi** | UI terbukti; FPS rekaman belum diukur |
 | 1080p60 / HDR / OIS | Dukungan tidak terbukti | Tidak diterapkan | Tidak |
 
 Lihat [Feature Matrix](docs/FEATURE_MATRIX.md), [Audit Bukti](docs/EVIDENCE_INDEX.md), dan [Risk Register](docs/RISKS.md).
@@ -55,7 +55,7 @@ python3 scripts/package.py
 python3 scripts/verify_artifact.py
 ```
 
-Hasil: `dist/kunzite_capability_suite_v0.6.4-preview.zip`. Setelah workflow berhasil, unduh melalui **Actions → workflow run → Artifacts**. Artifact berisi ZIP dan berkas `.sha256` dengan retensi 30 hari. `--stock-xml` opsional hanya untuk verifikasi lokal dan tidak menyertakan XML ke ZIP. Ini **preview**, bukan rilis stabil.
+Hasil: `dist/kunzite_capability_suite_v0.6.5-preview.zip`. Setelah workflow berhasil, unduh melalui **Actions → workflow run → Artifacts**. Artifact berisi ZIP dan berkas `.sha256` dengan retensi 30 hari. `--stock-xml` opsional hanya untuk verifikasi lokal dan tidak menyertakan XML ke ZIP. Ini **preview**, bukan rilis stabil.
 
 ## Keamanan dan rollback
 

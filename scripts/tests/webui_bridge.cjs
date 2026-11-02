@@ -12,7 +12,6 @@ const report=[
  'wcg_next=on',
  'wcg_property=true',
  'expert_next=off',
- 'hfr_next=off',
  'metamodule=meta-overlayfs',
  'expert_runtime=false',
  'hfr_runtime=false',
@@ -24,7 +23,6 @@ const report=[
  'WCG_ONLY: experimental flags disabled',
  'WCG_PROPERTY_APPLIED: P3 gamut accuracy not validated',
  'boot_log_end',
- 'hfr_ui_result=not_verified',
  'expert_ui_result=not_verified'
 ].join('\n');
 
@@ -43,9 +41,8 @@ async function spin(){
 function harness(statusResult=report){
   const ids={};
   for(const key of ['#status','#bootlog','#msg','#refresh'])ids[key]=fakeNode();
-  const buttons=[fakeNode(),fakeNode()];
+  const buttons=[fakeNode()];
   buttons[0].dataset={feature:'expert',value:'on'};
-  buttons[1].dataset={feature:'hfr',value:'on'};
   const document={
     querySelector(key){return ids[key];},
     querySelectorAll(query){return query==='[data-feature]'?buttons:[];},
@@ -68,8 +65,7 @@ function harness(statusResult=report){
           callback(0,statusResult,'');
         }else if(command.endsWith('control.sh set expert on')){
           callback(0,'OK: expert=on (effective after next reboot)','');
-        }else if(command.endsWith('control.sh set hfr on')){
-          callback(0,'OK: hfr=on (effective after next reboot)','');
+
         }else if(command.includes('control.sh set')){
           callback(5,'','BLOCKED: test simulated failure');
         }else {
@@ -91,7 +87,7 @@ async function main(){
   assert.equal(lookup.get('Display P3 tersedia'),'yes');
   assert.equal(lookup.get('Mode warna aktif'),'ColorMode::SRGB (7)');
   assert.equal(lookup.get('Expert flag runtime'),'false');
-  assert.equal(lookup.get('HFR flag runtime'),'false');
+  assert.equal(lookup.get('HFR XML bawaan (read-only)'),'false');
   assert.equal(lookup.get('Expert UI berfungsi'),'not_verified');
   assert.match(h.ids['#bootlog'].textContent,/WCG_PROPERTY_APPLIED/);
   assert(h.commands.every(command=>command.startsWith('/system/bin/sh ')));
@@ -99,10 +95,8 @@ async function main(){
   await h.buttons[0].events.click();
   await spin();
   assert.match(h.ids['#msg'].textContent,/OK: expert=on/);
-  await h.buttons[1].events.click();
-  await spin();
-  assert.match(h.ids['#msg'].textContent,/OK: hfr=on/);
-  assert(h.commands.filter(c=>c.endsWith('control.sh status')).length>=3);
+  assert(h.commands.filter(c=>c.endsWith('control.sh status')).length>=2);
+  assert(!h.commands.some(c=>c.includes('control.sh set hfr')));
   // Broken partial stdout must raise an explicit error rather than a
   // plausible-looking status table full of 'Tidak tersedia'.
   const bad=harness('expert_ui_result=not_verified');

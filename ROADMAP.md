@@ -12,3 +12,8 @@
 - [ ] Validasi rendering P3 dan, jika memungkinkan, akurasi panel.
 - [ ] Dokumentasi reproducible A/B, hasil uji kompatibilitas OTA/region.
 - [ ] Release stabil hanya sesudah acceptance test lolos.
+
+## Koreksi prioritas
+
+- HFR unlock dibatalkan karena menu Slow Motion sudah tersedia secara bawaan. Tidak perlu reboot atau perubahan kamera untuk fitur tersebut.
+- Prioritas berikutnya: memastikan WebUI membaca status penuh dan menguji Expert Mode sendiri dengan rencana rollback.

@@ -4,7 +4,7 @@
 
 1. Validasi skrip `sh -n` dan `node --check` (jika tersedia).
 2. Validasi HTML, konfigurasi dan integritas file package; ZIP harus punya daftar file minimal.
-3. Pastikan dua feature flag eksperimen OFF default.
+3. Pastikan Expert Mode default OFF dan tidak ada kemampuan mengaktifkan HFR.
 4. Pastikan build menolak XML dengan hash berbeda, file kosong, atau XML dari ROM lain.
 5. Periksa tidak ada data mentah pengguna, APK proprietary, atau token dalam Git.
 
@@ -17,7 +17,7 @@
 | WCG aplikasi | Konten sRGB | Aplikasi P3 native | Layer/mode P3 sesuai permintaan; bukti bukan cuma prop |
 | P3 kualitas | Uji visual terbatas | Colorimeter/alat kalibrasi | Akurasi gamut yang terukur |
 | Expert UI | Menu disembunyikan | Flag aktif via overlay | Menu muncul dan nilai berubah konsisten serta reversible |
-| Slow Motion | Menu tidak ada | Flag aktif via overlay | Mode muncul, video 720p120/240 terekam, metadata dan frame nyata sesuai |
+| Slow Motion bawaan | Menu ada di kamera Xiaomi | Modul tidak mengubah HFR | UI tetap tersedia; FPS hanya dinyatakan setelah pengukuran rekaman |
 | Rollback | Baseline stock | Matikan module/toggle | Properti dan konfigurasi kembali pada reboot berikutnya |
 | Reboot/OTA | Baseline dikenal | Setelah perubahan | Modul gagal-aman pada fingerprint tidak cocok |
 
@@ -29,7 +29,7 @@ Sertakan versi modul, ROM, panel, flag/hasil runtime dan langkah reproduksi. Red
 
 ## Pengujian host tambahan (2026-11-02)
 
-- `scripts/tests/test_overlay.py` menjalankan skrip staging sungguhan dengan XML sintetis: default tanpa mount; Expert saja; HFR saja; keduanya; nonaktifkan kembali; baseline duplikat/hilang ditolak.
+- `scripts/tests/test_overlay.py` menjalankan skrip staging sungguhan dengan XML sintetis: default tanpa mount; Expert saja; marker HFR lama diabaikan; nonaktifkan kembali; baseline duplikat/hilang ditolak.
 - `scripts/validate.py` memastikan gate SHA-256 ada di installer dan tahap boot.
 - `scripts/tests/webui_bridge.cjs` menguji pembacaan status WebUI dengan respons bridge KernelSU string, object, dan Promise (jika Node.js tersedia).
 - Pengujian host **tidak** memastikan OverlayFS terpasang di perangkat, menu Xiaomi tampil, ataupun akurasi warna. Eksperimen perangkat tetap memerlukan rencana rollback.
@@ -54,4 +54,10 @@ Host test harus memastikan `product/` dipakai (bukan `system/product/`), `skip_m
 - Under KernelSU-Next `WebViewInterface.kt`, synchronous `ksu.exec(cmd)` delegates to `ShellUtils.fastCmd` and may return only **last stdout line**, evidenced by the user seeing only `expert_ui_result=not_verified`.
 - Use callback API `ksu.exec(cmd, callbackName)`, which returns `exitCode`, joined multiline `stdout`, and `stderr`. A 30-second timer handles missing callback response.
 - Tests mimic native method overload and refuse one-argument calls, asserting all status fields/logs are visible, toggle responses still work, and truncated reports produce explicit errors. Android UI should update immediately after installed HTML is refreshed, without reboot.
-- **Do not reboot with Expert/HFR both staged until experimental safety/rollback has been reviewed separately.**
+- **Jangan reboot ketika penanda HFR lama masih aktif.** v0.6.5 menghapus mutasi HFR; Expert Mode perlu uji tersendiri.
+
+## v0.6.5 regression
+
+- Pastikan `set hfr on` ditolak, `set hfr off` hanya menghapus marker legacy, dan tidak ada tombol HFR di WebUI.
+- `prepare-overlay.sh` harus mempertahankan `support_video_hfr_mode=false` meskipun `hfr_enabled` lama masih ada.
+- `post-fs-data.sh` harus membuang marker HFR lama sebelum staging, tanpa memengaruhi WCG.

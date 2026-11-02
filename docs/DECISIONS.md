@@ -25,3 +25,7 @@
 ## Batas scope
 
 Tidak memaksa fitur yang tidak diekspos jalur aktif: HDR10/Dolby Vision, OIS, 1080p60, ray tracing/mesh shader. Tidak ada thermal bypass, overclock, atau polling daemon.
+
+## 2026-11-02: Koreksi Slow Motion asli
+
+Pengguna menemukan menu Slow Motion pada Kamera Xiaomi bawaan, sehingga hipotesis sebelumnya bahwa `support_video_hfr_mode=false` menyembunyikan menu tidak tepat. Keberadaan menu telah diamati; FPS video sebenarnya belum diukur. **Keputusan:** HFR dihapus dari fitur mutasi; kontrol legacy hanya mengizinkan OFF, marker lama dibersihkan saat boot, XML asli dipertahankan. Audit lama tetap disimpan sebagai sejarah koreksi.

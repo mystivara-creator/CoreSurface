@@ -81,14 +81,21 @@ esac
         self.assertFalse((self.mod/'wcg_disabled').exists())
         self.assertIn('device=unsupported_or_updated',self.run_control('status',env=env))
 
-    def test_expert_hfr_blocked_without_metamodule(self):
+    def test_expert_blocked_without_metamodule(self):
         # In host CI, /data/adb/metamodule should not exist. Otherwise skip.
         if Path('/data/adb/metamodule').exists():
             self.skipTest('Metamodule detected on host')
-        for feature in ('expert','hfr'):
-            self.assertIn('BLOCKED: compatible meta-overlayfs required',
-                          self.run_control('set',feature,'on',ok=False))
-            self.assertFalse((self.mod/f'{feature}_enabled').exists())
+        self.assertIn('BLOCKED: compatible meta-overlayfs required',
+                      self.run_control('set','expert','on',ok=False))
+        self.assertFalse((self.mod/'expert_enabled').exists())
+
+    def test_stock_slow_motion_hfr_on_is_blocked(self):
+        self.assertIn('BLOCKED: Slow Motion already exists in stock Xiaomi Camera',
+                      self.run_control('set','hfr','on',ok=False))
+        self.assertFalse((self.mod/'hfr_enabled').exists())
+        (self.mod/'hfr_enabled').touch()
+        self.assertIn('OK: hfr=off',self.run_control('set','hfr','off'))
+        self.assertFalse((self.mod/'hfr_enabled').exists())
 
 
 if __name__ == '__main__':

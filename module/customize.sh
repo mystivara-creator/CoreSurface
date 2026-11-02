@@ -46,7 +46,7 @@ set_perm "$MODPATH/prepare-overlay.sh" 0 0 0755 || abort 'Cannot set overlay per
 set_perm "$MODPATH/stage-meta-overlayfs.sh" 0 0 0755 || abort 'Cannot set staging permissions'
 ui_print '- One module: existing WCG module will be updated'
 ui_print '- WCG: existing exposure retained'
-ui_print '- Expert and Slow Motion: experimental, OFF by default'
+ui_print '- Expert is experimental and OFF; stock Slow Motion remains untouched'
 ui_print '- Systemless XML overlay only after explicit opt-in and meta-overlayfs metamodule'
 ui_print '- No HDR, 1080p60, overclock or thermal bypass'
 if [ -d /data/adb/modules/kunzite_hfr_probe ] && [ ! -f /data/adb/modules/kunzite_hfr_probe/disable ]; then

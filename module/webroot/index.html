@@ -12,14 +12,13 @@ button{border:0;border-radius:10px;background:#8dbdff;color:#102039;font:600 14p
 button.secondary{background:#36495f;color:#eaf1fc}button:disabled{opacity:.45}.tag{font-size:12px;color:#e8c88a}
 #msg{white-space:pre-wrap;color:#d2e7ff}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;color:#aebdd2}
 </style></head><body><main>
-<h1>Kunzite Capability Suite</h1><p class="sub">v0.6.4-preview · Redmi Note 15 5G · ROM diaudit · satu paket</p>
+<h1>Kunzite Capability Suite</h1><p class="sub">v0.6.5-preview · Redmi Note 15 5G · ROM diaudit · satu paket</p>
 <section><h2>Status nyata</h2><div id="status">Membaca status…</div><button id="refresh" class="secondary">Perbarui status</button></section>
 <section><h2>Wide Color Gamut</h2><p>Terbukti diekspos ke Android. Mode aktif boleh tetap sRGB. Tidak memaksa gamut P3 dan bukan jaminan kalibrasi akurat.</p>
 <div class="actions"><button data-feature="wcg" data-value="on">Aktifkan boot berikutnya</button><button class="secondary" data-feature="wcg" data-value="off">Nonaktifkan</button></div></section>
 <section><h2>Display Expert Mode <span class="tag">Eksperimen</span></h2><p>Hanya mengubah flag UI Xiaomi. Belum terbukti menu muncul atau seluruh kontrol panel berfungsi. Default nonaktif.</p>
 <div class="actions"><button data-feature="expert" data-value="on">Coba saat reboot berikutnya</button><button class="secondary" data-feature="expert" data-value="off">Matikan</button></div></section>
-<section><h2>Kamera Slow Motion 720p <span class="tag">Eksperimen</span></h2><p>Camera2 mengekspos 720p120/240; menu Xiaomi belum terbukti bisa dibuka lewat flag. Tidak mengklaim 1080p60.</p>
-<div class="actions"><button data-feature="hfr" data-value="on">Coba saat reboot berikutnya</button><button class="secondary" data-feature="hfr" data-value="off">Matikan</button></div></section>
+<section><h2>Kamera Slow Motion</h2><p>Sudah tersedia di aplikasi Kamera Xiaomi bawaan (dikonfirmasi pada perangkat). Modul ini tidak mengubah konfigurasi HFR. Kecepatan rekaman aktual belum diukur.</p></section>
 <section><h2>Diagnostik</h2><p id="msg">Tidak ada perubahan tanpa tombol ditekan.</p><details><summary>Log boot</summary><pre id="bootlog">-</pre></details>
 <p>Perubahan pilihan disiapkan sekaligus dan berlaku setelah reboot. Jika eksperimen menyebabkan boot tidak selesai, percobaan boot berikutnya akan menonaktifkan dua flag eksperimen.</p></section>
 <script>
@@ -58,14 +57,14 @@ function row(label,value){const el=document.createElement('div');el.className='r
 async function refresh(){const target=document.querySelector('#status');target.textContent='Memeriksa…';try{
  const output=await exec(moduleScript+' status');
  const {values:v,lines}=parse(output);
- if(!v.device || !v.wcg_property || !v.metamodule || !v.expert_next || !v.hfr_next)
+ if(!v.device || !v.wcg_property || !v.metamodule || !v.expert_next)
    throw new Error('Output status tidak lengkap; periksa bridge KernelSU dan log.');
  target.replaceChildren(
  row('Perangkat/ROM',v.device),row('WCG boot berikutnya',v.wcg_next),row('Properti WCG aktif',v.wcg_property),
  row('SurfaceFlinger WCG',v.sf_wcg),row('Display P3 tersedia',v.p3_available),row('Mode warna aktif',v.active_color),
  row('Panel',v.panel),row('Metamodule (butuh meta-overlayfs)',v.metamodule),row('Expert disiapkan',v.expert_next),
- row('Expert flag runtime',v.expert_runtime),row('Slow Motion disiapkan',v.hfr_next),row('HFR flag runtime',v.hfr_runtime),
- row('Expert UI berfungsi',v.expert_ui_result),row('Slow Motion berfungsi',v.hfr_ui_result));
+ row('Expert flag runtime',v.expert_runtime),row('HFR XML bawaan (read-only)',v.hfr_runtime),
+ row('Expert UI berfungsi',v.expert_ui_result));
  document.querySelector('#bootlog').textContent=lines.join('\n')||'Tidak ada log';
  }catch(e){target.textContent='Gagal membaca status: '+e.message;}}
 async function setFeature(feature,value){if(feature!=='wcg' && value==='on' && !confirm('Fitur ini belum terverifikasi. Aktifkan uji eksperimental untuk reboot berikutnya?'))return;

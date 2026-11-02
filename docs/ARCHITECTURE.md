@@ -23,7 +23,7 @@ KernelSU-Next
 
 ## Prinsip pembatasan
 
-Satu modul, satu pemilik pengaturan, tidak memodifikasi `/product` secara permanen. WCG aktif hanya jika identitas/ROM sesuai. Expert/HFR default OFF. Tidak mengakali thermal, SELinux, kamera lens ID, EIS/OIS, atau driver Vulkan.
+Satu modul, satu pemilik pengaturan, tidak memodifikasi `/product` secara permanen. WCG aktif hanya jika identitas/ROM sesuai. Expert default OFF. Tidak mengakali thermal, SELinux, kamera lens ID, EIS/OIS, atau driver Vulkan.
 
 ## Pengembangan lanjutan
 

@@ -49,8 +49,8 @@ class ServiceTests(unittest.TestCase):
         self.assertFalse((self.module/'boot_pending').exists())
         self.assertIn('EXPERIMENTAL_XML_VERIFIED',(self.module/'boot_result.txt').read_text())
 
-    def test_verified_hfr_clears_pending(self):
-        self.setup_pending(hfr=True,hfr_runtime='true')
+    def test_stale_hfr_marker_does_not_gate_boot(self):
+        self.setup_pending(hfr=True,hfr_runtime='false')
         self.run_service()
         self.assertFalse((self.module/'boot_pending').exists())
 
@@ -61,13 +61,13 @@ class ServiceTests(unittest.TestCase):
         self.assertIn('EXPERT_FLAG_NOT_MOUNTED',(self.module/'recovery_reason').read_text())
         self.assertIn('EXPERIMENTAL_RUNTIME_FAILED',(self.module/'boot_result.txt').read_text())
 
-    def test_mixed_experiments_reject_partial_mount(self):
+    def test_expert_verifies_even_when_stock_hfr_is_false(self):
         self.setup_pending(expert=True,hfr=True,expert_runtime='true',hfr_runtime='false')
-        self.run_service(expected=1)
-        self.assertEqual((self.module/'recovery_reason').read_text().strip(),'HFR_FLAG_NOT_MOUNTED')
+        self.run_service()
+        self.assertFalse((self.module/'boot_pending').exists())
 
     def test_missing_runtime_xml_triggers_recovery(self):
-        self.setup_pending(hfr=True)
+        self.setup_pending(expert=True)
         self.xml.unlink()
         self.run_service(expected=1)
         self.assertEqual((self.module/'recovery_reason').read_text().strip(),'OEM_XML_UNREADABLE')

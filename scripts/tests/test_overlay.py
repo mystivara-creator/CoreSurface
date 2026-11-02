@@ -44,22 +44,20 @@ class OverlayTests(unittest.TestCase):
         self.assertTrue((self.root / 'skip_mount').exists())
         self.assertEqual((self.root / 'baseline/kunzite.xml').read_text(), BASELINE)
 
-    def test_hfr_only_changes_hfr(self):
+    def test_legacy_hfr_marker_is_ignored(self):
         (self.root / 'hfr_enabled').touch()
         self.run_overlay()
-        data = self.xml().read_text()
-        self.assertIn('name="support_video_hfr_mode">true', data)
-        self.assertIn('name="support_display_expert_mode">false', data)
+        self.assertTrue((self.root / 'skip_mount').exists())
+        self.assertFalse(self.xml().exists())
 
-    def test_both_then_disable_both(self):
-        for f in ('expert_enabled', 'hfr_enabled'):
-            (self.root / f).touch()
+    def test_expert_never_changes_stock_hfr_even_with_legacy_marker(self):
+        for name in ('expert_enabled', 'hfr_enabled'):
+            (self.root / name).touch()
         self.run_overlay()
         data = self.xml().read_text()
         self.assertIn('name="support_display_expert_mode">true', data)
-        self.assertIn('name="support_video_hfr_mode">true', data)
-        for f in ('expert_enabled', 'hfr_enabled'):
-            (self.root / f).unlink()
+        self.assertIn('name="support_video_hfr_mode">false', data)
+        (self.root / 'expert_enabled').unlink()
         self.run_overlay()
         self.assertTrue((self.root / 'skip_mount').exists())
         self.assertFalse(self.xml().exists())
