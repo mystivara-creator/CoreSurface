@@ -628,7 +628,11 @@ chmod +x "$SB_BIN/cmd"
 
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=" "Omits mismatched MiShadow window prop that bloats Toasts"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.multiwin.fulldecor_support=" "Omits fulldecor prop that distorts Recent Apps"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island=1" "HyperOS 3 auto-enables FEAT_ISLAND on >= 6 GB RAM"
+assert_file_contains "$SB_MOD/system.prop" "persist.sys.computility.cpulevel=6" "Generates system.prop so KernelSU applies computility after load_persist_props"
+assert_file_contains "$SB_CHCON_LOG" "-R u:object_r:system_file:s0 $SB_MOD/system" "RRO Manager restores SELinux system_file context on staged overlays"
 assert_eq "$( [ -f "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'yes' || printf 'no' )" "yes" "Stages zero-byte Lockscreen Video Depth marker"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUI.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceSystemUI.apk on >= 6 GB RAM"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUILiteBlur.apk" ] && printf 'yes' || printf 'no' )" "no" "RRO skips LiteBlur overlay when full FEAT_BLUR is active"
@@ -652,9 +656,10 @@ PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_RRO_OVERLAYS 1 >/dev/null
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUILiteBlur.apk" ] && printf 'yes' || printf 'no' )" "yes" "Enabling RRO with FEAT_BLUR=0 stages CoreSurfaceSystemUILiteBlur.apk"
 
-# Watchdog Safe-Mode (boot_strikes=2) clears staged RRO APKs & Video Depth marker fail-closed
+# Watchdog Safe-Mode (boot_strikes=2) clears system.prop, staged RRO APKs & Video Depth marker fail-closed
 printf '2\n' > "$SB_STATE/boot_strikes"
 run_post_fs_data
+assert_eq "$( [ -f "$SB_MOD/system.prop" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears system.prop fail-closed"
 assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears staged RRO overlays fail-closed"
 assert_eq "$( [ -e "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears Video Depth marker fail-closed"
 

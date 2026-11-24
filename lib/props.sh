@@ -1,9 +1,13 @@
 #!/system/bin/sh
-# CoreSurface - Safe Non-Persistent Property Application & Per-Feature Audit
+# CoreSurface - Safe Non-Persistent Property Application, system.prop Generator & Audit
 # Pure POSIX sh. Strictly uses `resetprop -n` (memory-only, never writes /data/property).
+# Also generates $MODDIR/system.prop so KernelSU-Next applies props AFTER load_persist_props
+# and BEFORE Zygote/SystemUI/Launcher boot, and clears system.prop fail-closed on Safe-Mode.
 
 CS_RESETPROP_MODE=""
 CS_RESETPROP_BIN=""
+CS_PROPS_WRITE_ONLY="0"
+CS_SYSPROP_TMP=""
 
 cs_find_resetprop() {
   CS_RESETPROP_MODE=""
@@ -30,8 +34,12 @@ cs_find_resetprop() {
   return 1
 }
 
-# Strictly apply a property with -n (no-persist) and record feature|key=value in audit list.
-# Never falls back to resetprop without -n so persist.* props never stick in /data/property.
+cs_clear_system_prop() {
+  _cs_csp_moddir=$1
+  rm -f "$_cs_csp_moddir/system.prop" 2>/dev/null || true
+}
+
+# Strictly apply a property with -n (no-persist), write to system.prop buffer, and record audit.
 cs_set_prop() {
   _cs_sp_feat=$1
   _cs_sp_key=$2
@@ -39,6 +47,14 @@ cs_set_prop() {
 
   if [ -z "$_cs_sp_feat" ] || [ -z "$_cs_sp_key" ] || [ -z "$_cs_sp_val" ]; then
     return 1
+  fi
+
+  if [ -n "$CS_SYSPROP_TMP" ]; then
+    printf '%s=%s\n' "$_cs_sp_key" "$_cs_sp_val" >> "$CS_SYSPROP_TMP"
+  fi
+
+  if [ "$CS_PROPS_WRITE_ONLY" = "1" ]; then
+    return 0
   fi
 
   if [ -z "$CS_RESETPROP_BIN" ]; then
@@ -113,7 +129,9 @@ cs_apply_feat_animations() {
 cs_apply_feat_blur() {
   [ "$EFF_FEAT_BLUR" = "1" ] || return 0
 
-  # SurfaceFlinger & WindowManager consistent blur (prevents flat grey dialogs/notification long-press)
+  # Consistent SurfaceFlinger & WindowManager blur.
+  # Intentionally omits support_window_mishadow / support_view_mishadow / smoothcorner
+  # which mismatch on HyperOS 3 and bloat Toast/dialog window bounds.
   cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.sf.blurs_are_expensive" "0"
   cs_set_prop "FEAT_BLUR" "sf.blurs_are_expensive" "0"
@@ -132,11 +150,6 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"
   cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.multi_task.mask_blur_enable" "true"
-  cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
-  cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
-  cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"
-  cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
-  cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
 
   # HyperOS 3+ drops legacy persist.sys.advanced_visual_release=3; apply only on HyperOS 1/2 & MIUI
   if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
@@ -156,6 +169,7 @@ cs_apply_feat_multitask() {
   [ "$EFF_FEAT_MULTITASK" = "1" ] || return 0
 
   # Low-RAM boolean & GB threshold relaxation (also enables full Control Center swipe animations)
+  # Intentionally omits ro.multiwin.fulldecor_support which distorts Recent Apps layout on HyperOS 3.
   cs_set_prop "FEAT_MULTITASK" "ro.config.low_ram" "false"
   cs_set_prop "FEAT_MULTITASK" "ro.config.miui_low_ram" "false"
   cs_set_prop "FEAT_MULTITASK" "ro.miui.low_ram" "false"
@@ -163,7 +177,6 @@ cs_apply_feat_multitask() {
   cs_set_prop "FEAT_MULTITASK" "ro.config.low_ram.middle.threshold_gb" "0"
   cs_set_prop "FEAT_MULTITASK" "persist.sys.miui_freeform_max_count" "4"
   cs_set_prop "FEAT_MULTITASK" "ro.miui.support_multi_window" "true"
-  cs_set_prop "FEAT_MULTITASK" "ro.multiwin.fulldecor_support" "true"
   cs_set_prop "FEAT_MULTITASK" "ro.support_one_handed_mode" "true"
   cs_set_prop "FEAT_MULTITASK" "ro.miui.has_handy_mode_sf" "1"
   cs_set_prop "FEAT_MULTITASK" "persist.sys.partial.screenshot.support" "true"
@@ -191,7 +204,37 @@ cs_apply_feat_aod_unlock() {
   cs_set_prop "FEAT_AOD_UNLOCK" "persist.sys.aod_limit_disabled" "true"
 }
 
+cs_emit_all_props() {
+  cs_apply_feat_animations
+  cs_apply_feat_blur
+  cs_apply_feat_island
+  cs_apply_feat_multitask
+  cs_apply_feat_display_hz
+  cs_apply_feat_hyperai
+  cs_apply_feat_aod_unlock
+}
+
+# Generate $MODDIR/system.prop for next boot without calling resetprop (used in customize.sh & webui_ctl.sh).
+cs_generate_system_prop() {
+  _cs_gsp_moddir=$1
+  CS_SYSPROP_TMP="$_cs_gsp_moddir/system.prop.tmp.$$"
+  CS_PROPS_WRITE_ONLY="1"
+  : > "$CS_SYSPROP_TMP"
+
+  cs_emit_all_props
+
+  CS_PROPS_WRITE_ONLY="0"
+  if [ -s "$CS_SYSPROP_TMP" ]; then
+    chmod 0644 "$CS_SYSPROP_TMP" 2>/dev/null || true
+    mv -f "$CS_SYSPROP_TMP" "$_cs_gsp_moddir/system.prop"
+  else
+    rm -f "$CS_SYSPROP_TMP" "$_cs_gsp_moddir/system.prop" 2>/dev/null || true
+  fi
+  CS_SYSPROP_TMP=""
+}
+
 cs_apply_all_props() {
+  _cs_ap_moddir=${1:-}
   cs_watchdog_init_dir || return 1
   : > "$CS_PROPS_AUDIT_FILE"
 
@@ -200,13 +243,25 @@ cs_apply_all_props() {
     return 1
   fi
 
-  cs_apply_feat_animations
-  cs_apply_feat_blur
-  cs_apply_feat_island
-  cs_apply_feat_multitask
-  cs_apply_feat_display_hz
-  cs_apply_feat_hyperai
-  cs_apply_feat_aod_unlock
+  CS_PROPS_WRITE_ONLY="0"
+  if [ -n "$_cs_ap_moddir" ]; then
+    CS_SYSPROP_TMP="$_cs_ap_moddir/system.prop.tmp.$$"
+    : > "$CS_SYSPROP_TMP"
+  else
+    CS_SYSPROP_TMP=""
+  fi
+
+  cs_emit_all_props
+
+  if [ -n "$CS_SYSPROP_TMP" ]; then
+    if [ -s "$CS_SYSPROP_TMP" ]; then
+      chmod 0644 "$CS_SYSPROP_TMP" 2>/dev/null || true
+      mv -f "$CS_SYSPROP_TMP" "$_cs_ap_moddir/system.prop"
+    else
+      rm -f "$CS_SYSPROP_TMP" "$_cs_ap_moddir/system.prop" 2>/dev/null || true
+    fi
+    CS_SYSPROP_TMP=""
+  fi
 
   _cs_count=$(wc -l < "$CS_PROPS_AUDIT_FILE" 2>/dev/null | tr -d ' \t\r\n')
   cs_state_set "APPLIED_PROPS_COUNT" "${_cs_count:-0}"

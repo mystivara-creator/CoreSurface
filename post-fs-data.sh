@@ -22,6 +22,7 @@ cs_watchdog_init_dir || exit 0
 # Layer 1: ROM & SDK Gate
 if ! cs_detect_rom; then
   : > "$CS_PROPS_AUDIT_FILE"
+  cs_clear_system_prop "$MODDIR"
   cs_rro_clear "$MODDIR" || true
   cs_state_set "WATCHDOG_STATUS" "unsupported_rom"
   cs_state_set "WATCHDOG_REASON" "non_hyperos_or_miui_rom"
@@ -38,7 +39,8 @@ fi
 cs_watchdog_preflight "$MODDIR"
 _cs_pf_rc=$?
 if [ "$_cs_pf_rc" -ne 0 ]; then
-  # Strike >= 2 triggered Safe-Mode disable: clear staged RRO overlays fail-closed
+  # Strike >= 2 triggered Safe-Mode disable: clear system.prop and staged RRO overlays fail-closed
+  cs_clear_system_prop "$MODDIR"
   cs_rro_clear "$MODDIR" || true
   cs_state_set "XML_STATUS" "skipped"
   cs_state_set "XML_REASON" "safe_mode_disabled"
@@ -65,8 +67,8 @@ cs_state_set "PENDING_KEYS" ""
 
 cs_log "Detected ${CS_ROM_FAMILY} (${CS_ROM_VERSION}) SDK=${CS_ANDROID_SDK} RAM=${CS_RAM_MB}MB (${CS_RAM_TIER_LABEL})."
 
-# Layer 4a: Apply Granular Non-Persistent Properties (strictly resetprop -n)
-cs_apply_all_props || true
+# Layer 4a: Apply Granular Non-Persistent Properties (resetprop -n + system.prop sync)
+cs_apply_all_props "$MODDIR" || true
 
 # Layer 4b: Dynamic device_features XML Patcher (fail-closed bind-mount)
 cs_xml_apply || true

@@ -12,6 +12,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(dirname -- "$SCRIPT_DIR")}
 . "$MODDIR/lib/watchdog.sh"
 # shellcheck source=lib/rro.sh
 . "$MODDIR/lib/rro.sh"
+# shellcheck source=lib/props.sh
+. "$MODDIR/lib/props.sh"
 # shellcheck source=lib/settings_tx.sh
 . "$MODDIR/lib/settings_tx.sh"
 # shellcheck source=lib/verifier.sh
@@ -76,6 +78,7 @@ cs_sync_rro_for_next_boot() {
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
   cs_rro_stage "$MODDIR" || true
+  cs_generate_system_prop "$MODDIR" || true
 }
 
 cs_cmd_status() {
@@ -228,12 +231,7 @@ cs_cmd_set() {
 
   cs_ensure_config || return 1
   cs_write_config_key "$_cs_set_k" "$_cs_set_v"
-
-  case "$_cs_set_k" in
-    FEAT_RRO_OVERLAYS|FEAT_VIDEO_DEPTH|FEAT_BLUR|FEAT_ANIMATIONS)
-      cs_sync_rro_for_next_boot || true
-      ;;
-  esac
+  cs_sync_rro_for_next_boot || true
 
   cs_add_pending_key "$_cs_set_k"
   cs_log "WebUI updated ${_cs_set_k}=${_cs_set_v} (reboot required)."

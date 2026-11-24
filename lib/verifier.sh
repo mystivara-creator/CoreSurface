@@ -25,15 +25,29 @@ cs_verify_settings_get() {
   _cs_vsg_key=$2
   CS_VSG_VAL=""
 
-  _cs_vsg_out=$(settings --user 0 get "$_cs_vsg_ns" "$_cs_vsg_key" 2>&1 | head -n 1 | tr -d '\r' || true)
-  if [ -n "$_cs_vsg_out" ] && ! cs_verify_is_settings_err "$_cs_vsg_out"; then
-    CS_VSG_VAL="$_cs_vsg_out"
+  _cs_vsg_out=$(settings --user 0 get "$_cs_vsg_ns" "$_cs_vsg_key" 2>&1)
+  _cs_vsg_rc=$?
+  _cs_vsg_line=$(printf '%s\n' "$_cs_vsg_out" | head -n 1 | tr -d '\r')
+  if [ "$_cs_vsg_rc" -eq 0 ] && [ -n "$_cs_vsg_line" ] && ! cs_verify_is_settings_err "$_cs_vsg_line"; then
+    CS_VSG_VAL="$_cs_vsg_line"
     return 0
   fi
 
-  _cs_vsg_out=$(settings get "$_cs_vsg_ns" "$_cs_vsg_key" 2>&1 | head -n 1 | tr -d '\r' || true)
-  if [ -n "$_cs_vsg_out" ] && ! cs_verify_is_settings_err "$_cs_vsg_out"; then
-    CS_VSG_VAL="$_cs_vsg_out"
+  if command -v su >/dev/null 2>&1; then
+    _cs_vsg_out=$(su 2000 -c "settings --user 0 get ${_cs_vsg_ns} ${_cs_vsg_key}" 2>&1)
+    _cs_vsg_rc=$?
+    _cs_vsg_line=$(printf '%s\n' "$_cs_vsg_out" | head -n 1 | tr -d '\r')
+    if [ "$_cs_vsg_rc" -eq 0 ] && [ -n "$_cs_vsg_line" ] && ! cs_verify_is_settings_err "$_cs_vsg_line"; then
+      CS_VSG_VAL="$_cs_vsg_line"
+      return 0
+    fi
+  fi
+
+  _cs_vsg_out=$(settings get "$_cs_vsg_ns" "$_cs_vsg_key" 2>&1)
+  _cs_vsg_rc=$?
+  _cs_vsg_line=$(printf '%s\n' "$_cs_vsg_out" | head -n 1 | tr -d '\r')
+  if [ "$_cs_vsg_rc" -eq 0 ] && [ -n "$_cs_vsg_line" ] && ! cs_verify_is_settings_err "$_cs_vsg_line"; then
+    CS_VSG_VAL="$_cs_vsg_line"
     return 0
   fi
 
@@ -86,6 +100,11 @@ cs_verify_rro_overlays() {
   fi
 
   _cs_ov_out=$(cmd overlay list --user 0 2>&1 || true)
+  if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
+    if command -v su >/dev/null 2>&1; then
+      _cs_ov_out=$(su 2000 -c "cmd overlay list --user 0" 2>&1 || true)
+    fi
+  fi
   if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
     _cs_ov_out=$(cmd overlay list 2>&1 || true)
   fi

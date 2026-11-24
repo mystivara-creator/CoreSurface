@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # CoreSurface - Transactional Android `settings` Override & Clean Rollback
-# Pure POSIX sh. Uses `settings --user 0` (Android 16 / SDK 36 Binder safe)
-# with fallback for older Android versions. Backs up original values once (idempotent).
+# Pure POSIX sh. Uses `settings --user 0` with UID 2000 (shell) fallback for
+# Android 16 (SDK 36) KernelSU Binder rules, plus legacy fallback for older Android.
 
 CS_SETTINGS_BACKUP_FILE="$CS_STATE_DIR/settings_backup.prop"
 CS_SETTINGS_APPLIED_FILE="$CS_STATE_DIR/settings_applied.list"
@@ -12,27 +12,41 @@ cs_settings_available() {
 
 cs_settings_is_error_output() {
   case "$1" in
-    *Failure*|*Exception*|*Error*|*Binder*) return 0 ;;
+    *Failure*|*Exception*|*Error*|*Binder*|*Permission*) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-# Read a setting using `--user 0`, falling back without `--user 0` only on failure.
+# Read a setting: try `--user 0`, then `su 2000 -c` (Android 16 Binder), then bare `settings`.
 # Sets: CS_SETTINGS_READ_VAL, returns 0 on success, 1 on Binder/service error.
 cs_settings_get() {
   _cs_sg_ns=$1
   _cs_sg_key=$2
   CS_SETTINGS_READ_VAL=""
 
-  _cs_sg_out=$(settings --user 0 get "$_cs_sg_ns" "$_cs_sg_key" 2>&1 | head -n 1 | tr -d '\r' || true)
-  if [ -n "$_cs_sg_out" ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
-    CS_SETTINGS_READ_VAL="$_cs_sg_out"
+  _cs_sg_out=$(settings --user 0 get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
+  _cs_sg_rc=$?
+  _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
+  if [ "$_cs_sg_rc" -eq 0 ] && [ -n "$_cs_sg_line" ] && ! cs_settings_is_error_output "$_cs_sg_line"; then
+    CS_SETTINGS_READ_VAL="$_cs_sg_line"
     return 0
   fi
 
-  _cs_sg_out=$(settings get "$_cs_sg_ns" "$_cs_sg_key" 2>&1 | head -n 1 | tr -d '\r' || true)
-  if [ -n "$_cs_sg_out" ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
-    CS_SETTINGS_READ_VAL="$_cs_sg_out"
+  if command -v su >/dev/null 2>&1; then
+    _cs_sg_out=$(su 2000 -c "settings --user 0 get ${_cs_sg_ns} ${_cs_sg_key}" 2>&1)
+    _cs_sg_rc=$?
+    _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
+    if [ "$_cs_sg_rc" -eq 0 ] && [ -n "$_cs_sg_line" ] && ! cs_settings_is_error_output "$_cs_sg_line"; then
+      CS_SETTINGS_READ_VAL="$_cs_sg_line"
+      return 0
+    fi
+  fi
+
+  _cs_sg_out=$(settings get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
+  _cs_sg_rc=$?
+  _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
+  if [ "$_cs_sg_rc" -eq 0 ] && [ -n "$_cs_sg_line" ] && ! cs_settings_is_error_output "$_cs_sg_line"; then
+    CS_SETTINGS_READ_VAL="$_cs_sg_line"
     return 0
   fi
 
@@ -44,13 +58,23 @@ cs_settings_put() {
   _cs_sp_key=$2
   _cs_sp_val=$3
 
-  _cs_sp_out=$(settings --user 0 put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1 || true)
-  if ! cs_settings_is_error_output "$_cs_sp_out"; then
+  _cs_sp_out=$(settings --user 0 put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1)
+  _cs_sp_rc=$?
+  if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
     return 0
   fi
 
-  _cs_sp_out=$(settings put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1 || true)
-  if ! cs_settings_is_error_output "$_cs_sp_out"; then
+  if command -v su >/dev/null 2>&1; then
+    _cs_sp_out=$(su 2000 -c "settings --user 0 put ${_cs_sp_ns} ${_cs_sp_key} ${_cs_sp_val}" 2>&1)
+    _cs_sp_rc=$?
+    if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
+      return 0
+    fi
+  fi
+
+  _cs_sp_out=$(settings put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1)
+  _cs_sp_rc=$?
+  if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
     return 0
   fi
 
@@ -61,13 +85,23 @@ cs_settings_delete() {
   _cs_sd_ns=$1
   _cs_sd_key=$2
 
-  _cs_sd_out=$(settings --user 0 delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1 || true)
-  if ! cs_settings_is_error_output "$_cs_sd_out"; then
+  _cs_sd_out=$(settings --user 0 delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1)
+  _cs_sd_rc=$?
+  if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
     return 0
   fi
 
-  _cs_sd_out=$(settings delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1 || true)
-  if ! cs_settings_is_error_output "$_cs_sd_out"; then
+  if command -v su >/dev/null 2>&1; then
+    _cs_sd_out=$(su 2000 -c "settings --user 0 delete ${_cs_sd_ns} ${_cs_sd_key}" 2>&1)
+    _cs_sd_rc=$?
+    if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
+      return 0
+    fi
+  fi
+
+  _cs_sd_out=$(settings delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1)
+  _cs_sd_rc=$?
+  if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
     return 0
   fi
 
@@ -94,8 +128,6 @@ cs_settings_backup_remove() {
   mv -f "$_cs_sbr_tmp" "$CS_SETTINGS_BACKUP_FILE"
 }
 
-# Idempotent backup: record original value from `settings --user 0 get` only once.
-# Never overwrites an existing backup entry. Skips if Binder service returns an error.
 cs_settings_backup_once() {
   _cs_sbo_ns=$1
   _cs_sbo_key=$2
@@ -132,7 +164,7 @@ cs_settings_apply_key() {
     return 0
   fi
 
-  cs_log "WARN: settings --user 0 put ${_cs_sak_ns} ${_cs_sak_key} ${_cs_sak_val} failed."
+  cs_log "WARN: settings put ${_cs_sak_ns} ${_cs_sak_key} ${_cs_sak_val} failed."
   return 1
 }
 
@@ -156,9 +188,6 @@ cs_settings_rollback_key() {
   return 0
 }
 
-# Synchronize settings according to currently resolved EFF_FEAT_* flags:
-# - Enabled features: backup once & apply
-# - Disabled/skipped features: automatically roll back to original value
 cs_settings_sync_all() {
   cs_watchdog_init_dir || return 0
   : > "$CS_SETTINGS_APPLIED_FILE"
@@ -168,14 +197,12 @@ cs_settings_sync_all() {
     return 0
   fi
 
-  # FEAT_BLUR: ensure WindowManager blur is not globally suppressed
   if [ "$EFF_FEAT_BLUR" = "1" ]; then
     cs_settings_apply_key "FEAT_BLUR" "global" "disable_window_blurs" "0" || true
   else
     cs_settings_rollback_key "global" "disable_window_blurs" || true
   fi
 
-  # FEAT_MULTITASK: Android freeform & resizable window flags
   if [ "$EFF_FEAT_MULTITASK" = "1" ]; then
     cs_settings_apply_key "FEAT_MULTITASK" "global" "enable_freeform_support" "1" || true
     cs_settings_apply_key "FEAT_MULTITASK" "global" "force_resizable_activities" "1" || true
@@ -184,14 +211,12 @@ cs_settings_sync_all() {
     cs_settings_rollback_key "global" "force_resizable_activities" || true
   fi
 
-  # FEAT_DISPLAY_HZ: adaptive high refresh rate UI flag
   if [ "$EFF_FEAT_DISPLAY_HZ" = "1" ]; then
     cs_settings_apply_key "FEAT_DISPLAY_HZ" "system" "miui_refresh_rate_adaptive" "1" || true
   else
     cs_settings_rollback_key "system" "miui_refresh_rate_adaptive" || true
   fi
 
-  # FEAT_AOD_UNLOCK: Always-On Display secure toggle
   if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
     cs_settings_apply_key "FEAT_AOD_UNLOCK" "secure" "doze_always_on" "1" || true
   else
@@ -201,7 +226,6 @@ cs_settings_sync_all() {
   return 0
 }
 
-# Roll back every entry recorded in settings_backup.prop (used on uninstall or safe-mode).
 cs_settings_rollback_all() {
   [ -r "$CS_SETTINGS_BACKUP_FILE" ] || return 0
   cs_settings_available || return 0

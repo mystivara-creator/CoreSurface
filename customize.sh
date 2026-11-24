@@ -66,17 +66,21 @@ if [ -r "$_cs_modpath/lib/detect.sh" ]; then
   fi
 fi
 
-# Stage clean-room RRO overlays before first reboot if ROM is supported
-if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ]; then
+# Stage clean-room RRO overlays & system.prop before first reboot if ROM is supported
+if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ] && [ -r "$_cs_modpath/lib/props.sh" ]; then
   # shellcheck source=lib/watchdog.sh
   . "$_cs_modpath/lib/watchdog.sh"
   # shellcheck source=lib/rro.sh
   . "$_cs_modpath/lib/rro.sh"
+  # shellcheck source=lib/props.sh
+  . "$_cs_modpath/lib/props.sh"
   if [ "$_cs_rom_supported" = "1" ]; then
     cs_rro_stage "$_cs_modpath" || true
-    _cs_ui_print "- Staged ${CS_RRO_COUNT:-0} clean-room RRO overlay(s) for next boot"
+    cs_generate_system_prop "$_cs_modpath" || true
+    _cs_ui_print "- Staged ${CS_RRO_COUNT:-0} clean-room RRO overlay(s) and system.prop for next boot"
   else
     cs_rro_clear "$_cs_modpath" || true
+    cs_clear_system_prop "$_cs_modpath" || true
   fi
 fi
 
