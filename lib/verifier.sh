@@ -83,6 +83,7 @@ cs_verify_xml_mount() {
 cs_verify_rro_overlays() {
   CS_V_RRO_ACTIVE=0
   CS_V_RRO_TOTAL=0
+  _cs_live_ov_dir=${CORESURFACE_LIVE_OVERLAY_DIR:-/product/overlay}
 
   if [ "$CFG_FEAT_RRO_OVERLAYS" = "0" ]; then
     CS_V_RRO_FEAT="disabled"
@@ -90,6 +91,22 @@ cs_verify_rro_overlays() {
   fi
 
   if [ "$EFF_FEAT_RRO_OVERLAYS" != "1" ] || [ ! -s "$CS_RRO_STAGED_LIST" ]; then
+    CS_V_RRO_FEAT="skipped"
+    return 0
+  fi
+
+  # Check whether KernelSU-Next metamodule (e.g. meta-overlayfs) mounted any staged APK into /product/overlay
+  _cs_any_mounted=0
+  while IFS='|' read -r _cs_mapk _cs_mpkg || [ -n "$_cs_mapk" ]; do
+    [ -n "$_cs_mapk" ] || continue
+    if [ -f "$_cs_live_ov_dir/$_cs_mapk" ]; then
+      _cs_any_mounted=1
+      break
+    fi
+  done < "$CS_RRO_STAGED_LIST"
+
+  if [ "$_cs_any_mounted" -eq 0 ]; then
+    cs_log "Verifier: staged RRO APKs not mounted at ${_cs_live_ov_dir} (install meta-overlayfs metamodule in KernelSU-Next)."
     CS_V_RRO_FEAT="skipped"
     return 0
   fi
@@ -144,7 +161,7 @@ cs_verify_video_depth() {
   if [ -e "$_cs_vd_path" ]; then
     CS_V_VIDEO_DEPTH="verified_active"
   else
-    CS_V_VIDEO_DEPTH="ignored_by_rom"
+    CS_V_VIDEO_DEPTH="skipped"
   fi
 }
 
@@ -190,7 +207,7 @@ cs_verify_feature() {
     done < "$CS_PROPS_AUDIT_FILE"
   fi
 
-  if [ -r "$CS_SETTINGS_APPLIED_FILE" ] && command -v settings >/dev/null 2>&1; then
+  if [ "$CS_V_SETTINGS_OK" = "1" ] && [ -r "$CS_SETTINGS_APPLIED_FILE" ]; then
     while IFS='|' read -r _cs_sf _cs_sns _cs_skv || [ -n "$_cs_sf" ]; do
       [ "$_cs_sf" = "$_cs_vf_name" ] || continue
       _cs_sk=${_cs_skv%%=*}
@@ -200,8 +217,9 @@ cs_verify_feature() {
       fi
 
       if ! cs_verify_settings_get "$_cs_sns" "$_cs_sk"; then
-        cs_log "Verifier: settings --user 0 get ${_cs_sns}/${_cs_sk} returned Binder error; skipping setting check."
-        continue
+        CS_V_SETTINGS_OK="0"
+        cs_log "Verifier: settings service rejected Binder call; skipping remaining settings checks."
+        break
       fi
 
       _cs_vf_checked=$((_cs_vf_checked + 1))

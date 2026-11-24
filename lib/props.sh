@@ -87,10 +87,7 @@ cs_apply_feat_animations() {
     high)
       cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:3,g:3"
-      # HyperOS 2/3 flagship animation engine (Lockscreen->Home, Control Center swipe, parallel sweep)
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.cpulevel" "6"
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.gpulevel" "6"
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.version" "2025"
+      # HyperOS 2/3 flagship animation engine (Computility V2 + HyperTransition)
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.cpulevel" "4"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.gpulevel" "4"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.devicelevel" "4"
@@ -106,9 +103,6 @@ cs_apply_feat_animations() {
     mid)
       cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:2,g:3"
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.cpulevel" "4"
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.gpulevel" "4"
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.version" "2025"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.cpulevel" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.gpulevel" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.devicelevel" "3"
@@ -129,13 +123,11 @@ cs_apply_feat_animations() {
 cs_apply_feat_blur() {
   [ "$EFF_FEAT_BLUR" = "1" ] || return 0
 
-  # Consistent SurfaceFlinger & WindowManager blur.
-  # Intentionally omits support_window_mishadow / support_view_mishadow / smoothcorner
-  # which mismatch on HyperOS 3 and bloat Toast/dialog window bounds.
+  # Consistent SurfaceFlinger & HyperOS UI blur without bloating Toast bounds
+  # or breaking Recent Apps layout on HyperOS 3.
   cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.sf.blurs_are_expensive" "0"
   cs_set_prop "FEAT_BLUR" "sf.blurs_are_expensive" "0"
-  cs_set_prop "FEAT_BLUR" "enable_blurs_on_windows" "1"
   cs_set_prop "FEAT_BLUR" "persist.sys.sf.disable_blurs" "false"
   cs_set_prop "FEAT_BLUR" "ro.miui.has_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.miui.has_real_blur" "1"
@@ -148,8 +140,6 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_setting" "1"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"
-  cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
-  cs_set_prop "FEAT_BLUR" "persist.sys.multi_task.mask_blur_enable" "true"
 
   # HyperOS 3+ drops legacy persist.sys.advanced_visual_release=3; apply only on HyperOS 1/2 & MIUI
   if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
