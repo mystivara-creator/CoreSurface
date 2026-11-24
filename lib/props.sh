@@ -71,14 +71,41 @@ cs_apply_feat_animations() {
     high)
       cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:3,g:3"
+      # HyperOS 2/3 flagship animation engine (Lockscreen->Home, Control Center swipe, parallel sweep)
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.cpulevel" "6"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.gpulevel" "6"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.version" "2025"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.cpulevel" "4"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.gpulevel" "4"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.devicelevel" "4"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.version" "2026"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition_v" "3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.sf_charge_anim_supported" "true"
       ;;
     mid)
       cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:2,g:3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.cpulevel" "4"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.gpulevel" "4"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.version" "2025"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.cpulevel" "3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.gpulevel" "3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.devicelevel" "3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.version" "2026"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
     *)
       cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:2,g:2"
+      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
       ;;
   esac
 }
@@ -86,26 +113,49 @@ cs_apply_feat_animations() {
 cs_apply_feat_blur() {
   [ "$EFF_FEAT_BLUR" = "1" ] || return 0
 
+  # SurfaceFlinger & WindowManager consistent blur (prevents flat grey dialogs/notification long-press)
+  cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
+  cs_set_prop "FEAT_BLUR" "ro.sf.blurs_are_expensive" "0"
+  cs_set_prop "FEAT_BLUR" "sf.blurs_are_expensive" "0"
+  cs_set_prop "FEAT_BLUR" "enable_blurs_on_windows" "1"
+  cs_set_prop "FEAT_BLUR" "persist.sys.sf.disable_blurs" "false"
+  cs_set_prop "FEAT_BLUR" "ro.miui.has_blur" "1"
+  cs_set_prop "FEAT_BLUR" "ro.miui.has_real_blur" "1"
+  cs_set_prop "FEAT_BLUR" "ro.miui.backdrop_sampling_enabled" "true"
   cs_set_prop "FEAT_BLUR" "ro.miui.cc_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.miui_folder_blur" "1"
+  cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "1"
+  cs_set_prop "FEAT_BLUR" "persist.sys.launcher_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
+  cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_setting" "1"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"
-  # HyperOS 3+ drops persist.sys.advanced_visual_release; only apply on HyperOS 1/2 & MIUI
+  cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
+  cs_set_prop "FEAT_BLUR" "persist.sys.multi_task.mask_blur_enable" "true"
+  cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
+  cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
+  cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"
+  cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
+  cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
+
+  # HyperOS 3+ drops legacy persist.sys.advanced_visual_release=3; apply only on HyperOS 1/2 & MIUI
   if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "3"
   fi
-  cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
 }
 
 cs_apply_feat_multitask() {
   [ "$EFF_FEAT_MULTITASK" = "1" ] || return 0
 
+  # Low-RAM boolean & GB threshold relaxation (also enables full Control Center swipe animations)
   cs_set_prop "FEAT_MULTITASK" "ro.config.low_ram" "false"
   cs_set_prop "FEAT_MULTITASK" "ro.config.miui_low_ram" "false"
   cs_set_prop "FEAT_MULTITASK" "ro.miui.low_ram" "false"
+  cs_set_prop "FEAT_MULTITASK" "ro.config.low_ram.threshold_gb" "0"
+  cs_set_prop "FEAT_MULTITASK" "ro.config.low_ram.middle.threshold_gb" "0"
   cs_set_prop "FEAT_MULTITASK" "persist.sys.miui_freeform_max_count" "4"
   cs_set_prop "FEAT_MULTITASK" "ro.miui.support_multi_window" "true"
+  cs_set_prop "FEAT_MULTITASK" "ro.multiwin.fulldecor_support" "true"
 }
 
 cs_apply_feat_display_hz() {

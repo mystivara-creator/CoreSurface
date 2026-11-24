@@ -332,6 +332,7 @@ write_mock_meminfo "4096000"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "4GB: all resetprop calls use -n"
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=2" "4GB: FEAT_ANIMATIONS sets device_level=2"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.devicelevel=" "4GB: skips heavy Computility V2 on < 6 GB"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "4GB: FEAT_BLUR auto OFF on < 6 GB"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "4GB: FEAT_MULTITASK auto OFF"
 
@@ -341,6 +342,8 @@ write_mock_meminfo "6000000"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "6GB: all resetprop calls use -n"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:2,g:3" "6GB: FEAT_ANIMATIONS sets mid deviceLevelList"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.devicelevel=3" "6GB: FEAT_ANIMATIONS sets mid Computility V2 level 3"
+assert_file_contains "$SB_PROPS_LOG" "ro.sf.blurs_are_expensive=0" "6GB: FEAT_BLUR unlocks consistent SurfaceFlinger/window blur"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "6GB: FEAT_BLUR auto ON on 6-7 GB"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "6GB: FEAT_MULTITASK auto OFF"
 
@@ -350,8 +353,14 @@ write_mock_meminfo "7800000"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "8GB: all resetprop calls use -n"
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=3" "8GB: FEAT_ANIMATIONS sets flagship device_level=3"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.devicelevel=4" "8GB: FEAT_ANIMATIONS sets flagship Computility V2 level 4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyper_transition=true" "8GB: FEAT_ANIMATIONS enables HyperTransition"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.enable_parallel_sweep=true" "8GB: FEAT_ANIMATIONS enables parallel sweep"
+assert_file_contains "$SB_PROPS_LOG" "ro.sf.blurs_are_expensive=0" "8GB: FEAT_BLUR disables blurs_are_expensive throttle"
+assert_file_contains "$SB_PROPS_LOG" "enable_blurs_on_windows=1" "8GB: FEAT_BLUR enables blurs on windows/dialogs"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "8GB: FEAT_BLUR auto ON"
 assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "8GB: FEAT_MULTITASK auto ON"
+assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram.threshold_gb=0" "8GB: FEAT_MULTITASK relaxes low_ram GB threshold"
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.support_high_refresh_rate=true" "8GB: FEAT_DISPLAY_HZ auto ON"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "8GB: FEAT_HYPERAI remains OFF by default"
 
