@@ -1,0 +1,6 @@
+id=coresurface
+name=CoreSurface
+version=v1.0.0
+versionCode=100
+author=Mystivara
+description=Clean-room, dynamic HyperOS user-space capability unlocker with bootloop watchdog and hardware-tiered defaults.

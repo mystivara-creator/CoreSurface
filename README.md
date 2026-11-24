@@ -1,74 +1,60 @@
-# Kunzite Capability Suite
+# CoreSurface v1.0.0
 
-Riset dan modul KernelSU untuk mengaudit serta menguji kemampuan yang tidak diekspos firmware **Redmi Note 15 5G** (`kunzite`, Qualcomm `parrot`). Proyek independen oleh **Mystivara**.
+**CoreSurface** adalah modul KernelSU-Next / Magisk *clean-room* untuk membuka fitur *user-space* HyperOS/MIUI yang dipangkas vendor secara dinamis dan aman, dirancang sebagai *sister module* (pendamping terpisah) dari **CoreFlow-Engine**.
 
-> **Status: v0.6.5-preview, belum rilis stabil.** Source disediakan untuk arsip pengembangan dan review. **Tidak ada klaim bahwa semua fitur sudah berhasil dibuka.** Jangan flash hasil build tanpa memeriksa kompatibilitas dan menyiapkan recovery.
+## Prinsip Arsitektur
 
-## Fokus Vulkan capabilities
+- **Zero Coupling dengan CoreFlow-Engine:** 100% mandiri. CoreSurface **tidak pernah** menyentuh `uclamp`, `thermal_zone`, `sysfs` CPU/GPU/storage, atau parameter kernel/scheduler. Fokus murni di *user-space* melalui `resetprop -n` (memori saja, tidak menulis permanen ke `/data/property`).
+- **Zero-Hardcode Device List:** Tidak memfilter fitur berdasarkan codename perangkat. Semua keputusan didasarkan pada deteksi dinamis: `ro.mi.os.version.name` / `ro.miui.ui.version.name`, `ro.build.version.sdk`, dan kapasitas RAM aktual dari `/proc/meminfo`.
+- **Clean-Room & POSIX Shell:** Seluruh skrip ditulis ulang dari nol dengan POSIX `sh` yang lulus `shellcheck -s sh` dan dilengkapi unit test host di CI.
 
-Prioritas sekarang adalah **audit native Vulkan Adreno 710**, bukan WCG atau kamera. Gunakan `scripts/collect-vulkan.sh` (read-only) dan [protokol audit Vulkan](docs/VULKAN_AUDIT.md). Belum ada modifikasi Vulkan driver atau spoof extension dalam suite.
+---
 
-## Hasil yang sudah dibuktikan
+## Perbandingan Tier Fitur (Opt-in via `/data/adb/coresurface/config.prop` & WebUI)
 
-- **Wide Color Gamut (WCG):** Setelah perubahan properti `ro.surface_flinger.has_wide_color_display`, Android Framework dan SurfaceFlinger mengekspos `ColorMode::DISPLAY_P3 (9)` pada panel yang diaudit. **Belum membuktikan aplikasi merender P3 atau akurasi warna fisik panel.** Mode aktif default sRGB itu normal.
-- **Slow Motion:** Pengguna menemukan mode Slow Motion sudah tersedia di Kamera Xiaomi bawaan. HFR tidak memerlukan unlock; nilai `support_video_hfr_mode=false` tidak berarti menu kamera terkunci. FPS aktual hasil rekaman belum diukur.
-- **Xiaomi Display Expert Mode:** `support_display_expert_mode=false` dan APK Settings mereferensikan flag tersebut. Perilaku UI/driver **belum teruji**.
+| Tier | Cakupan Fitur | Default `< 6 GB` | Default `6–7 GB` | Default `>= 8 GB` | Catatan Keamanan |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **Tier 1 · Visual & UI** | `ro.miui.device_level`, `persist.sys.deviceLevelList`, Blur Control Center & Folder, Advanced Textures/Background Blur | **ON** (Ringan, tanpa heavy blur) | **ON** (Blur penuh, level 2) | **ON** (Flagship level 3 + blur penuh) | Nilai `auto` otomatis menyesuaikan intensitas blur & `deviceLevelList` terhadap RAM aktual. |
+| **Tier 2 · System & Multitasking** | Relaksasi `ro.config.low_ram*`, batas floating window (`miui_freeform_max_count=4`), dukungan High Refresh Rate | **OFF** | **OFF** | **ON** | Default hanya aktif pada perangkat RAM ≥ 8 GB; dapat di-override manual ke `1` atau `0`. |
+| **Tier 3 · Experimental** | **HyperAI / AI Galeri** (`TIER3_HYPERAI`) & **AOD Limit Unlock** (`TIER3_AOD_UNLOCK`) | **OFF** | **OFF** | **OFF** | Opt-in eksplisit dengan sub-toggle terpisah. HyperAI otomatis di-gate hanya untuk HyperOS + Android SDK ≥ 34. |
 
-**Tidak termasuk:** spoof HDR/Dolby Vision, 1080p60 tanpa HAL, overclock, thermal bypass, pemaksaan P3 global, OIS atau ray tracing palsu.
+Semua properti diterapkan menggunakan **`resetprop -n`** (tanpa fallback non-`-n`), sehingga properti `persist.sys.*` tidak pernah menempel permanen di `/data/property` ketika modul di-uninstall atau dinonaktifkan oleh Watchdog.
 
-## Status fitur
+---
 
-| Fitur | Bukti | Implementasi preview | Teruji di perangkat |
-|---|---|---|---|
-| WCG / deklarasi P3 | Verified Framework | Aktif, hanya pada perangkat/ROM cocok | Ya, deklarasi saja |
-| Rendering dan akurasi P3 | Tidak cukup bukti | Tidak dipaksa | Belum |
-| Display Expert Mode | Kandidat pengaturan Xiaomi | **Opt-in**, default OFF | Belum |
-| Camera Slow Motion | Mode tersedia di aplikasi Xiaomi bawaan | **Tidak dimodifikasi** | UI terbukti; FPS rekaman belum diukur |
-| 1080p60 / HDR / OIS | Dukungan tidak terbukti | Tidak diterapkan | Tidak |
+## Empat Lapis Pengaman Anti-Bootloop
 
-Lihat [Feature Matrix](docs/FEATURE_MATRIX.md), [Audit Bukti](docs/EVIDENCE_INDEX.md), dan [Risk Register](docs/RISKS.md).
+1. **ROM & SDK Gate (`lib/detect.sh`):** Memeriksa `ro.mi.os.version.name` / `ro.miui.ui.version.name` di awal `post-fs-data.sh`. Jika bukan HyperOS/MIUI, modul langsung `exit 0` tanpa menulis satu pun properti dan mencatat `WATCHDOG_STATUS=unsupported_rom`.
+2. **Dynamic Hardware Tiering (`lib/detect.sh`):** Mengklasifikasikan perangkat otomatis ke tier RAM (`< 6 GB`, `6–7 GB`, `>= 8 GB`) dari `/proc/meminfo` untuk memilih profil default yang aman.
+3. **Bootloop & SystemUI Watchdog (`lib/watchdog.sh`):**
+   - Sebelum menerapkan `resetprop -n` di `post-fs-data.sh`, counter `/data/adb/coresurface/boot_strikes` dinaikkan (`+1`).
+   - Jika `boot_strikes >= 2`, modul otomatis membuat file `disable`, mereset `boot_strikes=0`, mencatat `safe_mode_disabled` ke log, lalu `exit 0` (*fail-closed*).
+   - Di `service.sh`, Watchdog menunggu `sys.boot_completed=1`, memberi *grace window* (30 detik) bagi `com.android.systemui` untuk muncul, lalu memverifikasi PID `com.android.systemui` tetap hidup stabil (tidak crash/berubah) selama **30 detik penuh** sebelum mereset `boot_strikes=0` dan menandai status `healthy`.
+4. **Safe-Mode Recovery di WebUI (`webroot/` & `lib/webui_ctl.sh`):** Jika Safe-Mode terpicu, pengguna dapat meninjau alasan di WebUI, mematikan Tier 3 bila perlu, lalu menekan **"Reset Safe-Mode & Aktifkan Kembali"**.
 
-## Kompatibilitas dan migrasi
+---
 
-- `ro.product.device=kunzite`, `ro.board.platform=parrot`.
-- ROM yang telah diaudit: `16OS3.1.260918.151434134.QCPEGL.S` (Android 16), bukan klaim semua ROM HyperOS.
-- Panel yang telah diaudit: `mdss_dsi_p17_41_02_0a_amoled_dsc_vid`.
-- Modul memakai **ID lama** `kunzite_wcg_probe` agar menggantikan modul WCG, bukan memasang dua modul dengan target sama. Jangan gabungkan dengan modul HFR lama.
-- Experimental XML systemless memerlukan metamodule KernelSU yang kompatibel, dan tetap perlu pemeriksaan perangkat nyata. Kompatibilitas sistem mount belum dianggap terbukti.
+## Sinergi Pasif dengan CoreFlow-Engine
 
-## Source tree
+CoreSurface dan **CoreFlow-Engine** beroperasi pada lapisan yang sepenuhnya terpisah (CoreSurface di *user-space UI/capability*, CoreFlow-Engine di *kernel/thermal/scheduler*). WebUI CoreSurface secara pasif memeriksa keberadaan `/data/adb/modules/cfae_framework` dan proses aktif `pidof coreflowd`: bila keduanya aktif, WebUI menampilkan lencana **"CoreFlow Thermal Guard Active"** sebagai indikator bahwa perlindungan termal pendamping sedang berjalan.
 
-```text
-module/               Modul KernelSU preview (source)
-  webroot/             WebUI dan pembacaan status
-scripts/              Build ZIP otomatis, validasi, dan tes installer
-scripts/tests/        Pengujian statis di host
-fixtures/             XML sintetis, BUKAN firmware perangkat
-docs/audits/          Laporan audit tersanitasi
-docs/                 Arsitektur, kompatibilitas, pengujian, rollback, risiko
-.github/workflows/    Validasi CI dan upload ZIP artifact
-```
+---
 
-## Build otomatis dan artifact GitHub Actions
-
-ZIP tidak memuat APK Kamera atau XML vendor Xiaomi. Installer `customize.sh` mengambil XML dari perangkat saat instalasi, setelah memverifikasi ROM dan SHA-256.
+## Pengujian Lokal & Packaging
 
 ```sh
-python3 scripts/validate.py
-python3 scripts/package.py
-python3 scripts/verify_artifact.py
+# Lint seluruh skrip POSIX sh
+shellcheck -s sh -x customize.sh post-fs-data.sh service.sh uninstall.sh lib/*.sh scripts/*.sh tests/*.sh
+
+# Jalankan unit test host (mock getprop, resetprop, pidof, /proc/meminfo)
+sh tests/run_tests.sh
+
+# Bangun artefak ZIP produksi (dist/CoreSurface-v1.0.0.zip)
+sh scripts/package.sh
 ```
 
-Hasil: `dist/kunzite_capability_suite_v0.6.5-preview.zip`. Setelah workflow berhasil, unduh melalui **Actions → workflow run → Artifacts**. Artifact berisi ZIP dan berkas `.sha256` dengan retensi 30 hari. `--stock-xml` opsional hanya untuk verifikasi lokal dan tidak menyertakan XML ke ZIP. Ini **preview**, bukan rilis stabil.
+---
 
-## Keamanan dan rollback
+## References / Credits
 
-Tidak ada daemon polling atau modifikasi firmware asli. Sebelum pengujian, cadangkan boot/recovery dan ketahui cara menonaktifkan modul melalui KernelSU-Next/OrangeFox. Fitur eksperimental gagal-aman sebatas mekanisme yang tercantum pada [ROLLBACK](docs/ROLLBACK.md), **bukan jaminan anti-bootloop**.
-
-## Dokumen utama
-
-[Audit Bukti](docs/EVIDENCE_INDEX.md) · [Keputusan](docs/DECISIONS.md) · [Roadmap](ROADMAP.md) · [Pengujian](docs/TEST_PLAN.md) · [Arsitektur](docs/ARCHITECTURE.md) · [Changelog](CHANGELOG.md) · [Keamanan](SECURITY.md)
-
-## Lisensi
-
-Source proyek ini menggunakan **MIT License**. Berkas proprietary vendor tetap milik pemilik haknya dan tidak dimasukkan ke repo.
+- Inspirasi konsep pembukaan kapabilitas *user-space* HyperOS merujuk secara jujur kepada **[`ukriu/HyperUnlocked`](https://github.com/ukriu/HyperUnlocked)**. Seluruh skrip, arsitektur pengaman 4 lapis, WebUI, dan sistem pengujian pada CoreSurface ditulis ulang sepenuhnya (*clean-room*) dari nol.

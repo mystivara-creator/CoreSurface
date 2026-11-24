@@ -1,0 +1,12 @@
+# CoreSurface v1.0.0 Configuration
+# Values for TIER1_VISUAL and TIER2_MULTITASK: auto | 1 | 0
+#   auto = dynamically decided by hardware RAM tier
+# Values for TIER3_* toggles: 0 | 1 (default OFF, opt-in only)
+
+TIER1_VISUAL=auto
+TIER2_MULTITASK=auto
+TIER3_EXPERIMENTAL=0
+
+# Granular Tier 3 sub-toggles (active only when TIER3_EXPERIMENTAL=1)
+TIER3_HYPERAI=0
+TIER3_AOD_UNLOCK=0

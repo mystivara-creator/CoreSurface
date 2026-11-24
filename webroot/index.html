@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CoreSurface v1.0.0</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <div class="hero-top">
+        <div>
+          <h1>CoreSurface</h1>
+          <p class="subtitle">v1.0.0 · Clean-Room HyperOS User-Space Suite</p>
+        </div>
+        <button id="btn-refresh" class="btn-icon" type="button" aria-label="Perbarui status">↻</button>
+      </div>
+      <div class="badge-row">
+        <span id="watchdog-badge" class="badge badge-neutral">Memeriksa Watchdog…</span>
+        <span id="coreflow-badge" class="badge badge-coreflow hidden">CoreFlow Thermal Guard Active</span>
+      </div>
+    </header>
+
+    <div id="reboot-banner" class="banner banner-info hidden" role="status">
+      <strong>Perubahan disimpan.</strong> Reboot perangkat agar konfigurasi baru berlaku.
+    </div>
+
+    <div id="safemode-banner" class="banner banner-danger hidden" role="alert">
+      <div>
+        <strong>Safe-Mode Disabled Aktif</strong>
+        <p id="safemode-reason">Watchdog menonaktifkan modul otomatis setelah 2 kali boot gagal berturut-turut. Disarankan matikan Tier 3 sebelum mengaktifkan kembali.</p>
+      </div>
+      <button id="btn-reset-safemode" class="btn btn-danger" type="button">Reset Safe-Mode &amp; Aktifkan Kembali</button>
+    </div>
+
+    <section class="card">
+      <h2>Lingkungan &amp; Hardware</h2>
+      <div class="kv-list" id="env-list">
+        <div class="kv-row"><span>Status</span><strong>Memuat…</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Kontrol Tier Fitur</h2>
+      <p class="hint">Semua properti diterapkan secara non-persisten (<code>resetprop -n</code>) dan otomatis rollback saat modul nonaktif.</p>
+
+      <div class="tier-item">
+        <div class="tier-head">
+          <div>
+            <h3>Tier 1 · Visual &amp; UI</h3>
+            <p class="tier-desc">Advanced Textures/Blur (RAM ≥ 6 GB), device level dinamis, blur Control Center &amp; folder.</p>
+          </div>
+          <span id="eff-tier1" class="pill">-</span>
+        </div>
+        <div class="seg-group" data-key="TIER1_VISUAL" role="group" aria-label="Tier 1 Visual">
+          <button type="button" data-val="auto">Auto</button>
+          <button type="button" data-val="1">ON</button>
+          <button type="button" data-val="0">OFF</button>
+        </div>
+      </div>
+
+      <div class="tier-item">
+        <div class="tier-head">
+          <div>
+            <h3>Tier 2 · System &amp; Multitasking</h3>
+            <p class="tier-desc">Relaksasi <code>low_ram</code>, batas floating window, &amp; high refresh rate. Default ON jika RAM ≥ 8 GB.</p>
+          </div>
+          <span id="eff-tier2" class="pill">-</span>
+        </div>
+        <div class="seg-group" data-key="TIER2_MULTITASK" role="group" aria-label="Tier 2 Multitasking">
+          <button type="button" data-val="auto">Auto</button>
+          <button type="button" data-val="1">ON</button>
+          <button type="button" data-val="0">OFF</button>
+        </div>
+      </div>
+
+      <div class="tier-item">
+        <div class="tier-head">
+          <div>
+            <h3>Tier 3 · Experimental <span class="tag-warn">Opt-in</span></h3>
+            <p class="tier-desc">Fitur sensitif versi HyperOS. Default OFF demi stabilitas.</p>
+          </div>
+          <span id="eff-tier3" class="pill">-</span>
+        </div>
+        <div class="seg-group" data-key="TIER3_EXPERIMENTAL" role="group" aria-label="Tier 3 Experimental">
+          <button type="button" data-val="0">OFF</button>
+          <button type="button" data-val="1">ON</button>
+        </div>
+
+        <div id="tier3-sub" class="sub-toggles hidden">
+          <div class="sub-row">
+            <div>
+              <strong>HyperAI &amp; AI Galeri</strong>
+              <p class="tier-desc">Hanya aktif di HyperOS + Android SDK ≥ 34.</p>
+            </div>
+            <div class="seg-group seg-compact" data-key="TIER3_HYPERAI">
+              <button type="button" data-val="0">OFF</button>
+              <button type="button" data-val="1">ON</button>
+            </div>
+          </div>
+          <div class="sub-row">
+            <div>
+              <strong>AOD Limit Unlock</strong>
+              <p class="tier-desc">Membuka batasan Always-On Display 10 detik.</p>
+            </div>
+            <div class="seg-group seg-compact" data-key="TIER3_AOD_UNLOCK">
+              <button type="button" data-val="0">OFF</button>
+              <button type="button" data-val="1">ON</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <details open>
+        <summary class="summary-title">Properti Aktif (<span id="props-count">0</span>)</summary>
+        <ul id="props-list" class="props-list">
+          <li class="muted">Belum ada properti diterapkan.</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary class="summary-title">Log Watchdog &amp; Diagnostik</summary>
+        <pre id="diag-log" class="log-box">Memuat log…</pre>
+      </details>
+      <p id="toast-msg" class="toast-msg" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

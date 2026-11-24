@@ -1,16 +1,8 @@
-# Generated package and private OEM resources
+# Build artifacts & local logs
 /dist/
-module/baseline/
-**/kunzite.xml
-*.apk
-*.so
-*.tar.gz
 *.zip
+*.zip.sha256
 *.log
-*.txt.backup
-__pycache__/
-.pytest_cache/
-*.pyc
 .DS_Store
 .env
 *.key
