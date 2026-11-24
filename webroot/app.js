@@ -3,6 +3,16 @@
 // Always invoke webui_ctl.sh with its absolute module path (id=coresurface).
 const CTL_SCRIPT = '/system/bin/sh /data/adb/modules/coresurface/lib/webui_ctl.sh';
 
+const FEATURE_KEYS = [
+  'FEAT_BLUR',
+  'FEAT_ANIMATIONS',
+  'FEAT_XML_PATCHER',
+  'FEAT_MULTITASK',
+  'FEAT_DISPLAY_HZ',
+  'FEAT_HYPERAI',
+  'FEAT_AOD_UNLOCK'
+];
+
 let execCounter = 0;
 
 /**
@@ -48,17 +58,24 @@ function ksuExec(command) {
 function parseStatusOutput(raw) {
   const kv = {};
   const props = [];
+  const overridden = [];
   const logs = [];
   let section = 'kv';
 
   for (const line of raw.split(/\r?\n/)) {
     if (line === 'props_start') { section = 'props'; continue; }
     if (line === 'props_end') { section = 'kv'; continue; }
+    if (line === 'overridden_start') { section = 'overridden'; continue; }
+    if (line === 'overridden_end') { section = 'kv'; continue; }
     if (line === 'log_start') { section = 'log'; continue; }
     if (line === 'log_end') { section = 'kv'; continue; }
 
     if (section === 'props') {
       if (line.trim()) props.push(line.trim());
+      continue;
+    }
+    if (section === 'overridden') {
+      if (line.trim()) overridden.push(line.trim());
       continue;
     }
     if (section === 'log') {
@@ -72,7 +89,7 @@ function parseStatusOutput(raw) {
     }
   }
 
-  return { kv, props, logs };
+  return { kv, props, overridden, logs };
 }
 
 function makeKvRow(label, value) {
@@ -102,7 +119,7 @@ function renderWatchdogBadge(kv) {
     badge.textContent = 'Watchdog: Safe-Mode Disabled';
     safeBanner.classList.remove('hidden');
     if (kv.watchdog_reason && kv.watchdog_reason !== 'none') {
-      safeReason.textContent = 'Alasan: ' + kv.watchdog_reason + '. Disarankan matikan Tier 3 sebelum mengaktifkan kembali.';
+      safeReason.textContent = 'Alasan: ' + kv.watchdog_reason + '. Disarankan matikan fitur eksperimental sebelum mengaktifkan kembali.';
     }
   } else if (status === 'healthy') {
     badge.classList.add('badge-ok');
@@ -130,17 +147,84 @@ function setSegmentValue(key, val) {
   }
 }
 
-function setPill(id, enabled, labelOn, labelOff) {
-  const el = document.getElementById(id);
+function renderVerifyPill(featKey, verifyStatus, isPending, effValue) {
+  const el = document.getElementById('verify-' + featKey);
   if (!el) return;
-  el.textContent = enabled ? labelOn : labelOff;
-  el.classList.toggle('on', Boolean(enabled));
+
+  el.className = 'v-pill';
+
+  if (isPending) {
+    el.classList.add('v-info');
+    el.textContent = 'Pending Reboot';
+    return;
+  }
+
+  switch (verifyStatus) {
+    case 'verified_active':
+      el.classList.add('v-ok');
+      el.textContent = 'Verified Active';
+      break;
+    case 'ignored_by_rom':
+      el.classList.add('v-danger');
+      el.textContent = 'Ignored by ROM';
+      break;
+    case 'skipped':
+      el.classList.add('v-warn');
+      el.textContent = 'Skipped';
+      break;
+    case 'disabled':
+      el.classList.add('v-neutral');
+      el.textContent = 'Disabled';
+      break;
+    default:
+      if (effValue === '1') {
+        el.classList.add('v-info');
+        el.textContent = 'Pending Verify';
+      } else {
+        el.classList.add('v-neutral');
+        el.textContent = 'Skipped';
+      }
+      break;
+  }
 }
 
-function renderPropsList(props) {
+function renderXmlSummary(kv) {
+  const container = document.getElementById('xml-summary');
+  const badge = document.getElementById('xml-mount-badge');
+  const mountVerify = kv.verify_xml_mount || '';
+  const xmlStatus = kv.xml_status || 'skipped';
+
+  badge.className = 'pill';
+  if (mountVerify === 'active') {
+    badge.classList.add('on');
+    badge.textContent = 'Verified Mounted';
+  } else if (mountVerify === 'not_mounted') {
+    badge.classList.add('danger');
+    badge.textContent = 'Ignored by ROM';
+  } else if (xmlStatus === 'mounted') {
+    badge.classList.add('on');
+    badge.textContent = 'Mounted';
+  } else if (xmlStatus === 'disabled') {
+    badge.textContent = 'Disabled';
+  } else {
+    badge.classList.add('warn');
+    badge.textContent = 'Skipped';
+  }
+
+  container.replaceChildren(
+    makeKvRow('XML Asli Terdeteksi', kv.xml_source && kv.xml_source !== 'none' ? kv.xml_source : 'Tidak ditemukan'),
+    makeKvRow('Tag Ditambal', (kv.xml_patched_tags || '0') + ' tag'),
+    makeKvRow('Status Mount', xmlStatus + (kv.xml_reason && kv.xml_reason !== 'none' ? ' (' + kv.xml_reason + ')' : '')),
+    makeKvRow('Verifikasi /proc/mounts', mountVerify || 'Menunggu verifikasi')
+  );
+}
+
+function renderPropsList(props, kv) {
   const list = document.getElementById('props-list');
   const count = document.getElementById('props-count');
+  const verified = document.getElementById('props-verified');
   count.textContent = String(props.length);
+  verified.textContent = (kv.verify_props_matched || '0') + '/' + (kv.verify_props_total || String(props.length));
   list.replaceChildren();
 
   if (props.length === 0) {
@@ -153,15 +237,48 @@ function renderPropsList(props) {
 
   for (const entry of props) {
     const sep = entry.indexOf('|');
-    const tier = sep > 0 ? entry.slice(0, sep) : 'prop';
+    const feat = sep > 0 ? entry.slice(0, sep).replace(/^FEAT_/, '') : 'prop';
     const pair = sep > 0 ? entry.slice(sep + 1) : entry;
 
     const li = document.createElement('li');
     const tag = document.createElement('span');
     tag.className = 'prop-tier';
-    tag.textContent = tier;
+    tag.textContent = feat;
     const text = document.createElement('span');
     text.textContent = pair;
+    li.appendChild(tag);
+    li.appendChild(text);
+    list.appendChild(li);
+  }
+}
+
+function renderOverriddenList(overridden) {
+  const section = document.getElementById('overridden-section');
+  const list = document.getElementById('overridden-list');
+  const count = document.getElementById('overridden-count');
+
+  count.textContent = String(overridden.length);
+  list.replaceChildren();
+
+  if (overridden.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+  for (const entry of overridden) {
+    const parts = entry.split('|');
+    const feat = (parts[0] || 'prop').replace(/^FEAT_/, '');
+    const key = parts[1] || '';
+    const expected = parts[2] || '';
+    const actual = parts[3] || '';
+
+    const li = document.createElement('li');
+    const tag = document.createElement('span');
+    tag.className = 'prop-tier prop-warn';
+    tag.textContent = feat;
+    const text = document.createElement('span');
+    text.textContent = key + ' (set=' + expected + ', actual=' + actual + ')';
     li.appendChild(tag);
     li.appendChild(text);
     list.appendChild(li);
@@ -176,7 +293,7 @@ async function refreshStatus() {
   const envList = document.getElementById('env-list');
   try {
     const raw = await ksuExec(CTL_SCRIPT + ' status');
-    const { kv, props, logs } = parseStatusOutput(raw);
+    const { kv, props, overridden, logs } = parseStatusOutput(raw);
 
     if (!kv.rom_family || !kv.ram_tier) {
       throw new Error('Respons status tidak lengkap dari webui_ctl.sh');
@@ -186,6 +303,11 @@ async function refreshStatus() {
 
     const cfBadge = document.getElementById('coreflow-badge');
     cfBadge.classList.toggle('hidden', kv.coreflow_guard !== 'active');
+
+    const pendingSet = new Set(
+      (kv.pending_keys || '').split(',').map((s) => s.trim()).filter(Boolean)
+    );
+    document.getElementById('reboot-banner').classList.toggle('hidden', pendingSet.size === 0);
 
     const romLabel = kv.rom_family === 'unsupported'
       ? 'Unsupported (Non-HyperOS/MIUI)'
@@ -199,19 +321,16 @@ async function refreshStatus() {
       makeKvRow('CoreFlow-Engine', kv.coreflow_guard === 'active' ? 'Thermal Guard Active' : 'Tidak Terdeteksi')
     );
 
-    setSegmentValue('TIER1_VISUAL', kv.cfg_tier1 || 'auto');
-    setSegmentValue('TIER2_MULTITASK', kv.cfg_tier2 || 'auto');
-    setSegmentValue('TIER3_EXPERIMENTAL', kv.cfg_tier3 || '0');
-    setSegmentValue('TIER3_HYPERAI', kv.cfg_tier3_hyperai || '0');
-    setSegmentValue('TIER3_AOD_UNLOCK', kv.cfg_tier3_aod || '0');
+    renderXmlSummary(kv);
 
-    setPill('eff-tier1', kv.eff_tier1 === '1', kv.eff_tier1_heavy_blur === '1' ? 'Aktif (Blur Penuh)' : 'Aktif (Ringan)', 'Nonaktif');
-    setPill('eff-tier2', kv.eff_tier2 === '1', 'Aktif', 'Nonaktif');
-    setPill('eff-tier3', kv.eff_tier3 === '1', 'Aktif (Opt-in)', 'Nonaktif');
+    for (const key of FEATURE_KEYS) {
+      const lower = key.toLowerCase();
+      setSegmentValue(key, kv['cfg_' + lower] || (key === 'FEAT_HYPERAI' || key === 'FEAT_AOD_UNLOCK' ? '0' : 'auto'));
+      renderVerifyPill(key, kv['verify_' + lower] || '', pendingSet.has(key), kv['eff_' + lower] || '0');
+    }
 
-    document.getElementById('tier3-sub').classList.toggle('hidden', kv.cfg_tier3 !== '1');
-
-    renderPropsList(props);
+    renderOverriddenList(overridden);
+    renderPropsList(props, kv);
     document.getElementById('diag-log').textContent = logs.join('\n') || 'Belum ada entri log.';
   } catch (err) {
     envList.replaceChildren(makeKvRow('Kesalahan', err.message));

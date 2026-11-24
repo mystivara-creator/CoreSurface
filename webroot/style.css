@@ -157,6 +157,22 @@ h1 {
   margin-bottom: 12px;
 }
 
+.card-warn {
+  border-color: rgba(245, 185, 66, 0.45);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.card-head h2 {
+  margin: 0;
+}
+
 h2 {
   margin: 0 0 10px;
   font-size: 16px;
@@ -165,8 +181,8 @@ h2 {
 
 h3 {
   margin: 0;
-  font-size: 14.5px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 620;
 }
 
 .hint {
@@ -177,7 +193,7 @@ h3 {
 
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: 11.5px;
   background: var(--surface-alt);
   padding: 1px 5px;
   border-radius: 5px;
@@ -203,60 +219,122 @@ code {
 
 .kv-row span {
   color: var(--muted);
+  flex-shrink: 0;
 }
 
 .kv-row strong {
   text-align: right;
-  word-break: break-word;
+  word-break: break-all;
 }
 
-.tier-item {
-  padding: 12px 0;
-  border-top: 1px solid rgba(38, 54, 77, 0.7);
-}
-
-.tier-item:first-of-type {
-  border-top: 0;
-  padding-top: 2px;
-}
-
-.tier-head {
+.feat-list {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
   gap: 10px;
+}
+
+.feat-card {
+  background: var(--surface-alt);
+  border: 1px solid rgba(38, 54, 77, 0.9);
+  border-radius: 13px;
+  padding: 12px;
+}
+
+.feat-exp {
+  border-style: dashed;
+}
+
+.feat-head {
   margin-bottom: 10px;
 }
 
-.tier-desc {
-  margin: 3px 0 0;
+.feat-title-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.load-pill,
+.v-pill,
+.pill {
+  font-size: 10.5px;
+  font-weight: 650;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.load-low {
+  background: rgba(61, 220, 151, 0.12);
+  color: #7ee3b4;
+}
+
+.load-med {
+  background: rgba(245, 185, 66, 0.14);
+  color: #f6ca6e;
+}
+
+.load-high {
+  background: rgba(255, 107, 122, 0.15);
+  color: #ff99a4;
+}
+
+.v-neutral,
+.pill {
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.v-ok,
+.pill.on {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border: 1px solid rgba(61, 220, 151, 0.35);
+}
+
+.v-warn,
+.pill.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid rgba(245, 185, 66, 0.35);
+}
+
+.v-info {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid rgba(108, 180, 255, 0.35);
+}
+
+.v-danger,
+.pill.danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid rgba(255, 107, 122, 0.35);
+}
+
+.feat-desc {
+  margin: 5px 0 0;
   font-size: 12px;
   color: var(--muted);
 }
 
 .tag-warn {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--warn);
   background: var(--warn-bg);
   padding: 1px 6px;
   border-radius: 6px;
   margin-left: 4px;
   font-weight: 600;
-}
-
-.pill {
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--surface-alt);
-  color: var(--muted);
-}
-
-.pill.on {
-  background: var(--ok-bg);
-  color: var(--ok);
 }
 
 .seg-group {
@@ -274,8 +352,8 @@ code {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font: 600 13px/1.2 inherit;
-  padding: 8px 10px;
+  font: 600 12.5px/1.2 inherit;
+  padding: 7px 8px;
   border-radius: 8px;
   cursor: pointer;
 }
@@ -288,27 +366,6 @@ code {
 .seg-group button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.seg-compact {
-  min-width: 112px;
-}
-
-.sub-toggles {
-  margin-top: 12px;
-  padding: 10px 12px;
-  background: var(--surface-alt);
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.sub-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .btn {
@@ -361,13 +418,18 @@ code {
 .prop-tier {
   flex-shrink: 0;
   font-family: inherit;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   text-transform: uppercase;
   padding: 2px 6px;
   border-radius: 5px;
   background: var(--accent-bg);
   color: var(--accent);
+}
+
+.prop-warn {
+  background: var(--warn-bg);
+  color: var(--warn);
 }
 
 .log-box {

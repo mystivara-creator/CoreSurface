@@ -44,8 +44,21 @@ mkdir -p "$_cs_state_dir" 2>/dev/null || true
 if [ ! -f "$_cs_state_dir/config.prop" ] && [ -r "$_cs_modpath/defaults/config.prop" ]; then
   cp "$_cs_modpath/defaults/config.prop" "$_cs_state_dir/config.prop"
   chmod 0644 "$_cs_state_dir/config.prop" 2>/dev/null || true
-  _cs_ui_print "- Installed default configuration to ${_cs_state_dir}/config.prop"
+  _cs_ui_print "- Installed default granular configuration to ${_cs_state_dir}/config.prop"
 else
+  # Ensure newly added granular keys exist when upgrading an older config.prop
+  if [ -r "$_cs_modpath/defaults/config.prop" ]; then
+    while IFS='=' read -r _cs_dk _cs_dv || [ -n "$_cs_dk" ]; do
+      case "$_cs_dk" in
+        ''|'#'*) continue ;;
+        FEAT_*)
+          if ! grep -q "^${_cs_dk}=" "$_cs_state_dir/config.prop" 2>/dev/null; then
+            printf '%s=%s\n' "$_cs_dk" "$_cs_dv" >> "$_cs_state_dir/config.prop"
+          fi
+          ;;
+      esac
+    done < "$_cs_modpath/defaults/config.prop"
+  fi
   _cs_ui_print "- Preserved existing configuration at ${_cs_state_dir}/config.prop"
 fi
 
@@ -58,7 +71,11 @@ _cs_set_exec "$_cs_modpath/uninstall.sh"
 _cs_set_exec "$_cs_modpath/lib/detect.sh"
 _cs_set_exec "$_cs_modpath/lib/watchdog.sh"
 _cs_set_exec "$_cs_modpath/lib/props.sh"
+_cs_set_exec "$_cs_modpath/lib/xml_patcher.sh"
+_cs_set_exec "$_cs_modpath/lib/settings_tx.sh"
+_cs_set_exec "$_cs_modpath/lib/verifier.sh"
 _cs_set_exec "$_cs_modpath/lib/webui_ctl.sh"
 
 _cs_ui_print "- Watchdog armed (auto safe-mode disable on 2 consecutive failed boots)"
-_cs_ui_print "- Zero kernel/sysfs/thermal coupling; user-space non-persistent resetprop -n only"
+_cs_ui_print "- Dynamic XML Patcher, Transactional Settings Rollback & Verifier enabled"
+_cs_ui_print "- Zero kernel/sysfs/thermal coupling; non-persistent resetprop -n only"

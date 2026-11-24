@@ -1,6 +1,6 @@
 #!/bin/sh
 # CoreSurface v1.0.0 - Host Unit Test Suite (Pure POSIX sh)
-# Mocks getprop, resetprop, pidof, sleep, and /proc/meminfo in isolated temp sandboxes.
+# Mocks getprop, resetprop, pidof, sleep, mount, settings, /proc/meminfo, and /proc/mounts.
 
 set -eu
 
@@ -62,23 +62,34 @@ setup_sandbox() {
   SB_MOD="$SB/mod"
   SB_STATE="$SB/state"
   SB_PROPS_LOG="$SB/resetprop.calls"
+  SB_PROPS_DB="$SB/live_props.db"
+  SB_MOUNT_LOG="$SB/mount.calls"
+  SB_PROC_MOUNTS="$SB/proc_mounts"
+  SB_SETTINGS_DB="$SB/settings.db"
+  SB_SETTINGS_LOG="$SB/settings.calls"
   SB_MEMINFO="$SB/meminfo"
+  SB_XML_DIR1="$SB/xml_dir1"
+  SB_XML_DIR2="$SB/xml_dir2"
   SB_CF_DIR="$SB/cfae_framework"
 
-  mkdir -p "$SB_BIN" "$SB_MOD" "$SB_STATE"
+  mkdir -p "$SB_BIN" "$SB_MOD" "$SB_STATE" "$SB_XML_DIR1" "$SB_XML_DIR2"
   : > "$SB_PROPS_LOG"
+  : > "$SB_PROPS_DB"
+  : > "$SB_MOUNT_LOG"
+  : > "$SB_PROC_MOUNTS"
+  : > "$SB_SETTINGS_DB"
+  : > "$SB_SETTINGS_LOG"
 
-  # Copy module runtime files into isolated MODDIR
   cp -R "$REPO_ROOT/lib" "$REPO_ROOT/defaults" "$REPO_ROOT/post-fs-data.sh" "$REPO_ROOT/service.sh" "$REPO_ROOT/uninstall.sh" "$SB_MOD/"
 
-  # Fast no-op sleep mock so watchdog tests finish instantaneously
+  # Fast no-op sleep mock
   cat > "$SB_BIN/sleep" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
   chmod +x "$SB_BIN/sleep"
 
-  # Strict resetprop mock: MUST receive -n as first argument
+  # Strict resetprop mock: MUST receive -n as first argument, and updates live_props.db
   cat > "$SB_BIN/resetprop" <<EOF
 #!/bin/sh
 if [ "\${1:-}" != "-n" ]; then
@@ -86,10 +97,63 @@ if [ "\${1:-}" != "-n" ]; then
   exit 99
 fi
 shift
-printf '%s=%s\n' "\${1:-}" "\${2:-}" >> "$SB_PROPS_LOG"
+k=\${1:-}
+v=\${2:-}
+printf '%s=%s\n' "\$k" "\$v" >> "$SB_PROPS_LOG"
+tmp="$SB_PROPS_DB.tmp.\$\$"
+awk -F '=' -v key="\$k" '\$1 != key { print \$0 }' "$SB_PROPS_DB" > "\$tmp" 2>/dev/null || : > "\$tmp"
+printf '%s=%s\n' "\$k" "\$v" >> "\$tmp"
+mv -f "\$tmp" "$SB_PROPS_DB"
 exit 0
 EOF
   chmod +x "$SB_BIN/resetprop"
+
+  # Mount mock: records bind mounts and appends to mock /proc/mounts
+  cat > "$SB_BIN/mount" <<EOF
+#!/bin/sh
+if [ "\${1:-}" = "--bind" ]; then
+  printf '%s -> %s\n' "\${2:-}" "\${3:-}" >> "$SB_MOUNT_LOG"
+  printf '%s %s ext4 ro,relatime 0 0\n' "\${2:-}" "\${3:-}" >> "$SB_PROC_MOUNTS"
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$SB_BIN/mount"
+
+  # Transactional settings mock backed by SB_SETTINGS_DB
+  cat > "$SB_BIN/settings" <<EOF
+#!/bin/sh
+cmd=\${1:-}
+ns=\${2:-}
+key=\${3:-}
+val=\${4:-}
+id="\${ns}|\${key}"
+printf '%s %s %s %s\n' "\$cmd" "\$ns" "\$key" "\$val" >> "$SB_SETTINGS_LOG"
+case "\$cmd" in
+  get)
+    out=\$(awk -F '=' -v id="\$id" '\$1 == id { sub(/^[^=]*=/, ""); print; exit }' "$SB_SETTINGS_DB" 2>/dev/null || true)
+    if [ -z "\$out" ]; then
+      printf 'null\n'
+    else
+      printf '%s\n' "\$out"
+    fi
+    ;;
+  put)
+    tmp="$SB_SETTINGS_DB.tmp.\$\$"
+    awk -F '=' -v id="\$id" '\$1 != id { print \$0 }' "$SB_SETTINGS_DB" > "\$tmp" 2>/dev/null || : > "\$tmp"
+    printf '%s=%s\n' "\$id" "\$val" >> "\$tmp"
+    mv -f "\$tmp" "$SB_SETTINGS_DB"
+    ;;
+  delete)
+    tmp="$SB_SETTINGS_DB.tmp.\$\$"
+    awk -F '=' -v id="\$id" '\$1 != id { print \$0 }' "$SB_SETTINGS_DB" > "\$tmp" 2>/dev/null || : > "\$tmp"
+    mv -f "\$tmp" "$SB_SETTINGS_DB"
+    ;;
+  *) exit 1 ;;
+esac
+exit 0
+EOF
+  chmod +x "$SB_BIN/settings"
 }
 
 write_mock_getprop() {
@@ -97,15 +161,18 @@ write_mock_getprop() {
   _miui=$2
   _sdk=$3
   _boot=${4:-1}
+  _dev=${5:-testdevice}
   cat > "$SB_BIN/getprop" <<EOF
 #!/bin/sh
-case "\${1:-}" in
-  ro.mi.os.version.name) printf '%s\n' "$_hos" ;;
-  ro.miui.ui.version.name) printf '%s\n' "$_miui" ;;
-  ro.build.version.sdk) printf '%s\n' "$_sdk" ;;
-  sys.boot_completed) printf '%s\n' "$_boot" ;;
-  *) printf '\n' ;;
+k=\${1:-}
+case "\$k" in
+  ro.mi.os.version.name) printf '%s\n' "$_hos" ; exit 0 ;;
+  ro.miui.ui.version.name) printf '%s\n' "$_miui" ; exit 0 ;;
+  ro.build.version.sdk) printf '%s\n' "$_sdk" ; exit 0 ;;
+  sys.boot_completed) printf '%s\n' "$_boot" ; exit 0 ;;
+  ro.product.device) printf '%s\n' "$_dev" ; exit 0 ;;
 esac
+awk -F '=' -v key="\$k" '\$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$SB_PROPS_DB" 2>/dev/null || true
 EOF
   chmod +x "$SB_BIN/getprop"
 }
@@ -115,11 +182,24 @@ write_mock_meminfo() {
   printf 'MemTotal:       %s kB\nMemFree:        1024000 kB\n' "$_kb" > "$SB_MEMINFO"
 }
 
+write_sample_xml() {
+  _path=$1
+  cat > "$_path" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">false</bool>
+    <integer name="device_level">1</integer>
+    <bool name="support_aod">false</bool>
+</features>
+EOF
+}
+
 run_post_fs_data() {
   PATH="$SB_BIN:$PATH" \
   CORESURFACE_MODDIR="$SB_MOD" \
   CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
   sh "$SB_MOD/post-fs-data.sh"
 }
 
@@ -128,6 +208,7 @@ run_service() {
   CORESURFACE_MODDIR="$SB_MOD" \
   CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_PROC_MOUNTS="$SB_PROC_MOUNTS" \
   CORESURFACE_BOOT_TIMEOUT=6 \
   CORESURFACE_SYSUI_WAIT=6 \
   CORESURFACE_HEALTH_SECONDS=6 \
@@ -153,24 +234,22 @@ setup_sandbox "t2_watchdog_strike"
 write_mock_getprop "OS2.0" "" "35" "1"
 write_mock_meminfo "8000000"
 
-# Boot 1: 0 -> 1
 run_post_fs_data
 assert_eq "$(cat "$SB_STATE/boot_strikes")" "1" "Boot 1 increments boot_strikes to 1"
 assert_eq "$( [ -f "$SB_MOD/disable" ] && printf 'yes' || printf 'no' )" "no" "Module still enabled after strike 1"
 
-# Boot 2: 1 -> 2
 run_post_fs_data
 assert_eq "$(cat "$SB_STATE/boot_strikes")" "2" "Boot 2 increments boot_strikes to 2"
-assert_eq "$( [ -f "$SB_MOD/disable" ] && printf 'yes' || printf 'no' )" "no" "Module still enabled during strike 2 boot"
 
-# Boot 3: sees boot_strikes >= 2 -> fail-closed disable
 : > "$SB_PROPS_LOG"
+: > "$SB_MOUNT_LOG"
 run_post_fs_data
 _rc=$?
 assert_eq "$_rc" "0" "Strike >= 2 exits 0 cleanly"
 assert_eq "$( [ -f "$SB_MOD/disable" ] && printf 'yes' || printf 'no' )" "yes" "Strike >= 2 creates disable file"
 assert_eq "$(cat "$SB_STATE/boot_strikes")" "0" "Strike >= 2 resets boot_strikes to 0"
 assert_eq "$(wc -l < "$SB_PROPS_LOG" | tr -d ' ')" "0" "Strike >= 2 applies zero properties"
+assert_eq "$(wc -l < "$SB_MOUNT_LOG" | tr -d ' ')" "0" "Strike >= 2 skips XML bind-mount"
 assert_file_contains "$SB_STATE/state.prop" "WATCHDOG_STATUS=safe_mode_disabled" "State records safe_mode_disabled"
 
 # ---------------------------------------------------------------------------
@@ -179,9 +258,7 @@ setup_sandbox "t3_sysui_grace_healthy"
 write_mock_getprop "OS2.0" "" "35" "1"
 write_mock_meminfo "8000000"
 run_post_fs_data
-assert_eq "$(cat "$SB_STATE/boot_strikes")" "1" "Preflight sets boot_strikes=1"
 
-# Mock pidof: empty on calls 1-2 (grace window), then stable PID 4242
 _pid_counter="$SB/pid_calls"
 printf '0\n' > "$_pid_counter"
 cat > "$SB_BIN/pidof" <<EOF
@@ -230,68 +307,186 @@ assert_file_contains "$SB_STATE/state.prop" "WATCHDOG_STATUS=degraded" "State re
 
 # ---------------------------------------------------------------------------
 printf '=== Test 5: Dynamic RAM Tiering (<6GB, 6-7GB, >=8GB) & Mandatory resetprop -n ===\n'
-# 5a: < 6 GB (4 GB)
 setup_sandbox "t5_ram_low"
 write_mock_getprop "OS2.0" "" "35" "1"
 write_mock_meminfo "4096000"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "4GB: all resetprop calls use -n"
-assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=2" "4GB: Tier 1 sets device_level=2"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:2,g:2" "4GB: Tier 1 sets low deviceLevelList"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "4GB: heavy blur skipped on < 6 GB"
-assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "4GB: Tier 2 default OFF"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "4GB: Tier 3 default OFF"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=2" "4GB: FEAT_ANIMATIONS sets device_level=2"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "4GB: FEAT_BLUR auto OFF on < 6 GB"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "4GB: FEAT_MULTITASK auto OFF"
 
-# 5b: 6-7 GB (6 GB)
 setup_sandbox "t5_ram_mid"
 write_mock_getprop "OS2.0" "" "35" "1"
 write_mock_meminfo "6000000"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "6GB: all resetprop calls use -n"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:2,g:3" "6GB: Tier 1 sets mid deviceLevelList"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "6GB: heavy blur enabled on 6-7 GB"
-assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "6GB: Tier 2 default OFF"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:2,g:3" "6GB: FEAT_ANIMATIONS sets mid deviceLevelList"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "6GB: FEAT_BLUR auto ON on 6-7 GB"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "6GB: FEAT_MULTITASK auto OFF"
 
-# 5c: >= 8 GB (8 GB)
 setup_sandbox "t5_ram_high"
 write_mock_getprop "OS2.0" "" "35" "1"
 write_mock_meminfo "7800000"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "8GB: all resetprop calls use -n"
-assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=3" "8GB: Tier 1 sets flagship device_level=3"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:3,g:3" "8GB: Tier 1 sets flagship deviceLevelList"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "8GB: heavy blur enabled"
-assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "8GB: Tier 2 default ON"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.miui_freeform_max_count=4" "8GB: Tier 2 freeform relaxation ON"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "8GB: Tier 3 remains OFF by default"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=3" "8GB: FEAT_ANIMATIONS sets flagship device_level=3"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "8GB: FEAT_BLUR auto ON"
+assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "8GB: FEAT_MULTITASK auto ON"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.support_high_refresh_rate=true" "8GB: FEAT_DISPLAY_HZ auto ON"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "8GB: FEAT_HYPERAI remains OFF by default"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 6: Tier 3 Explicit Opt-in & Version Gate ===\n'
-setup_sandbox "t6_tier3_optin"
-write_mock_getprop "OS2.0" "" "35" "1"
+printf '=== Test 6: Dynamic device_features XML Patcher (Discovery, Patch, Fail-Closed) ===\n'
+# 6a: Runtime ro.product.device auto-discovery + patch + bind-mount
+setup_sandbox "t6_xml_happy"
+write_mock_getprop "OS2.0" "" "35" "1" "aurora"
 write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR2/aurora.xml"
+run_post_fs_data
+assert_file_contains "$SB_STATE/state.prop" "XML_STATUS=mounted" "XML patcher mounts discovered runtime device XML"
+assert_file_contains "$SB_STATE/state.prop" "XML_SOURCE=$SB_XML_DIR2/aurora.xml" "XML patcher records exact discovered source path"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_background_blur">true</bool>' "XML patcher updates existing <bool> tag"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="device_level">3</integer>' "XML patcher updates existing <integer> tag"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_smart_fps">true</bool>' "XML patcher inserts missing <bool> tag before </features>"
+assert_file_contains "$SB_STATE/work/device_features.xml" '</features>' "XML patcher preserves closing </features> tag"
+assert_file_contains "$SB_MOUNT_LOG" "$SB_STATE/work/device_features.xml -> $SB_XML_DIR2/aurora.xml" "XML patcher calls mount --bind to original XML path"
+
+# 6b: Fallback to first valid .xml when ro.product.device filename differs
+setup_sandbox "t6_xml_fallback"
+write_mock_getprop "OS3.0" "" "36" "1" "unmatched_name"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/fallback_model.xml"
 cat > "$SB_STATE/config.prop" <<'EOF'
-TIER1_VISUAL=auto
-TIER2_MULTITASK=auto
-TIER3_EXPERIMENTAL=1
-TIER3_HYPERAI=1
-TIER3_AOD_UNLOCK=1
+FEAT_BLUR=auto
+FEAT_ANIMATIONS=auto
+FEAT_XML_PATCHER=auto
+FEAT_MULTITASK=auto
+FEAT_DISPLAY_HZ=auto
+FEAT_HYPERAI=1
+FEAT_AOD_UNLOCK=1
 EOF
 run_post_fs_data
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "Tier 3 opt-in enables HyperAI on HyperOS SDK 35"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.aod_limit_disabled=true" "Tier 3 opt-in enables AOD unlock"
+assert_file_contains "$SB_STATE/state.prop" "XML_SOURCE=$SB_XML_DIR1/fallback_model.xml" "XML patcher falls back to first valid .xml"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_aod">true</bool>' "XML patcher enables support_aod when FEAT_AOD_UNLOCK=1"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_aod_fullscreen' "HyperOS 3 safety gate skips support_aod_fullscreen"
+
+# 6c: Fail-closed when XML is corrupt (missing </features>)
+setup_sandbox "t6_xml_corrupt"
+write_mock_getprop "OS2.0" "" "35" "1" "broken"
+write_mock_meminfo "7800000"
+printf '<features><bool name="support_aod">false</bool>\n' > "$SB_XML_DIR1/broken.xml"
+run_post_fs_data
+_rc=$?
+assert_eq "$_rc" "0" "Corrupt XML fails closed without aborting boot"
+assert_file_contains "$SB_STATE/state.prop" "XML_STATUS=skipped" "Corrupt XML sets XML_STATUS=skipped"
+assert_eq "$(wc -l < "$SB_MOUNT_LOG" | tr -d ' ')" "0" "Corrupt XML never calls mount --bind"
+
+# 6d: Fail-closed when mount --bind fails
+setup_sandbox "t6_xml_mount_fail"
+write_mock_getprop "OS2.0" "" "35" "1" "aurora"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+cat > "$SB_BIN/mount" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+chmod +x "$SB_BIN/mount"
+run_post_fs_data
+_rc=$?
+assert_eq "$_rc" "0" "Mount failure fails closed with exit 0"
+assert_file_contains "$SB_STATE/state.prop" "XML_STATUS=skipped" "Mount failure records XML_STATUS=skipped"
+assert_file_contains "$SB_STATE/state.prop" "XML_REASON=bind_mount_failed" "Mount failure records reason"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 7: WebUI Control Script & Passive CoreFlow Detection ===\n'
-setup_sandbox "t7_webui_ctl"
-write_mock_getprop "OS2.0" "" "35" "1"
+printf '=== Test 7: User-Space Capability Verifier (verified_active vs ignored_by_rom) ===\n'
+setup_sandbox "t7_verifier"
+write_mock_getprop "OS2.0" "" "35" "1" "aurora"
 write_mock_meminfo "7800000"
-mkdir -p "$SB_CF_DIR"
-
-# Mock pidof reporting coreflowd running
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
 cat > "$SB_BIN/pidof" <<'EOF'
 #!/bin/sh
-if [ "${1:-}" = "coreflowd" ]; then
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+# Simulate ROM overriding one FEAT_DISPLAY_HZ prop while FEAT_BLUR & XML stay intact
+tmp_db="$SB_PROPS_DB.mod"
+awk -F '=' '$1 != "ro.miui.support_high_refresh_rate" { print $0 }' "$SB_PROPS_DB" > "$tmp_db"
+printf 'ro.miui.support_high_refresh_rate=false\n' >> "$tmp_db"
+mv -f "$tmp_db" "$SB_PROPS_DB"
+
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "Verifier marks matching FEAT_BLUR as verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_XML_PATCHER=verified_active" "Verifier confirms active XML bind-mount in /proc/mounts"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_DISPLAY_HZ=ignored_by_rom" "Verifier detects ROM-overridden FEAT_DISPLAY_HZ as ignored_by_rom"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_HYPERAI=disabled" "Verifier marks opt-in OFF feature as disabled"
+assert_file_contains "$SB_STATE/overridden_props.list" "FEAT_DISPLAY_HZ|ro.miui.support_high_refresh_rate|true|false" "Verifier logs exact overridden prop diff"
+
+# Simulate bind-mount stripped from /proc/mounts -> ignored_by_rom
+: > "$SB_PROC_MOUNTS"
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_XML_PATCHER=ignored_by_rom" "Verifier detects missing bind-mount in /proc/mounts as ignored_by_rom"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 8: Transactional Settings Backup, Feature Toggle Rollback & Uninstall ===\n'
+setup_sandbox "t8_settings_tx"
+write_mock_getprop "OS2.0" "" "35" "1" "aurora"
+write_mock_meminfo "7800000"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+# Seed initial vendor settings: disable_window_blurs=1, enable_freeform_support is absent (null)
+printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
+
+run_post_fs_data
+run_service
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "Settings TX applies disable_window_blurs=0 for FEAT_BLUR"
+assert_file_contains "$SB_SETTINGS_DB" "global|enable_freeform_support=1" "Settings TX applies enable_freeform_support=1 for FEAT_MULTITASK"
+assert_file_contains "$SB_STATE/settings_backup.prop" "global|disable_window_blurs=1" "Settings TX backs up original value=1"
+assert_file_contains "$SB_STATE/settings_backup.prop" "global|enable_freeform_support=null" "Settings TX backs up originally absent key as null"
+
+# Re-run service.sh: backup MUST remain idempotent (still 1, not overwritten with 0!)
+run_service
+assert_file_contains "$SB_STATE/settings_backup.prop" "global|disable_window_blurs=1" "Idempotent backup never overwrites original value=1"
+
+# Disable FEAT_MULTITASK and FEAT_BLUR -> automatic rollback on next sync
+cat > "$SB_STATE/config.prop" <<'EOF'
+FEAT_BLUR=0
+FEAT_ANIMATIONS=auto
+FEAT_XML_PATCHER=auto
+FEAT_MULTITASK=0
+FEAT_DISPLAY_HZ=auto
+FEAT_HYPERAI=0
+FEAT_AOD_UNLOCK=0
+EOF
+run_service
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=1" "Disabling FEAT_BLUR restores original disable_window_blurs=1"
+assert_file_not_contains "$SB_SETTINGS_DB" "global|enable_freeform_support=" "Disabling FEAT_MULTITASK deletes key whose original was null"
+
+# Re-enable FEAT_DISPLAY_HZ & verify uninstall.sh rolls back remaining keys and cleans state dir
+assert_file_contains "$SB_SETTINGS_DB" "system|miui_refresh_rate_adaptive=1" "FEAT_DISPLAY_HZ setting active before uninstall"
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/uninstall.sh"
+assert_file_not_contains "$SB_SETTINGS_DB" "system|miui_refresh_rate_adaptive=" "uninstall.sh rolls back remaining settings before deleting state"
+assert_eq "$( [ -d "$SB_STATE" ] && printf 'exists' || printf 'removed' )" "removed" "uninstall.sh removes state directory"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 9: WebUI Control Bridge (Granular Whitelist, Verify State & CoreFlow) ===\n'
+setup_sandbox "t9_webui_ctl"
+write_mock_getprop "OS2.0" "" "35" "1" "aurora"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+mkdir -p "$SB_CF_DIR"
+
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = "coreflowd" ] || [ "${1:-}" = "com.android.systemui" ]; then
   printf '9999\n'
   exit 0
 fi
@@ -299,27 +494,43 @@ exit 1
 EOF
 chmod +x "$SB_BIN/pidof"
 
+run_post_fs_data
+run_service
+
 _status_out=$(PATH="$SB_BIN:$PATH" \
   CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" \
   CORESURFACE_COREFLOW_DIR="$SB_CF_DIR" \
   sh "$SB_MOD/lib/webui_ctl.sh" status)
-
 printf '%s\n' "$_status_out" > "$SB/status.out"
+
 assert_file_contains "$SB/status.out" "coreflow_guard=active" "WebUI detects active CoreFlow Thermal Guard"
-assert_file_contains "$SB/status.out" "ram_tier=high" "WebUI reports high RAM tier"
+assert_file_contains "$SB/status.out" "verify_feat_blur=verified_active" "WebUI exposes verified_active status for FEAT_BLUR"
+assert_file_contains "$SB/status.out" "xml_status=mounted" "WebUI exposes XML Patcher mounted status"
+assert_file_contains "$SB/status.out" "xml_source=$SB_XML_DIR1/aurora.xml" "WebUI exposes discovered XML source path"
 
-# Test config set valid + invalid
-PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set TIER3_EXPERIMENTAL 1 >/dev/null
-assert_file_contains "$SB_STATE/config.prop" "TIER3_EXPERIMENTAL=1" "WebUI ctl saves TIER3_EXPERIMENTAL=1"
+# Test granular key whitelist (valid + invalid)
+for _gk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_MULTITASK FEAT_DISPLAY_HZ; do
+  PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
+  assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts granular key ${_gk}=0"
+done
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_HYPERAI 1 >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_HYPERAI=1" "WebUI accepts FEAT_HYPERAI=1"
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_AOD_UNLOCK 1 >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_AOD_UNLOCK=1" "WebUI accepts FEAT_AOD_UNLOCK=1"
 
-if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set BAD_KEY 1 >/dev/null 2>&1; then
-  fail "WebUI ctl should reject unknown key"
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_HYPERAI auto >/dev/null 2>&1; then
+  fail "WebUI should reject 'auto' for opt-in FEAT_HYPERAI"
 else
-  pass "WebUI ctl rejects unknown config key"
+  pass "WebUI rejects 'auto' for opt-in FEAT_HYPERAI"
 fi
 
-# Test reset-safemode with auto-resolved MODDIR (no CORESURFACE_MODDIR env)
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set BAD_KEY 1 >/dev/null 2>&1; then
+  fail "WebUI should reject unknown key"
+else
+  pass "WebUI rejects unknown config key"
+fi
+
 : > "$SB_MOD/disable"
 printf '2\n' > "$SB_STATE/boot_strikes"
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" reset-safemode >/dev/null

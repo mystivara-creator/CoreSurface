@@ -46,6 +46,9 @@ chmod 0755 \
   "$STAGE_DIR/lib/detect.sh" \
   "$STAGE_DIR/lib/watchdog.sh" \
   "$STAGE_DIR/lib/props.sh" \
+  "$STAGE_DIR/lib/xml_patcher.sh" \
+  "$STAGE_DIR/lib/settings_tx.sh" \
+  "$STAGE_DIR/lib/verifier.sh" \
   "$STAGE_DIR/lib/webui_ctl.sh"
 
 (
