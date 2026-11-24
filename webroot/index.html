@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CoreSurface v1.0.0</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <div class="hero-top">
+        <div>
+          <h1>CoreSurface</h1>
+          <p class="subtitle">v1.0.0 · Clean-Room HyperOS User-Space Suite</p>
+        </div>
+        <button id="btn-refresh" class="btn-icon" type="button" aria-label="Perbarui status">↻</button>
+      </div>
+      <div class="badge-row">
+        <span id="watchdog-badge" class="badge badge-neutral">Memeriksa Watchdog…</span>
+        <span id="coreflow-badge" class="badge badge-coreflow hidden">CoreFlow Thermal Guard Active</span>
+      </div>
+    </header>
+
+    <div id="reboot-banner" class="banner banner-info hidden" role="status">
+      <strong>Perubahan disimpan.</strong> Reboot perangkat agar konfigurasi baru diterapkan &amp; diverifikasi.
+    </div>
+
+    <div id="safemode-banner" class="banner banner-danger hidden" role="alert">
+      <div>
+        <strong>Safe-Mode Disabled Aktif</strong>
+        <p id="safemode-reason">Watchdog menonaktifkan modul otomatis setelah 2 kali boot gagal berturut-turut. Disarankan matikan fitur eksperimental sebelum mengaktifkan kembali.</p>
+      </div>
+      <button id="btn-reset-safemode" class="btn btn-danger" type="button">Reset Safe-Mode &amp; Aktifkan Kembali</button>
+    </div>
+
+    <section class="card">
+      <h2>Lingkungan &amp; Hardware</h2>
+      <div class="kv-list" id="env-list">
+        <div class="kv-row"><span>Status</span><strong>Memuat…</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Dynamic XML Patcher</h2>
+        <span id="xml-mount-badge" class="pill">-</span>
+      </div>
+      <div class="kv-list" id="xml-summary">
+        <div class="kv-row"><span>Status</span><strong>Memuat…</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Kontrol Fitur Granular</h2>
+      <p class="hint">Properti diterapkan non-persisten (<code>resetprop -n</code>), <code>settings</code> dicadangkan otomatis untuk rollback bersih, dan setiap fitur diverifikasi pasca-boot.</p>
+
+      <div class="feat-list">
+        <div class="feat-card" data-feat="FEAT_BLUR">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Advanced Textures &amp; Blur</h3>
+              <div class="meta-pills">
+                <span class="load-pill load-high">High GPU/RAM</span>
+                <span id="verify-FEAT_BLUR" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Background blur, Control Center/folder blur, &amp; <code>disable_window_blurs=0</code>. Auto ON jika RAM ≥ 6 GB.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_BLUR" role="group" aria-label="Advanced Textures and Blur">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card" data-feat="FEAT_ANIMATIONS">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Flagship Animation &amp; Device Level</h3>
+              <div class="meta-pills">
+                <span class="load-pill load-med">Medium RAM</span>
+                <span id="verify-FEAT_ANIMATIONS" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Menyesuaikan <code>ro.miui.device_level</code> &amp; <code>deviceLevelList</code> dinamis sesuai tier RAM.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_ANIMATIONS" role="group" aria-label="Flagship Animations">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card" data-feat="FEAT_XML_PATCHER">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Dynamic <code>device_features</code> XML Patcher</h3>
+              <div class="meta-pills">
+                <span class="load-pill load-low">Low Load</span>
+                <span id="verify-FEAT_XML_PATCHER" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Auto-discovery XML fitur bawaan + bind-mount fail-closed hanya untuk fitur aktif.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_XML_PATCHER" role="group" aria-label="Dynamic XML Patcher">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card" data-feat="FEAT_MULTITASK">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Low-RAM Relaxation &amp; Freeform</h3>
+              <div class="meta-pills">
+                <span class="load-pill load-med">Medium RAM</span>
+                <span id="verify-FEAT_MULTITASK" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Relaksasi <code>low_ram</code>, batas floating window, &amp; freeform multitasking. Auto ON jika RAM ≥ 8 GB.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_MULTITASK" role="group" aria-label="Multitasking">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card" data-feat="FEAT_DISPLAY_HZ">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>High Refresh Rate Support</h3>
+              <div class="meta-pills">
+                <span class="load-pill load-med">Medium GPU</span>
+                <span id="verify-FEAT_DISPLAY_HZ" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Flag dukungan smart/high refresh rate &amp; adaptive FPS user-space. Auto ON jika RAM ≥ 8 GB.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_DISPLAY_HZ" role="group" aria-label="High Refresh Rate">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card feat-exp" data-feat="FEAT_HYPERAI">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>HyperAI &amp; AI Galeri <span class="tag-warn">Opt-in</span></h3>
+              <div class="meta-pills">
+                <span class="load-pill load-high">High RAM</span>
+                <span id="verify-FEAT_HYPERAI" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Eksperimental. Hanya aktif di HyperOS dengan Android SDK ≥ 34.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_HYPERAI" role="group" aria-label="HyperAI">
+            <button type="button" data-val="0">OFF</button>
+            <button type="button" data-val="1">ON</button>
+          </div>
+        </div>
+
+        <div class="feat-card feat-exp" data-feat="FEAT_AOD_UNLOCK">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>AOD Limit Unlock <span class="tag-warn">Opt-in</span></h3>
+              <div class="meta-pills">
+                <span class="load-pill load-low">Low Load</span>
+                <span id="verify-FEAT_AOD_UNLOCK" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Membuka batas 10 detik Always-On Display (otomatis melewati fullscreen AOD pada HyperOS 3+).</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_AOD_UNLOCK" role="group" aria-label="AOD Unlock">
+            <button type="button" data-val="0">OFF</button>
+            <button type="button" data-val="1">ON</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="overridden-section" class="card card-warn hidden">
+      <details open>
+        <summary class="summary-title">Properti Ditimpa ROM (<span id="overridden-count">0</span>)</summary>
+        <p class="hint">Properti berikut disetel saat early boot, namun terdeteksi ditimpa ulang oleh vendor/ROM setelah boot selesai.</p>
+        <ul id="overridden-list" class="props-list"></ul>
+      </details>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary class="summary-title">Audit Properti Aktif (<span id="props-count">0</span> · Terverifikasi <span id="props-verified">0/0</span>)</summary>
+        <ul id="props-list" class="props-list">
+          <li class="muted">Belum ada properti diterapkan.</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary class="summary-title">Log Watchdog &amp; Diagnostik</summary>
+        <pre id="diag-log" class="log-box">Memuat log…</pre>
+      </details>
+      <p id="toast-msg" class="toast-msg" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

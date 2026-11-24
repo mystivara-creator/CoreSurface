@@ -1,0 +1,12 @@
+# CoreSurface v1.0.0 Configuration
+# Values for dynamic hardware-tiered features: auto | 1 | 0
+#   auto = automatically decided by actual RAM tier (<6 GB / 6-7 GB / >=8 GB)
+# Values for experimental opt-in features: 0 | 1 (default OFF)
+
+FEAT_BLUR=auto
+FEAT_ANIMATIONS=auto
+FEAT_XML_PATCHER=auto
+FEAT_MULTITASK=auto
+FEAT_DISPLAY_HZ=auto
+FEAT_HYPERAI=0
+FEAT_AOD_UNLOCK=0
