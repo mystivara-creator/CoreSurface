@@ -99,9 +99,15 @@ exit 0
 EOF
   chmod +x "$SB_BIN/chcon"
 
-  # Strict resetprop mock: MUST receive -n as first argument, and updates live_props.db
+  # Strict resetprop mock:
+  # - Permits `-p -d <key>` exclusively for one-time leaked persist.* cleanup
+  # - MUST receive `-n` for every property write (never writes /data/property)
   cat > "$SB_BIN/resetprop" <<EOF
 #!/bin/sh
+if [ "\${1:-}" = "-p" ] && [ "\${2:-}" = "-d" ]; then
+  printf 'PURGED:%s\n' "\${3:-}" >> "$SB_PROPS_LOG"
+  exit 0
+fi
 if [ "\${1:-}" != "-n" ]; then
   printf 'NON_PERSIST_VIOLATION:%s\n' "\$*" >> "$SB_PROPS_LOG"
   exit 99
@@ -342,8 +348,8 @@ write_mock_meminfo "6000000"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "6GB: all resetprop calls use -n"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:2,g:3" "6GB: FEAT_ANIMATIONS sets mid deviceLevelList"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.devicelevel=3" "6GB: FEAT_ANIMATIONS sets mid Computility V2 level 3"
-assert_file_contains "$SB_PROPS_LOG" "ro.sf.blurs_are_expensive=0" "6GB: FEAT_BLUR unlocks consistent SurfaceFlinger/window blur"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyper_transition=true" "6GB: FEAT_ANIMATIONS enables HyperTransition"
+assert_file_contains "$SB_PROPS_LOG" "ro.sf.blurs_are_expensive=0" "6GB: FEAT_BLUR unlocks consistent SurfaceFlinger blur"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "6GB: FEAT_BLUR auto ON on 6-7 GB"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "6GB: FEAT_MULTITASK auto OFF"
 
@@ -353,11 +359,12 @@ write_mock_meminfo "7800000"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "8GB: all resetprop calls use -n"
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=3" "8GB: FEAT_ANIMATIONS sets flagship device_level=3"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.devicelevel=4" "8GB: FEAT_ANIMATIONS sets flagship Computility V2 level 4"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.devicelevel=" "8GB: omits tablet/ultra computilityV2.devicelevel=4"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyper_transition=true" "8GB: FEAT_ANIMATIONS enables HyperTransition"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.enable_parallel_sweep=true" "8GB: FEAT_ANIMATIONS enables parallel sweep"
 assert_file_contains "$SB_PROPS_LOG" "ro.sf.blurs_are_expensive=0" "8GB: FEAT_BLUR disables blurs_are_expensive throttle"
 assert_file_not_contains "$SB_PROPS_LOG" "enable_blurs_on_windows=" "8GB: FEAT_BLUR omits enable_blurs_on_windows that bloats Toasts"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=" "8GB: FEAT_BLUR omits backdrop_sampling_enabled that bloats Toasts"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "8GB: FEAT_BLUR auto ON"
 assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "8GB: FEAT_MULTITASK auto ON"
 assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram.threshold_gb=0" "8GB: FEAT_MULTITASK relaxes low_ram GB threshold"
@@ -630,8 +637,9 @@ run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=" "Omits mismatched MiShadow window prop that bloats Toasts"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.multiwin.fulldecor_support=" "Omits fulldecor prop that distorts Recent Apps"
+assert_file_contains "$SB_PROPS_LOG" "PURGED:persist.sys.support_window_mishadow" "One-time cleanup purges leaked persist.* keys from /data/property"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island=1" "HyperOS 3 auto-enables FEAT_ISLAND on >= 6 GB RAM"
-assert_file_contains "$SB_MOD/system.prop" "persist.sys.computilityV2.devicelevel=4" "Generates system.prop so KernelSU applies computilityV2 after load_persist_props"
+assert_eq "$( [ -f "$SB_MOD/system.prop" ] && printf 'exists' || printf 'absent' )" "absent" "Never creates system.prop (strictly memory-only resetprop -n)"
 assert_file_contains "$SB_CHCON_LOG" "-R u:object_r:system_file:s0 $SB_MOD/system" "RRO Manager restores SELinux system_file context on staged overlays"
 assert_eq "$( [ -f "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'yes' || printf 'no' )" "yes" "Stages zero-byte Lockscreen Video Depth marker"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUI.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceSystemUI.apk on >= 6 GB RAM"

@@ -78,7 +78,7 @@ cs_sync_rro_for_next_boot() {
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
   cs_rro_stage "$MODDIR" || true
-  cs_generate_system_prop "$MODDIR" || true
+  cs_clear_system_prop "$MODDIR" || true
 }
 
 cs_cmd_status() {

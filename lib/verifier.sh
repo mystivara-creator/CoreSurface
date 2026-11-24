@@ -133,9 +133,12 @@ cs_verify_rro_overlays() {
 
   while IFS='|' read -r _cs_rapk _cs_rpkg || [ -n "$_cs_rapk" ]; do
     [ -n "$_cs_rpkg" ] || continue
-    CS_V_RRO_TOTAL=$((CS_V_RRO_TOTAL + 1))
-    if printf '%s\n' "$_cs_ov_out" | grep -F -q "[x] $_cs_rpkg"; then
-      CS_V_RRO_ACTIVE=$((CS_V_RRO_ACTIVE + 1))
+    # Only evaluate overlays whose target package exists in OverlayManagerService
+    if printf '%s\n' "$_cs_ov_out" | grep -F -q "$_cs_rpkg"; then
+      CS_V_RRO_TOTAL=$((CS_V_RRO_TOTAL + 1))
+      if printf '%s\n' "$_cs_ov_out" | grep -F -q "[x] $_cs_rpkg"; then
+        CS_V_RRO_ACTIVE=$((CS_V_RRO_ACTIVE + 1))
+      fi
     fi
   done < "$CS_RRO_STAGED_LIST"
 
