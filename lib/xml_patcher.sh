@@ -1,6 +1,10 @@
 #!/system/bin/sh
 # CoreSurface - Dynamic device_features XML Patcher (Fail-Closed Bind-Mount)
 # Pure POSIX sh + awk. Zero hardcoded device codenames.
+# Rules:
+#   - Non-destructive / Add-Only: <bool> only upgraded false -> true; <integer> never lowered.
+#   - Never touches display color, fpsList/refresh rate, or double_tap touch sensor tags.
+#   - Preserves SELinux context (chcon --reference) before bind-mount so Settings/AOD can read it.
 
 CS_XML_WORK_DIR="$CS_STATE_DIR/work"
 CS_XML_WORK_FILE="$CS_XML_WORK_DIR/device_features.xml"
@@ -62,7 +66,9 @@ cs_xml_discover() {
   return 1
 }
 
-# Build desired <bool> and <integer> patch specifications based on active features.
+# Build desired <bool> and <integer> patch specifications based ONLY on whitelisted
+# active features (FEAT_BLUR, FEAT_ANIMATIONS, FEAT_MULTITASK, FEAT_HYPERAI, FEAT_AOD_UNLOCK).
+# Intentionally excludes FEAT_DISPLAY_HZ, color scheme, fpsList, and double_tap tags.
 # Format per line: type|name|value
 cs_xml_build_patch_spec() {
   _cs_spec_file=$1
@@ -80,7 +86,6 @@ cs_xml_build_patch_spec() {
       else
         printf 'integer|device_level|2\n'
       fi
-      printf 'bool|support_papermode_animation|true\n'
     fi
 
     if [ "$EFF_FEAT_MULTITASK" = "1" ]; then
@@ -88,17 +93,12 @@ cs_xml_build_patch_spec() {
       printf 'integer|freeform_max_count|4\n'
     fi
 
-    if [ "$EFF_FEAT_DISPLAY_HZ" = "1" ]; then
-      printf 'bool|support_smart_fps|true\n'
-      printf 'bool|support_high_refresh_rate|true\n'
-    fi
-
     if [ "$EFF_FEAT_HYPERAI" = "1" ]; then
-      printf 'bool|support_AI_display|true\n'
       printf 'bool|gallery_support_analytic_face_and_scene|true\n'
       printf 'bool|gallery_support_media_feature|true\n'
     fi
 
+    # Only touch AOD tags when FEAT_AOD_UNLOCK is explicitly enabled
     if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
       printf 'bool|support_aod|true\n'
       printf 'bool|support_aod_aon|true\n'
@@ -110,15 +110,25 @@ cs_xml_build_patch_spec() {
   } > "$_cs_spec_file"
 }
 
-# Patch <bool name="..."> and <integer name="..."> tags cleanly using POSIX awk.
+# Non-destructive / Add-Only XML patcher using POSIX awk:
+# - Protected tags (fpsList, color/screen_effect, double_tap) are never modified.
+# - <bool>: only upgrades false -> true; never downgrades true -> false.
+# - <integer>: only upgrades when desired > existing; never lowers an existing higher value.
+# - Missing whitelisted tags are appended cleanly before </features>.
 cs_xml_patch_file() {
   _cs_src=$1
   _cs_spec=$2
   _cs_dst=$3
 
   awk -F '|' '
+    function is_protected(name) {
+      if (name ~ /(fps|refresh|double_tap|screen_effect|color_mode|color_gamut|vivid|saturat|paper_mode|eyecare|sunlight)/) {
+        return 1
+      }
+      return 0
+    }
     NR == FNR {
-      if (NF == 3) {
+      if (NF == 3 && !is_protected($2)) {
         n++
         order[n] = $2
         ptype[$2] = $1
@@ -145,12 +155,33 @@ cs_xml_patch_file() {
         k = order[i]
         t = ptype[k]
         target = "<" t " name=\"" k "\">"
-        if (index(line, target) > 0 && index(line, "</" t ">") > 0) {
+        close_tag = "</" t ">"
+        pos = index(line, target)
+        cpos = index(line, close_tag)
+        if (pos > 0 && cpos > pos) {
+          val_start = pos + length(target)
+          cur = substr(line, val_start, cpos - val_start)
           indent = ""
           if (match(line, /^[ \t]*/)) {
             indent = substr(line, 1, RLENGTH)
           }
-          printf "%s<%s name=\"%s\">%s</%s>\n", indent, t, k, pval[k], t
+          if (t == "bool") {
+            # Add-only: only change false -> true
+            if (cur == "false" && pval[k] == "true") {
+              printf "%s<bool name=\"%s\">true</bool>\n", indent, k
+            } else {
+              print line
+            }
+          } else if (t == "integer") {
+            # Non-destructive: never lower an existing higher integer
+            if (cur ~ /^-?[0-9]+$/ && (cur + 0) >= (pval[k] + 0)) {
+              print line
+            } else {
+              printf "%s<integer name=\"%s\">%s</integer>\n", indent, k, pval[k]
+            }
+          } else {
+            print line
+          }
           seen[k] = 1
           matched = 1
           break
@@ -163,7 +194,17 @@ cs_xml_patch_file() {
   ' "$_cs_spec" "$_cs_src" > "$_cs_dst"
 }
 
-# Run full fail-closed XML discovery, patching, validation, and bind-mount.
+cs_xml_restore_selinux_context() {
+  _cs_ref=$1
+  _cs_target=$2
+  if command -v chcon >/dev/null 2>&1; then
+    chcon --reference="$_cs_ref" "$_cs_target" 2>/dev/null \
+      || chcon "u:object_r:system_file:s0" "$_cs_target" 2>/dev/null \
+      || true
+  fi
+}
+
+# Run full fail-closed XML discovery, patching, validation, SELinux restore, and bind-mount.
 # Always returns 0 so XML patch failures never disrupt boot.
 cs_xml_apply() {
   cs_watchdog_init_dir || return 0
@@ -233,6 +274,8 @@ cs_xml_apply() {
 
   mv -f "$_cs_tmp_xml" "$CS_XML_WORK_FILE"
   chmod 0644 "$CS_XML_WORK_FILE" 2>/dev/null || true
+  chown 0:0 "$CS_XML_WORK_FILE" 2>/dev/null || true
+  cs_xml_restore_selinux_context "$CS_XML_DISCOVERED" "$CS_XML_WORK_FILE"
   cp "$_cs_spec" "$CS_XML_PATCH_LIST" 2>/dev/null || true
   rm -f "$_cs_spec"
 

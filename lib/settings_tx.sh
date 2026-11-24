@@ -1,12 +1,77 @@
 #!/system/bin/sh
 # CoreSurface - Transactional Android `settings` Override & Clean Rollback
-# Pure POSIX sh. Backs up original values once (idempotent) and restores cleanly.
+# Pure POSIX sh. Uses `settings --user 0` (Android 16 / SDK 36 Binder safe)
+# with fallback for older Android versions. Backs up original values once (idempotent).
 
 CS_SETTINGS_BACKUP_FILE="$CS_STATE_DIR/settings_backup.prop"
 CS_SETTINGS_APPLIED_FILE="$CS_STATE_DIR/settings_applied.list"
 
 cs_settings_available() {
   command -v settings >/dev/null 2>&1
+}
+
+cs_settings_is_error_output() {
+  case "$1" in
+    *Failure*|*Exception*|*Error*|*Binder*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Read a setting using `--user 0`, falling back without `--user 0` only on failure.
+# Sets: CS_SETTINGS_READ_VAL, returns 0 on success, 1 on Binder/service error.
+cs_settings_get() {
+  _cs_sg_ns=$1
+  _cs_sg_key=$2
+  CS_SETTINGS_READ_VAL=""
+
+  _cs_sg_out=$(settings --user 0 get "$_cs_sg_ns" "$_cs_sg_key" 2>&1 | head -n 1 | tr -d '\r' || true)
+  if [ -n "$_cs_sg_out" ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
+    CS_SETTINGS_READ_VAL="$_cs_sg_out"
+    return 0
+  fi
+
+  _cs_sg_out=$(settings get "$_cs_sg_ns" "$_cs_sg_key" 2>&1 | head -n 1 | tr -d '\r' || true)
+  if [ -n "$_cs_sg_out" ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
+    CS_SETTINGS_READ_VAL="$_cs_sg_out"
+    return 0
+  fi
+
+  return 1
+}
+
+cs_settings_put() {
+  _cs_sp_ns=$1
+  _cs_sp_key=$2
+  _cs_sp_val=$3
+
+  _cs_sp_out=$(settings --user 0 put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1 || true)
+  if ! cs_settings_is_error_output "$_cs_sp_out"; then
+    return 0
+  fi
+
+  _cs_sp_out=$(settings put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1 || true)
+  if ! cs_settings_is_error_output "$_cs_sp_out"; then
+    return 0
+  fi
+
+  return 1
+}
+
+cs_settings_delete() {
+  _cs_sd_ns=$1
+  _cs_sd_key=$2
+
+  _cs_sd_out=$(settings --user 0 delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1 || true)
+  if ! cs_settings_is_error_output "$_cs_sd_out"; then
+    return 0
+  fi
+
+  _cs_sd_out=$(settings delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1 || true)
+  if ! cs_settings_is_error_output "$_cs_sd_out"; then
+    return 0
+  fi
+
+  return 1
 }
 
 cs_settings_backup_has() {
@@ -29,8 +94,8 @@ cs_settings_backup_remove() {
   mv -f "$_cs_sbr_tmp" "$CS_SETTINGS_BACKUP_FILE"
 }
 
-# Idempotent backup: record original value from `settings get` only once.
-# Never overwrites an existing backup entry.
+# Idempotent backup: record original value from `settings --user 0 get` only once.
+# Never overwrites an existing backup entry. Skips if Binder service returns an error.
 cs_settings_backup_once() {
   _cs_sbo_ns=$1
   _cs_sbo_key=$2
@@ -40,7 +105,12 @@ cs_settings_backup_once() {
     return 0
   fi
 
-  _cs_orig=$(settings get "$_cs_sbo_ns" "$_cs_sbo_key" 2>/dev/null | head -n 1 | tr -d '\r' || true)
+  if ! cs_settings_get "$_cs_sbo_ns" "$_cs_sbo_key"; then
+    cs_log "WARN: settings get ${_cs_sbo_ns}/${_cs_sbo_key} failed (Binder error); skipping backup/override."
+    return 1
+  fi
+
+  _cs_orig=$CS_SETTINGS_READ_VAL
   if [ -z "$_cs_orig" ] || [ "$_cs_orig" = "null" ]; then
     _cs_orig="null"
   fi
@@ -57,12 +127,12 @@ cs_settings_apply_key() {
   cs_settings_available || return 0
   cs_settings_backup_once "$_cs_sak_ns" "$_cs_sak_key" || return 1
 
-  if settings put "$_cs_sak_ns" "$_cs_sak_key" "$_cs_sak_val" >/dev/null 2>&1; then
+  if cs_settings_put "$_cs_sak_ns" "$_cs_sak_key" "$_cs_sak_val"; then
     printf '%s|%s|%s=%s\n' "$_cs_sak_feat" "$_cs_sak_ns" "$_cs_sak_key" "$_cs_sak_val" >> "$CS_SETTINGS_APPLIED_FILE"
     return 0
   fi
 
-  cs_log "WARN: settings put ${_cs_sak_ns} ${_cs_sak_key} ${_cs_sak_val} failed."
+  cs_log "WARN: settings --user 0 put ${_cs_sak_ns} ${_cs_sak_key} ${_cs_sak_val} failed."
   return 1
 }
 
@@ -75,10 +145,10 @@ cs_settings_rollback_key() {
 
   _cs_orig=$(cs_settings_backup_get "$_cs_srk_ns" "$_cs_srk_key")
   if [ -z "$_cs_orig" ] || [ "$_cs_orig" = "null" ]; then
-    settings delete "$_cs_srk_ns" "$_cs_srk_key" >/dev/null 2>&1 || true
+    cs_settings_delete "$_cs_srk_ns" "$_cs_srk_key" || true
     cs_log "Settings rollback: deleted ${_cs_srk_ns}/${_cs_srk_key} (original was null)."
   else
-    settings put "$_cs_srk_ns" "$_cs_srk_key" "$_cs_orig" >/dev/null 2>&1 || true
+    cs_settings_put "$_cs_srk_ns" "$_cs_srk_key" "$_cs_orig" || true
     cs_log "Settings rollback: restored ${_cs_srk_ns}/${_cs_srk_key}=${_cs_orig}."
   fi
 
@@ -148,9 +218,9 @@ cs_settings_rollback_all() {
     fi
 
     if [ -z "$_cs_orig" ] || [ "$_cs_orig" = "null" ]; then
-      settings delete "$_cs_ns" "$_cs_key" >/dev/null 2>&1 || true
+      cs_settings_delete "$_cs_ns" "$_cs_key" || true
     else
-      settings put "$_cs_ns" "$_cs_key" "$_cs_orig" >/dev/null 2>&1 || true
+      cs_settings_put "$_cs_ns" "$_cs_key" "$_cs_orig" || true
     fi
   done < "$CS_SETTINGS_BACKUP_FILE"
 

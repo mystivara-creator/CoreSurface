@@ -64,6 +64,7 @@ setup_sandbox() {
   SB_PROPS_LOG="$SB/resetprop.calls"
   SB_PROPS_DB="$SB/live_props.db"
   SB_MOUNT_LOG="$SB/mount.calls"
+  SB_CHCON_LOG="$SB/chcon.calls"
   SB_PROC_MOUNTS="$SB/proc_mounts"
   SB_SETTINGS_DB="$SB/settings.db"
   SB_SETTINGS_LOG="$SB/settings.calls"
@@ -76,6 +77,7 @@ setup_sandbox() {
   : > "$SB_PROPS_LOG"
   : > "$SB_PROPS_DB"
   : > "$SB_MOUNT_LOG"
+  : > "$SB_CHCON_LOG"
   : > "$SB_PROC_MOUNTS"
   : > "$SB_SETTINGS_DB"
   : > "$SB_SETTINGS_LOG"
@@ -88,6 +90,14 @@ setup_sandbox() {
 exit 0
 EOF
   chmod +x "$SB_BIN/sleep"
+
+  # chcon mock to verify SELinux context restoration before bind-mount
+  cat > "$SB_BIN/chcon" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$SB_CHCON_LOG"
+exit 0
+EOF
+  chmod +x "$SB_BIN/chcon"
 
   # Strict resetprop mock: MUST receive -n as first argument, and updates live_props.db
   cat > "$SB_BIN/resetprop" <<EOF
@@ -120,15 +130,18 @@ exit 1
 EOF
   chmod +x "$SB_BIN/mount"
 
-  # Transactional settings mock backed by SB_SETTINGS_DB
+  # Transactional settings mock supporting --user 0 (Android 16 / SDK 36)
   cat > "$SB_BIN/settings" <<EOF
 #!/bin/sh
+printf '%s\n' "\$*" >> "$SB_SETTINGS_LOG"
+if [ "\${1:-}" = "--user" ]; then
+  shift 2
+fi
 cmd=\${1:-}
 ns=\${2:-}
 key=\${3:-}
 val=\${4:-}
 id="\${ns}|\${key}"
-printf '%s %s %s %s\n' "\$cmd" "\$ns" "\$key" "\$val" >> "$SB_SETTINGS_LOG"
 case "\$cmd" in
   get)
     out=\$(awk -F '=' -v id="\$id" '\$1 == id { sub(/^[^=]*=/, ""); print; exit }' "$SB_SETTINGS_DB" 2>/dev/null || true)
@@ -190,6 +203,12 @@ write_sample_xml() {
     <bool name="support_background_blur">false</bool>
     <integer name="device_level">1</integer>
     <bool name="support_aod">false</bool>
+    <bool name="support_screen_effect">true</bool>
+    <bool name="support_double_tap_to_wake">true</bool>
+    <integer-array name="fpsList">
+        <item>120</item>
+        <item>60</item>
+    </integer-array>
 </features>
 EOF
 }
@@ -337,8 +356,8 @@ assert_file_contains "$SB_PROPS_LOG" "ro.miui.support_high_refresh_rate=true" "8
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "8GB: FEAT_HYPERAI remains OFF by default"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 6: Dynamic device_features XML Patcher (Discovery, Patch, Fail-Closed) ===\n'
-# 6a: Runtime ro.product.device auto-discovery + patch + bind-mount
+printf '=== Test 6: Dynamic device_features XML Patcher (Non-Destructive, SELinux, Fail-Closed) ===\n'
+# 6a: Runtime ro.product.device auto-discovery + non-destructive patch + SELinux + bind-mount
 setup_sandbox "t6_xml_happy"
 write_mock_getprop "OS2.0" "" "35" "1" "aurora"
 write_mock_meminfo "7800000"
@@ -346,17 +365,29 @@ write_sample_xml "$SB_XML_DIR2/aurora.xml"
 run_post_fs_data
 assert_file_contains "$SB_STATE/state.prop" "XML_STATUS=mounted" "XML patcher mounts discovered runtime device XML"
 assert_file_contains "$SB_STATE/state.prop" "XML_SOURCE=$SB_XML_DIR2/aurora.xml" "XML patcher records exact discovered source path"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_background_blur">true</bool>' "XML patcher updates existing <bool> tag"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="device_level">3</integer>' "XML patcher updates existing <integer> tag"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_smart_fps">true</bool>' "XML patcher inserts missing <bool> tag before </features>"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_background_blur">true</bool>' "XML patcher upgrades <bool> false -> true"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="device_level">3</integer>' "XML patcher upgrades lower <integer> 1 -> 3"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_aod">false</bool>' "XML patcher does NOT touch AOD tag when FEAT_AOD_UNLOCK=0"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "XML patcher preserves stock display color tag"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_double_tap_to_wake">true</bool>' "XML patcher preserves stock double_tap tag"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<integer-array name="fpsList">' "XML patcher preserves stock fpsList array"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_smart_fps' "XML patcher does NOT inject FEAT_DISPLAY_HZ tags"
 assert_file_contains "$SB_STATE/work/device_features.xml" '</features>' "XML patcher preserves closing </features> tag"
+assert_file_contains "$SB_CHCON_LOG" "--reference=$SB_XML_DIR2/aurora.xml $SB_STATE/work/device_features.xml" "XML patcher restores SELinux context via chcon --reference before bind-mount"
 assert_file_contains "$SB_MOUNT_LOG" "$SB_STATE/work/device_features.xml -> $SB_XML_DIR2/aurora.xml" "XML patcher calls mount --bind to original XML path"
 
-# 6b: Fallback to first valid .xml when ro.product.device filename differs
+# 6b: Never lower an already higher <integer> in stock XML + fallback + HOS 3 AOD safety gate
 setup_sandbox "t6_xml_fallback"
 write_mock_getprop "OS3.0" "" "36" "1" "unmatched_name"
 write_mock_meminfo "7800000"
-write_sample_xml "$SB_XML_DIR1/fallback_model.xml"
+cat > "$SB_XML_DIR1/fallback_model.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <integer name="device_level">5</integer>
+    <integer name="freeform_max_count">8</integer>
+    <bool name="support_aod">false</bool>
+</features>
+EOF
 cat > "$SB_STATE/config.prop" <<'EOF'
 FEAT_BLUR=auto
 FEAT_ANIMATIONS=auto
@@ -368,6 +399,8 @@ FEAT_AOD_UNLOCK=1
 EOF
 run_post_fs_data
 assert_file_contains "$SB_STATE/state.prop" "XML_SOURCE=$SB_XML_DIR1/fallback_model.xml" "XML patcher falls back to first valid .xml"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="device_level">5</integer>' "XML patcher never lowers existing higher integer device_level=5"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="freeform_max_count">8</integer>' "XML patcher never lowers existing higher integer freeform_max_count=8"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_aod">true</bool>' "XML patcher enables support_aod when FEAT_AOD_UNLOCK=1"
 assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_aod_fullscreen' "HyperOS 3 safety gate skips support_aod_fullscreen"
 
@@ -399,7 +432,7 @@ assert_file_contains "$SB_STATE/state.prop" "XML_STATUS=skipped" "Mount failure 
 assert_file_contains "$SB_STATE/state.prop" "XML_REASON=bind_mount_failed" "Mount failure records reason"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 7: User-Space Capability Verifier (verified_active vs ignored_by_rom) ===\n'
+printf '=== Test 7: User-Space Capability Verifier (verified_active, ignored_by_rom, Binder error) ===\n'
 setup_sandbox "t7_verifier"
 write_mock_getprop "OS2.0" "" "35" "1" "aurora"
 write_mock_meminfo "7800000"
@@ -424,6 +457,18 @@ assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_XML_PATCHER=verified_
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_DISPLAY_HZ=ignored_by_rom" "Verifier detects ROM-overridden FEAT_DISPLAY_HZ as ignored_by_rom"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_HYPERAI=disabled" "Verifier marks opt-in OFF feature as disabled"
 assert_file_contains "$SB_STATE/overridden_props.list" "FEAT_DISPLAY_HZ|ro.miui.support_high_refresh_rate|true|false" "Verifier logs exact overridden prop diff"
+assert_file_contains "$SB_SETTINGS_LOG" "--user 0 get global disable_window_blurs" "Verifier calls settings with --user 0"
+
+# Simulate Android 16 Binder failure on settings get -> must NOT mark FEAT_MULTITASK as ignored_by_rom
+cat > "$SB_BIN/settings" <<'EOF'
+#!/bin/sh
+printf 'cmd: Failure calling service settings: Failed transaction (2147483646)\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/settings"
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MULTITASK=verified_active" "Verifier ignores Binder Failure on settings and keeps matching props verified_active"
+assert_file_not_contains "$SB_STATE/overridden_props.list" "Failed transaction" "Verifier does not record Binder failure as overridden prop"
 
 # Simulate bind-mount stripped from /proc/mounts -> ignored_by_rom
 : > "$SB_PROC_MOUNTS"
@@ -431,9 +476,9 @@ run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_XML_PATCHER=ignored_by_rom" "Verifier detects missing bind-mount in /proc/mounts as ignored_by_rom"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 8: Transactional Settings Backup, Feature Toggle Rollback & Uninstall ===\n'
+printf '=== Test 8: Transactional Settings Backup (--user 0), Rollback & Uninstall ===\n'
 setup_sandbox "t8_settings_tx"
-write_mock_getprop "OS2.0" "" "35" "1" "aurora"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora"
 write_mock_meminfo "7800000"
 cat > "$SB_BIN/pidof" <<'EOF'
 #!/bin/sh
@@ -447,6 +492,8 @@ printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
 
 run_post_fs_data
 run_service
+assert_file_contains "$SB_SETTINGS_LOG" "--user 0 get global disable_window_blurs" "Settings TX reads via --user 0"
+assert_file_contains "$SB_SETTINGS_LOG" "--user 0 put global disable_window_blurs 0" "Settings TX writes via --user 0"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "Settings TX applies disable_window_blurs=0 for FEAT_BLUR"
 assert_file_contains "$SB_SETTINGS_DB" "global|enable_freeform_support=1" "Settings TX applies enable_freeform_support=1 for FEAT_MULTITASK"
 assert_file_contains "$SB_STATE/settings_backup.prop" "global|disable_window_blurs=1" "Settings TX backs up original value=1"
@@ -469,8 +516,9 @@ EOF
 run_service
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=1" "Disabling FEAT_BLUR restores original disable_window_blurs=1"
 assert_file_not_contains "$SB_SETTINGS_DB" "global|enable_freeform_support=" "Disabling FEAT_MULTITASK deletes key whose original was null"
+assert_file_contains "$SB_SETTINGS_LOG" "--user 0 delete global enable_freeform_support" "Settings TX deletes null-original key via --user 0"
 
-# Re-enable FEAT_DISPLAY_HZ & verify uninstall.sh rolls back remaining keys and cleans state dir
+# Verify uninstall.sh rolls back remaining keys and cleans state dir
 assert_file_contains "$SB_SETTINGS_DB" "system|miui_refresh_rate_adaptive=1" "FEAT_DISPLAY_HZ setting active before uninstall"
 PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/uninstall.sh"
 assert_file_not_contains "$SB_SETTINGS_DB" "system|miui_refresh_rate_adaptive=" "uninstall.sh rolls back remaining settings before deleting state"

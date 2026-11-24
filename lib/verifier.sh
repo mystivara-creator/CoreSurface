@@ -12,6 +12,33 @@ cs_verify_set() {
   printf '%s=%s\n' "$_cs_vk" "$_cs_vv" >> "$CS_VERIFY_TMP"
 }
 
+cs_verify_is_settings_err() {
+  case "$1" in
+    *Failure*|*Exception*|*Error*|*Binder*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+cs_verify_settings_get() {
+  _cs_vsg_ns=$1
+  _cs_vsg_key=$2
+  CS_VSG_VAL=""
+
+  _cs_vsg_out=$(settings --user 0 get "$_cs_vsg_ns" "$_cs_vsg_key" 2>&1 | head -n 1 | tr -d '\r' || true)
+  if [ -n "$_cs_vsg_out" ] && ! cs_verify_is_settings_err "$_cs_vsg_out"; then
+    CS_VSG_VAL="$_cs_vsg_out"
+    return 0
+  fi
+
+  _cs_vsg_out=$(settings get "$_cs_vsg_ns" "$_cs_vsg_key" 2>&1 | head -n 1 | tr -d '\r' || true)
+  if [ -n "$_cs_vsg_out" ] && ! cs_verify_is_settings_err "$_cs_vsg_out"; then
+    CS_VSG_VAL="$_cs_vsg_out"
+    return 0
+  fi
+
+  return 1
+}
+
 cs_verify_xml_mount() {
   _cs_mounts=${CORESURFACE_PROC_MOUNTS:-/proc/mounts}
   _cs_xml_status=$(cs_state_get "XML_STATUS")
@@ -89,11 +116,16 @@ cs_verify_feature() {
         continue
       fi
 
-      _cs_sactual=$(settings get "$_cs_sns" "$_cs_sk" 2>/dev/null | head -n 1 | tr -d '\r' || true)
+      # Treat Binder Failure/Exception as skipped (not ignored_by_rom)
+      if ! cs_verify_settings_get "$_cs_sns" "$_cs_sk"; then
+        cs_log "Verifier: settings --user 0 get ${_cs_sns}/${_cs_sk} returned Binder error; skipping setting check."
+        continue
+      fi
+
       _cs_vf_checked=$((_cs_vf_checked + 1))
-      if [ "$_cs_sactual" != "$_cs_sv" ]; then
+      if [ "$CS_VSG_VAL" != "$_cs_sv" ]; then
         _cs_vf_mismatch=$((_cs_vf_mismatch + 1))
-        printf '%s|settings:%s/%s|%s|%s\n' "$_cs_vf_name" "$_cs_sns" "$_cs_sk" "$_cs_sv" "${_cs_sactual:-<empty>}" >> "$CS_OVERRIDDEN_PROPS_FILE"
+        printf '%s|settings:%s/%s|%s|%s\n' "$_cs_vf_name" "$_cs_sns" "$_cs_sk" "$_cs_sv" "${CS_VSG_VAL:-<empty>}" >> "$CS_OVERRIDDEN_PROPS_FILE"
       fi
     done < "$CS_SETTINGS_APPLIED_FILE"
   fi
