@@ -52,6 +52,16 @@
     </section>
 
     <section class="card">
+      <div class="card-head">
+        <h2>Clean-Room RRO Overlays</h2>
+        <span id="rro-summary-badge" class="pill">-</span>
+      </div>
+      <div class="kv-list" id="rro-summary">
+        <div class="kv-row"><span>Status</span><strong>Memuat…</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>Kontrol Fitur Granular</h2>
       <p class="hint">Properti diterapkan non-persisten (<code>resetprop -n</code>), <code>settings</code> dicadangkan otomatis untuk rollback bersih, dan setiap fitur diverifikasi pasca-boot.</p>
 
@@ -101,9 +111,27 @@
                 <span id="verify-FEAT_XML_PATCHER" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Auto-discovery XML fitur bawaan + bind-mount fail-closed hanya untuk fitur aktif.</p>
+            <p class="feat-desc">Auto-discovery XML fitur bawaan + bind-mount non-destruktif &amp; SELinux-safe.</p>
           </div>
           <div class="seg-group" data-key="FEAT_XML_PATCHER" role="group" aria-label="Dynamic XML Patcher">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card" data-feat="FEAT_RRO_OVERLAYS">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Clean-Room RRO Overlays</h3>
+              <div class="meta-pills">
+                <span class="load-pill load-med">Medium GPU</span>
+                <span id="verify-FEAT_RRO_OVERLAYS" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Overlay CI-built untuk SystemUI (shade/gradient blur, charging ripple, AOD anim), ThemeManager (Video Wallpaper), &amp; MiWallpaper (Super Wallpaper). Auto ON jika RAM ≥ 6 GB.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_RRO_OVERLAYS" role="group" aria-label="Clean-Room RRO Overlays">
             <button type="button" data-val="auto">Auto</button>
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>

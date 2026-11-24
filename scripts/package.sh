@@ -1,11 +1,12 @@
 #!/bin/sh
 # CoreSurface v1.0.0 - Production Module ZIP Packager (POSIX sh)
-# Packages only whitelisted production module files into dist/CoreSurface-v1.0.0.zip.
+# Builds clean-room RRO overlays and packages whitelisted production files into dist/CoreSurface-v1.0.0.zip.
 
 set -eu
 
 REPO_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 DIST_DIR="$REPO_ROOT/dist"
+OVERLAY_BUILD_DIR="$REPO_ROOT/build/overlays"
 VERSION=$(awk -F '=' '$1 == "version" { print $2; exit }' "$REPO_ROOT/module.prop")
 ZIP_NAME="CoreSurface-${VERSION}.zip"
 ZIP_PATH="$DIST_DIR/$ZIP_NAME"
@@ -13,6 +14,9 @@ SHA_PATH="${ZIP_PATH}.sha256"
 
 STAGE_DIR=$(mktemp -d)
 trap 'rm -rf "$STAGE_DIR"' EXIT INT TERM
+
+# Compile and sign clean-room RRO overlays from overlays-src/
+CORESURFACE_OVERLAY_OUT="$OVERLAY_BUILD_DIR" sh "$REPO_ROOT/scripts/build_overlays.sh"
 
 mkdir -p "$DIST_DIR"
 rm -f "$ZIP_PATH" "$SHA_PATH"
@@ -37,6 +41,11 @@ do
   cp -R "$REPO_ROOT/$item" "$STAGE_DIR/"
 done
 
+# Copy compiled clean-room RRO APKs into overlays/ inside the release ZIP
+mkdir -p "$STAGE_DIR/overlays"
+cp "$OVERLAY_BUILD_DIR"/CoreSurface*.apk "$STAGE_DIR/overlays/"
+chmod 0644 "$STAGE_DIR/overlays"/CoreSurface*.apk
+
 # Ensure executable bit on shell entrypoints inside staging
 chmod 0755 \
   "$STAGE_DIR/customize.sh" \
@@ -47,6 +56,7 @@ chmod 0755 \
   "$STAGE_DIR/lib/watchdog.sh" \
   "$STAGE_DIR/lib/props.sh" \
   "$STAGE_DIR/lib/xml_patcher.sh" \
+  "$STAGE_DIR/lib/rro.sh" \
   "$STAGE_DIR/lib/settings_tx.sh" \
   "$STAGE_DIR/lib/verifier.sh" \
   "$STAGE_DIR/lib/webui_ctl.sh"
@@ -61,8 +71,8 @@ chmod 0755 \
   sha256sum "$ZIP_NAME" > "$SHA_PATH"
 )
 
-# Verify no dev files leaked into the ZIP (unzip -Z1 lists entry paths only)
-if unzip -Z1 "$ZIP_PATH" | grep -E '^(tests/|\.github/|scripts/|dist/|\.git/)' >/dev/null 2>&1; then
+# Verify no dev/source files leaked into the ZIP (unzip -Z1 lists entry paths only)
+if unzip -Z1 "$ZIP_PATH" | grep -E '^(tests/|\.github/|scripts/|dist/|build/|overlays-src/|\.git/)' >/dev/null 2>&1; then
   printf 'ERROR: Development files leaked into %s\n' "$ZIP_PATH" >&2
   exit 1
 fi

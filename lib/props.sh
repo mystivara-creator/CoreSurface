@@ -91,7 +91,10 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"
-  cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "3"
+  # HyperOS 3+ drops persist.sys.advanced_visual_release; only apply on HyperOS 1/2 & MIUI
+  if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
+    cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "3"
+  fi
   cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
 }
 

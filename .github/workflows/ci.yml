@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   lint-and-test:
-    name: ShellCheck & Host Unit Tests
+    name: ShellCheck, JS Check & Host Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,17 +30,20 @@ jobs:
             scripts/*.sh \
             tests/*.sh
 
+      - name: Validate WebUI JavaScript syntax
+        run: node --check webroot/app.js
+
       - name: Run host unit tests
         run: sh tests/run_tests.sh
 
   package:
-    name: Build CoreSurface-v1.0.0.zip
+    name: Build Clean-Room RRO & CoreSurface-v1.0.0.zip
     needs: lint-and-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Package production module ZIP
+      - name: Build clean-room RRO overlays and package production ZIP
         run: sh scripts/package.sh
 
       - name: Verify ZIP checksum and contents

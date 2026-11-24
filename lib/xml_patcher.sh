@@ -96,6 +96,10 @@ cs_xml_build_patch_spec() {
     if [ "$EFF_FEAT_HYPERAI" = "1" ]; then
       printf 'bool|gallery_support_analytic_face_and_scene|true\n'
       printf 'bool|gallery_support_media_feature|true\n'
+      printf 'bool|gallery_support_video_compress|true\n'
+      printf 'bool|gallery_support_time_burst_video|true\n'
+      printf 'bool|gallery_support_print|true\n'
+      printf 'bool|gallery_support_dolby|true\n'
     fi
 
     # Only touch AOD tags when FEAT_AOD_UNLOCK is explicitly enabled

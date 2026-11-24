@@ -1,10 +1,11 @@
 #!/system/bin/sh
 # CoreSurface - User-Space Capability Verifier
-# Pure POSIX sh. Verifies applied resetprop values, XML bind-mount, and settings
-# after boot completion and SystemUI stability check, writing /data/adb/coresurface/verify.state.
+# Pure POSIX sh. Verifies applied resetprop values, XML bind-mount, RRO overlays
+# via `cmd overlay list --user 0`, and settings after boot completion + SystemUI health.
 
 CS_VERIFY_FILE="$CS_STATE_DIR/verify.state"
 CS_OVERRIDDEN_PROPS_FILE="$CS_STATE_DIR/overridden_props.list"
+CS_RRO_STAGED_LIST="$CS_STATE_DIR/rro_staged.list"
 
 cs_verify_set() {
   _cs_vk=$1
@@ -62,6 +63,54 @@ cs_verify_xml_mount() {
   else
     CS_V_XML_MOUNT="not_mounted"
     CS_V_XML_FEAT="ignored_by_rom"
+  fi
+}
+
+# Verify staged clean-room RRO overlays using `cmd overlay list --user 0`.
+# Sets: CS_V_RRO_FEAT, CS_V_RRO_ACTIVE, CS_V_RRO_TOTAL
+cs_verify_rro_overlays() {
+  CS_V_RRO_ACTIVE=0
+  CS_V_RRO_TOTAL=0
+
+  if [ "$CFG_FEAT_RRO_OVERLAYS" = "0" ]; then
+    CS_V_RRO_FEAT="disabled"
+    return 0
+  fi
+
+  if [ "$EFF_FEAT_RRO_OVERLAYS" != "1" ] || [ ! -s "$CS_RRO_STAGED_LIST" ]; then
+    CS_V_RRO_FEAT="skipped"
+    return 0
+  fi
+
+  if ! command -v cmd >/dev/null 2>&1; then
+    CS_V_RRO_FEAT="skipped"
+    return 0
+  fi
+
+  _cs_ov_out=$(cmd overlay list --user 0 2>&1 || true)
+  if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
+    _cs_ov_out=$(cmd overlay list 2>&1 || true)
+  fi
+  if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
+    cs_log "Verifier: cmd overlay list unavailable or Binder error; skipping RRO verification."
+    CS_V_RRO_FEAT="skipped"
+    return 0
+  fi
+
+  while IFS='|' read -r _cs_rapk _cs_rpkg || [ -n "$_cs_rapk" ]; do
+    [ -n "$_cs_rpkg" ] || continue
+    CS_V_RRO_TOTAL=$((CS_V_RRO_TOTAL + 1))
+    if printf '%s\n' "$_cs_ov_out" | grep -F -q "[x] $_cs_rpkg"; then
+      CS_V_RRO_ACTIVE=$((CS_V_RRO_ACTIVE + 1))
+    fi
+  done < "$CS_RRO_STAGED_LIST"
+
+  if [ "$CS_V_RRO_TOTAL" -eq 0 ]; then
+    CS_V_RRO_FEAT="skipped"
+  elif [ "$CS_V_RRO_ACTIVE" -gt 0 ]; then
+    CS_V_RRO_FEAT="verified_active"
+  else
+    CS_V_RRO_FEAT="ignored_by_rom"
   fi
 }
 
@@ -147,12 +196,16 @@ cs_verifier_run() {
   CS_V_PROPS_OVERRIDDEN=0
   CS_V_XML_MOUNT="skipped"
   CS_V_XML_FEAT="skipped"
+  CS_V_RRO_FEAT="skipped"
+  CS_V_RRO_ACTIVE=0
+  CS_V_RRO_TOTAL=0
 
   : > "$CS_OVERRIDDEN_PROPS_FILE"
   CS_VERIFY_TMP="$CS_VERIFY_FILE.tmp.$$"
   : > "$CS_VERIFY_TMP"
 
   cs_verify_xml_mount
+  cs_verify_rro_overlays
 
   cs_verify_feature "FEAT_BLUR" "$CFG_FEAT_BLUR" "$EFF_FEAT_BLUR"
   _cs_v_blur=$CS_VF_RESULT
@@ -170,16 +223,19 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_FEAT_BLUR" "$_cs_v_blur"
   cs_verify_set "VERIFY_FEAT_ANIMATIONS" "$_cs_v_anim"
   cs_verify_set "VERIFY_FEAT_XML_PATCHER" "$CS_V_XML_FEAT"
+  cs_verify_set "VERIFY_FEAT_RRO_OVERLAYS" "$CS_V_RRO_FEAT"
   cs_verify_set "VERIFY_FEAT_MULTITASK" "$_cs_v_multi"
   cs_verify_set "VERIFY_FEAT_DISPLAY_HZ" "$_cs_v_hz"
   cs_verify_set "VERIFY_FEAT_HYPERAI" "$_cs_v_ai"
   cs_verify_set "VERIFY_FEAT_AOD_UNLOCK" "$_cs_v_aod"
   cs_verify_set "VERIFY_XML_MOUNT" "$CS_V_XML_MOUNT"
+  cs_verify_set "VERIFY_RRO_ACTIVE" "$CS_V_RRO_ACTIVE"
+  cs_verify_set "VERIFY_RRO_TOTAL" "$CS_V_RRO_TOTAL"
   cs_verify_set "VERIFY_PROPS_TOTAL" "$CS_V_PROPS_TOTAL"
   cs_verify_set "VERIFY_PROPS_MATCHED" "$CS_V_PROPS_MATCHED"
   cs_verify_set "VERIFY_PROPS_OVERRIDDEN" "$CS_V_PROPS_OVERRIDDEN"
 
   mv -f "$CS_VERIFY_TMP" "$CS_VERIFY_FILE"
-  cs_log "Verifier: props ${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL} matched (${CS_V_PROPS_OVERRIDDEN} overridden), xml_mount=${CS_V_XML_MOUNT}."
+  cs_log "Verifier: props ${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL} matched (${CS_V_PROPS_OVERRIDDEN} overridden), xml_mount=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}."
   return 0
 }

@@ -17,9 +17,10 @@
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
 | `FEAT_BLUR` | Advanced Textures, Background Blur, CC/Folder Blur, `disable_window_blurs=0` | **High GPU/RAM** | OFF (`auto`) | ON (`auto`) | ON (`auto`) | Otomatis nonaktif pada RAM < 6 GB demi kestabilan memori. |
 | `FEAT_ANIMATIONS` | Flagship Animation & `ro.miui.device_level` / `deviceLevelList` | **Medium RAM** | ON (Lvl 2) | ON (Lvl 2+) | ON (Lvl 3) | Level animasi menyesuaikan kapasitas RAM aktual. |
-| `FEAT_XML_PATCHER` | Dynamic `device_features` XML Patcher (`mount --bind`) | **Low Load** | ON (`auto`) | ON (`auto`) | ON (`auto`) | *Fail-closed*; hanya menambal tag sesuai fitur yang aktif. |
+| `FEAT_XML_PATCHER` | Dynamic `device_features` XML Patcher (non-destruktif, SELinux-safe `mount --bind`) | **Low Load** | ON (`auto`) | ON (`auto`) | ON (`auto`) | *Fail-closed*; melindungi tag display/color/`fpsList`/`double_tap` bawaan. |
+| `FEAT_RRO_OVERLAYS` | Clean-Room RRO Overlays (SystemUI shade/gradient blur & charging ripple, ThemeManager Video Wallpaper, MiWallpaper Super Wallpaper) | **Medium GPU** | OFF (`auto`) | ON (`auto`) | ON (`auto`) | Dikompilasi dari source XML di CI (`aapt2`/`apksigner`); mendukung mode *Lite Blur* otomatis bila `FEAT_BLUR=0`. |
 | `FEAT_MULTITASK` | Relaksasi `low_ram`, Freeform/Floating Window (`max_count=4`) | **Medium RAM** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) | Default aktif hanya pada perangkat RAM ≥ 8 GB. |
-| `FEAT_DISPLAY_HZ` | Dukungan High Refresh Rate & Adaptive FPS user-space | **Medium GPU** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) | Default aktif hanya pada perangkat RAM ≥ 8 GB. |
+| `FEAT_DISPLAY_HZ` | Dukungan High Refresh Rate & Adaptive FPS user-space | **Medium GPU** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) | Default aktif hanya pada perangkat RAM ≥ 8 GB (tidak menyentuh `fpsList` XML bawaan). |
 | `FEAT_HYPERAI` | HyperAI & AI Galeri (`Opt-in`) | **High RAM** | OFF (`0`) | OFF (`0`) | OFF (`0`) | Opt-in eksplisit; otomatis di-gate hanya untuk HyperOS + Android SDK ≥ 34. |
 | `FEAT_AOD_UNLOCK` | AOD Limit Unlock (`Opt-in`) | **Low Load** | OFF (`0`) | OFF (`0`) | OFF (`0`) | Opt-in eksplisit; otomatis melewati `support_aod_fullscreen` di HyperOS 3+. |
 
@@ -32,21 +33,25 @@
 2. **Dynamic Hardware Tiering (`lib/detect.sh`):** Mengklasifikasikan perangkat otomatis ke tier RAM (`< 6 GB`, `6–7 GB`, `>= 8 GB`) dari `/proc/meminfo`.
 3. **Bootloop & SystemUI Watchdog (`lib/watchdog.sh`):**
    - Sebelum menerapkan `resetprop -n` atau XML mount, counter `/data/adb/coresurface/boot_strikes` dinaikkan (`+1`).
-   - Jika `boot_strikes >= 2`, modul otomatis membuat file `disable`, mereset `boot_strikes=0`, mencatat `safe_mode_disabled`, dan `exit 0` (*fail-closed*).
+   - Jika `boot_strikes >= 2`, modul otomatis membuat file `disable`, membersihkan staging RRO overlay, mereset `boot_strikes=0`, mencatat `safe_mode_disabled`, dan `exit 0` (*fail-closed*).
    - Di `service.sh`, Watchdog menunggu `sys.boot_completed=1`, memberi *grace window* 30 detik agar `com.android.systemui` muncul, lalu memverifikasi PID tetap stabil selama **30 detik penuh** sebelum mereset `boot_strikes=0` dan menandai `healthy`.
 4. **Safe-Mode Recovery di WebUI (`webroot/` & `lib/webui_ctl.sh`):** Menyediakan tombol **"Reset Safe-Mode & Aktifkan Kembali"** langsung dari WebUI.
 
 ### 2. Dynamic `device_features` XML Patcher (`lib/xml_patcher.sh`)
 - **Auto-Discovery Tanpa Hardcode:** Mencari XML fitur bawaan perangkat secara dinamis menggunakan nilai runtime `getprop ro.product.device` pada jalur standar HyperOS/MIUI (`/mi_ext/product/etc/device_features`, `/product/etc/device_features`, `/system/etc/device_features`, `/vendor/etc/device_features`), dengan fallback ke file `.xml` valid pertama bila penamaan berbeda.
-- **Safe Patching & Fail-Closed Bind-Mount:** Menyalin ke `/data/adb/coresurface/work/device_features.xml`, menambal hanya tag `<bool>` & `<integer>` milik fitur aktif dengan POSIX `awk`, memvalidasi struktur `<features>...</features>` tidak rusak/kosong, baru menjalankan `mount --bind`. Kegagalan apa pun langsung dilewati (`XML_STATUS=skipped`) tanpa mengganggu proses boot.
+- **Non-Destructive, SELinux-Safe & Fail-Closed:** Menyalin ke `/data/adb/coresurface/work/device_features.xml`, hanya meng-upgrade `<bool>` dari `false -> true` dan tidak pernah menurunkan `<integer>` asli, melindungi tag display/color/`fpsList`/`double_tap`, memulihkan konteks SELinux (`chcon --reference`) sebelum `mount --bind`, dan melewatkan aman (`XML_STATUS=skipped`) bila gagal.
 
-### 3. Transactional `settings` Override & Clean Rollback (`lib/settings_tx.sh`)
-- **Backup Idempoten:** Sebelum memodifikasi kunci Android `settings` (`global`/`system`/`secure`), nilai asli dibaca lewat `settings get` dan disimpan **sekali saja** ke `/data/adb/coresurface/settings_backup.prop`.
+### 3. Clean-Room RRO Overlay Layer (`overlays-src/`, `scripts/build_overlays.sh`, `lib/rro.sh`)
+- **Zero Biner di Git:** Seluruh RRO (`SystemUI`, `SystemUI Lite Blur`, `ThemeManager`, `MiWallpaper`) ditulis dalam XML source murni di `overlays-src/` dan dikompilasi serta ditandatangani otomatis oleh `aapt2` + `apksigner` saat packaging/CI.
+- **Staging Dinamis & Fail-Closed:** `lib/rro.sh` hanya men-stage APK yang sesuai ke `$MODDIR/system/product/overlay/` saat `FEAT_RRO_OVERLAYS` aktif, dan langsung membersihkannya bila fitur dimatikan di WebUI atau Safe-Mode Watchdog terpicu.
+
+### 4. Transactional `settings` Override & Clean Rollback (`lib/settings_tx.sh`)
+- **Android 16 Binder-Safe (`--user 0`) & Backup Idempoten:** Menggunakan `settings --user 0` (dengan fallback versi Android lama), menyimpan nilai asli **sekali saja** ke `/data/adb/coresurface/settings_backup.prop`.
 - **Auto-Rollback & Clean Uninstall:** Mematikan fitur di `config.prop` otomatis mengembalikan kunci `settings` terkait ke nilai aslinya (atau `settings delete` bila awalnya `null`). `uninstall.sh` menjalankan rollback penuh sebelum menghapus `/data/adb/coresurface/`.
 
-### 4. User-Space Capability Verifier (`lib/verifier.sh`)
+### 5. User-Space Capability Verifier (`lib/verifier.sh`)
 - Berjalan di `service.sh` setelah SystemUI dinyatakan stabil 30 detik.
-- Membandingkan seluruh properti di `applied_props.list` terhadap `getprop` aktual, memeriksa status *bind-mount* `device_features` di `/proc/mounts`, serta memverifikasi `settings` aktif.
+- Membandingkan seluruh properti di `applied_props.list` terhadap `getprop` aktual, memeriksa status *bind-mount* `device_features` di `/proc/mounts`, memeriksa aktivasi RRO melalui `cmd overlay list --user 0`, serta memverifikasi `settings` aktif.
 - Menulis hasil audit per fitur (`verified_active`, `ignored_by_rom`, `skipped`, atau `disabled`) ke `/data/adb/coresurface/verify.state` yang langsung ditampilkan sebagai lencana verifikasi di WebUI.
 
 ---

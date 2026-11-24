@@ -285,6 +285,37 @@ function renderOverriddenList(overridden) {
   }
 }
 
+function renderRroSummary(kv, rros) {
+  const container = document.getElementById('rro-summary');
+  const badge = document.getElementById('rro-summary-badge');
+  const vStatus = kv.verify_feat_rro_overlays || '';
+  const staged = kv.rro_staged_count || String(rros.length);
+
+  badge.className = 'pill';
+  if (vStatus === 'verified_active') {
+    badge.classList.add('on');
+    badge.textContent = 'Verified Active (' + (kv.verify_rro_active || '0') + '/' + (kv.verify_rro_total || staged) + ')';
+  } else if (vStatus === 'ignored_by_rom') {
+    badge.classList.add('danger');
+    badge.textContent = 'Ignored by ROM';
+  } else if (vStatus === 'disabled' || kv.rro_status === 'disabled') {
+    badge.textContent = 'Disabled';
+  } else if (kv.rro_status === 'staged') {
+    badge.classList.add('on');
+    badge.textContent = 'Staged (' + staged + ')';
+  } else {
+    badge.classList.add('warn');
+    badge.textContent = 'Skipped';
+  }
+
+  const apkNames = rros.map((item) => item.split('|')[0]).filter(Boolean);
+  container.replaceChildren(
+    makeKvRow('Status Staging', (kv.rro_status || 'skipped') + ' (' + staged + ' APK)'),
+    makeKvRow('Aktif (cmd overlay list)', (kv.verify_rro_active || '0') + ' / ' + (kv.verify_rro_total || staged)),
+    makeKvRow('Paket Ter-stage', apkNames.length > 0 ? apkNames.join(', ') : 'Tidak ada')
+  );
+}
+
 function setToast(msg) {
   document.getElementById('toast-msg').textContent = msg || '';
 }
@@ -293,7 +324,7 @@ async function refreshStatus() {
   const envList = document.getElementById('env-list');
   try {
     const raw = await ksuExec(CTL_SCRIPT + ' status');
-    const { kv, props, overridden, logs } = parseStatusOutput(raw);
+    const { kv, rros, props, overridden, logs } = parseStatusOutput(raw);
 
     if (!kv.rom_family || !kv.ram_tier) {
       throw new Error('Respons status tidak lengkap dari webui_ctl.sh');
@@ -322,6 +353,7 @@ async function refreshStatus() {
     );
 
     renderXmlSummary(kv);
+    renderRroSummary(kv, rros);
 
     for (const key of FEATURE_KEYS) {
       const lower = key.toLowerCase();

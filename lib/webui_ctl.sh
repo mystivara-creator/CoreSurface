@@ -9,6 +9,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(dirname -- "$SCRIPT_DIR")}
 . "$MODDIR/lib/detect.sh"
 # shellcheck source=lib/watchdog.sh
 . "$MODDIR/lib/watchdog.sh"
+# shellcheck source=lib/rro.sh
+. "$MODDIR/lib/rro.sh"
 
 CS_CONFIG_FILE="$CS_STATE_DIR/config.prop"
 CS_VERIFY_FILE="$CS_STATE_DIR/verify.state"
@@ -52,6 +54,14 @@ cs_add_pending_key() {
   fi
 }
 
+cs_sync_rro_for_next_boot() {
+  cs_detect_rom || return 0
+  cs_detect_ram_tier
+  cs_load_config "$CS_CONFIG_FILE"
+  cs_resolve_features
+  cs_rro_stage "$MODDIR" || true
+}
+
 cs_cmd_status() {
   cs_ensure_config || true
   cs_detect_rom || true
@@ -76,6 +86,8 @@ cs_cmd_status() {
   _cs_xml_reason=$(cs_state_get "XML_REASON")
   _cs_xml_source=$(cs_state_get "XML_SOURCE")
   _cs_xml_tags=$(cs_state_get "XML_PATCHED_TAGS")
+  _cs_rro_status=$(cs_state_get "RRO_STATUS")
+  _cs_rro_staged=$(cs_state_get "RRO_STAGED_COUNT")
 
   printf 'module_version=%s\n' "v1.0.0"
   printf 'watchdog_status=%s\n' "${_cs_wd_status:-unknown}"
@@ -95,6 +107,7 @@ cs_cmd_status() {
   printf 'cfg_feat_blur=%s\n' "$CFG_FEAT_BLUR"
   printf 'cfg_feat_animations=%s\n' "$CFG_FEAT_ANIMATIONS"
   printf 'cfg_feat_xml_patcher=%s\n' "$CFG_FEAT_XML_PATCHER"
+  printf 'cfg_feat_rro_overlays=%s\n' "$CFG_FEAT_RRO_OVERLAYS"
   printf 'cfg_feat_multitask=%s\n' "$CFG_FEAT_MULTITASK"
   printf 'cfg_feat_display_hz=%s\n' "$CFG_FEAT_DISPLAY_HZ"
   printf 'cfg_feat_hyperai=%s\n' "$CFG_FEAT_HYPERAI"
@@ -103,6 +116,7 @@ cs_cmd_status() {
   printf 'eff_feat_blur=%s\n' "$EFF_FEAT_BLUR"
   printf 'eff_feat_animations=%s\n' "$EFF_FEAT_ANIMATIONS"
   printf 'eff_feat_xml_patcher=%s\n' "$EFF_FEAT_XML_PATCHER"
+  printf 'eff_feat_rro_overlays=%s\n' "$EFF_FEAT_RRO_OVERLAYS"
   printf 'eff_feat_multitask=%s\n' "$EFF_FEAT_MULTITASK"
   printf 'eff_feat_display_hz=%s\n' "$EFF_FEAT_DISPLAY_HZ"
   printf 'eff_feat_hyperai=%s\n' "$EFF_FEAT_HYPERAI"
@@ -113,17 +127,29 @@ cs_cmd_status() {
   printf 'xml_source=%s\n' "${_cs_xml_source:-none}"
   printf 'xml_patched_tags=%s\n' "${_cs_xml_tags:-0}"
 
+  printf 'rro_status=%s\n' "${_cs_rro_status:-skipped}"
+  printf 'rro_staged_count=%s\n' "${_cs_rro_staged:-0}"
+
   printf 'verify_feat_blur=%s\n' "$(cs_verify_get VERIFY_FEAT_BLUR)"
   printf 'verify_feat_animations=%s\n' "$(cs_verify_get VERIFY_FEAT_ANIMATIONS)"
   printf 'verify_feat_xml_patcher=%s\n' "$(cs_verify_get VERIFY_FEAT_XML_PATCHER)"
+  printf 'verify_feat_rro_overlays=%s\n' "$(cs_verify_get VERIFY_FEAT_RRO_OVERLAYS)"
   printf 'verify_feat_multitask=%s\n' "$(cs_verify_get VERIFY_FEAT_MULTITASK)"
   printf 'verify_feat_display_hz=%s\n' "$(cs_verify_get VERIFY_FEAT_DISPLAY_HZ)"
   printf 'verify_feat_hyperai=%s\n' "$(cs_verify_get VERIFY_FEAT_HYPERAI)"
   printf 'verify_feat_aod_unlock=%s\n' "$(cs_verify_get VERIFY_FEAT_AOD_UNLOCK)"
   printf 'verify_xml_mount=%s\n' "$(cs_verify_get VERIFY_XML_MOUNT)"
+  printf 'verify_rro_active=%s\n' "$(cs_verify_get VERIFY_RRO_ACTIVE)"
+  printf 'verify_rro_total=%s\n' "$(cs_verify_get VERIFY_RRO_TOTAL)"
   printf 'verify_props_total=%s\n' "$(cs_verify_get VERIFY_PROPS_TOTAL)"
   printf 'verify_props_matched=%s\n' "$(cs_verify_get VERIFY_PROPS_MATCHED)"
   printf 'verify_props_overridden=%s\n' "$(cs_verify_get VERIFY_PROPS_OVERRIDDEN)"
+
+  printf 'rro_start\n'
+  if [ -r "$CS_RRO_STAGED_LIST" ]; then
+    cat "$CS_RRO_STAGED_LIST"
+  fi
+  printf 'rro_end\n'
 
   printf 'props_start\n'
   if [ -r "$CS_PROPS_AUDIT_FILE" ]; then
@@ -149,7 +175,7 @@ cs_cmd_set() {
   _cs_set_v=$2
 
   case "$_cs_set_k" in
-    FEAT_BLUR|FEAT_ANIMATIONS|FEAT_XML_PATCHER|FEAT_MULTITASK|FEAT_DISPLAY_HZ)
+    FEAT_BLUR|FEAT_ANIMATIONS|FEAT_XML_PATCHER|FEAT_RRO_OVERLAYS|FEAT_MULTITASK|FEAT_DISPLAY_HZ)
       case "$_cs_set_v" in
         auto|1|0) ;;
         *)
@@ -184,6 +210,12 @@ cs_cmd_set() {
   printf '%s=%s\n' "$_cs_set_k" "$_cs_set_v" >> "$_cs_tmp"
   mv -f "$_cs_tmp" "$CS_CONFIG_FILE"
 
+  case "$_cs_set_k" in
+    FEAT_RRO_OVERLAYS|FEAT_BLUR|FEAT_ANIMATIONS)
+      cs_sync_rro_for_next_boot || true
+      ;;
+  esac
+
   cs_add_pending_key "$_cs_set_k"
   cs_log "WebUI updated ${_cs_set_k}=${_cs_set_v} (reboot required)."
   printf 'Saved %s=%s. Reboot required to apply.\n' "$_cs_set_k" "$_cs_set_v"
@@ -193,6 +225,7 @@ cs_cmd_reset_safemode() {
   cs_watchdog_init_dir || return 1
   rm -f "$MODDIR/disable"
   cs_write_strikes "0"
+  cs_sync_rro_for_next_boot || true
   cs_state_set "WATCHDOG_STATUS" "pending_reboot"
   cs_state_set "WATCHDOG_REASON" "safemode_cleared_by_user"
   cs_log "WebUI cleared Safe-Mode: removed ${MODDIR}/disable, reset boot_strikes=0."

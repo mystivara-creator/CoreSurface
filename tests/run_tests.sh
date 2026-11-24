@@ -558,7 +558,7 @@ assert_file_contains "$SB/status.out" "xml_status=mounted" "WebUI exposes XML Pa
 assert_file_contains "$SB/status.out" "xml_source=$SB_XML_DIR1/aurora.xml" "WebUI exposes discovered XML source path"
 
 # Test granular key whitelist (valid + invalid)
-for _gk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_MULTITASK FEAT_DISPLAY_HZ; do
+for _gk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_MULTITASK FEAT_DISPLAY_HZ; do
   PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
   assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts granular key ${_gk}=0"
 done
@@ -584,6 +584,65 @@ printf '2\n' > "$SB_STATE/boot_strikes"
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" reset-safemode >/dev/null
 assert_eq "$( [ -f "$SB_MOD/disable" ] && printf 'yes' || printf 'no' )" "no" "reset-safemode removes auto-resolved MODDIR/disable"
 assert_eq "$(cat "$SB_STATE/boot_strikes")" "0" "reset-safemode resets boot_strikes=0"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 10: Clean-Room RRO Staging, Fail-Closed Clear, Verifier & HyperOS 3 Prop Audit ===\n'
+setup_sandbox "t10_rro_and_hos3"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+
+# Seed dummy compiled RRO APKs into $SB_MOD/overlays/
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUILiteBlur.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceThemeManager.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceMiWallpaper.apk"
+
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+cat > "$SB_BIN/cmd" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = "overlay" ] && [ "${2:-}" = "list" ]; then
+  printf 'com.android.systemui\n[x] org.mystivara.coresurface.overlay.systemui\n'
+  printf 'com.android.thememanager\n[x] org.mystivara.coresurface.overlay.thememanager\n'
+  printf 'com.miui.miwallpaper\n[x] org.mystivara.coresurface.overlay.miwallpaper\n'
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$SB_BIN/cmd"
+
+run_post_fs_data
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUI.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceSystemUI.apk on >= 6 GB RAM"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUILiteBlur.apk" ] && printf 'yes' || printf 'no' )" "no" "RRO skips LiteBlur overlay when full FEAT_BLUR is active"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceThemeManager.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceThemeManager.apk"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiWallpaper.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceMiWallpaper.apk"
+
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "HyperOS 3 FEAT_BLUR achieves 100% verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_RRO_OVERLAYS=verified_active" "Verifier marks active RRO overlays via cmd overlay list as verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_RRO_ACTIVE=3" "Verifier counts 3/3 active RRO overlays"
+
+# Turning FEAT_RRO_OVERLAYS=0 via webui_ctl immediately unstages RRO APKs for next boot
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_RRO_OVERLAYS 0 >/dev/null
+assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Setting FEAT_RRO_OVERLAYS=0 clears staged overlays for next boot"
+
+# Turning FEAT_RRO_OVERLAYS=1 + FEAT_BLUR=0 stages LiteBlur overlay
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_BLUR 0 >/dev/null
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_RRO_OVERLAYS 1 >/dev/null
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUILiteBlur.apk" ] && printf 'yes' || printf 'no' )" "yes" "Enabling RRO with FEAT_BLUR=0 stages CoreSurfaceSystemUILiteBlur.apk"
+
+# Watchdog Safe-Mode (boot_strikes=2) clears staged RRO APKs fail-closed
+printf '2\n' > "$SB_STATE/boot_strikes"
+run_post_fs_data
+assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears staged RRO overlays fail-closed"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
