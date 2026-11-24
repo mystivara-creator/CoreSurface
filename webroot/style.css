@@ -376,10 +376,69 @@ code {
   cursor: pointer;
 }
 
+.btn-secondary {
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
 .btn-danger {
   background: var(--danger);
   color: #24070b;
   align-self: flex-start;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 460px) {
+  .preset-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.btn-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.btn-preset strong {
+  font-size: 13px;
+}
+
+.btn-preset span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.btn-preset:active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.export-box {
+  width: 100%;
+  resize: vertical;
+  color: var(--text);
 }
 
 .summary-title {

@@ -19,10 +19,19 @@
 | `FEAT_ANIMATIONS` | Flagship Animation & `ro.miui.device_level` / `deviceLevelList` | **Medium RAM** | ON (Lvl 2) | ON (Lvl 2+) | ON (Lvl 3) | Level animasi menyesuaikan kapasitas RAM aktual. |
 | `FEAT_XML_PATCHER` | Dynamic `device_features` XML Patcher (non-destruktif, SELinux-safe `mount --bind`) | **Low Load** | ON (`auto`) | ON (`auto`) | ON (`auto`) | *Fail-closed*; melindungi tag display/color/`fpsList`/`double_tap` bawaan. |
 | `FEAT_RRO_OVERLAYS` | Clean-Room RRO Overlays (SystemUI shade/gradient blur & charging ripple, ThemeManager Video Wallpaper, MiWallpaper Super Wallpaper) | **Medium GPU** | OFF (`auto`) | ON (`auto`) | ON (`auto`) | Dikompilasi dari source XML di CI (`aapt2`/`apksigner`); mendukung mode *Lite Blur* otomatis bila `FEAT_BLUR=0`. |
-| `FEAT_MULTITASK` | Relaksasi `low_ram`, Freeform/Floating Window (`max_count=4`) | **Medium RAM** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) | Default aktif hanya pada perangkat RAM ≥ 8 GB. |
+| `FEAT_ISLAND` | HyperOS Dynamic Island (animasi & shader) | **Low Load** | OFF (`auto`) | ON (HOS ≥ 2) | ON (HOS ≥ 2) | Aktif otomatis pada HyperOS 2/3 dengan RAM ≥ 6 GB. |
+| `FEAT_VIDEO_DEPTH` | Lockscreen Video Depth (`enable_video_depth` zero-byte marker) | **Low Load** | OFF (`auto`) | ON (`auto`) | ON (`auto`) | Tanpa biner; ikut dibersihkan fail-closed oleh Watchdog. |
+| `FEAT_MULTITASK` | Relaksasi `low_ram` & ambang GB, Freeform/Floating Window (`max_count=4`), One-Handed Mode, Partial Screenshot | **Medium RAM** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) | Default aktif hanya pada perangkat RAM ≥ 8 GB. |
 | `FEAT_DISPLAY_HZ` | Dukungan High Refresh Rate & Adaptive FPS user-space | **Medium GPU** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) | Default aktif hanya pada perangkat RAM ≥ 8 GB (tidak menyentuh `fpsList` XML bawaan). |
 | `FEAT_HYPERAI` | HyperAI & AI Galeri (`Opt-in`) | **High RAM** | OFF (`0`) | OFF (`0`) | OFF (`0`) | Opt-in eksplisit; otomatis di-gate hanya untuk HyperOS + Android SDK ≥ 34. |
 | `FEAT_AOD_UNLOCK` | AOD Limit Unlock (`Opt-in`) | **Low Load** | OFF (`0`) | OFF (`0`) | OFF (`0`) | Opt-in eksplisit; otomatis melewati `support_aod_fullscreen` di HyperOS 3+. |
+
+### Preset Profil 1-Klik & Aksi Cepat di WebUI
+- **Stock Safe:** Paling ringan & hemat daya (hanya animasi & XML non-destruktif; langsung me-rollback `settings` dan membersihkan RRO).
+- **Balanced Daily:** Profil otomatis berbasis *Dynamic RAM Tiering* (`auto`).
+- **Flagship Max:** Mengaktifkan seluruh 8 fitur UI/blur/RRO/Island/Video Depth secara penuh (tetap menjaga fitur eksperimental opt-in).
+- **Hot-Apply Settings (Tanpa Reboot):** Menerapkan/me-rollback `settings --user 0` dan memverifikasi ulang secara instan.
+- **ROM Compatibility Score (%) & Export Diagnostik 1-Klik:** Menampilkan persentase fitur aktif yang terverifikasi nyata serta menyalin laporan diagnostik bersih tanpa IMEI/serial.
 
 ---
 

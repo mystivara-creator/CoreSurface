@@ -567,7 +567,7 @@ assert_file_contains "$SB/status.out" "xml_status=mounted" "WebUI exposes XML Pa
 assert_file_contains "$SB/status.out" "xml_source=$SB_XML_DIR1/aurora.xml" "WebUI exposes discovered XML source path"
 
 # Test granular key whitelist (valid + invalid)
-for _gk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_MULTITASK FEAT_DISPLAY_HZ; do
+for _gk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_ISLAND FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ; do
   PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
   assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts granular key ${_gk}=0"
 done
@@ -601,7 +601,6 @@ write_mock_getprop "OS3.0" "" "36" "1" "aurora"
 write_mock_meminfo "7800000"
 write_sample_xml "$SB_XML_DIR1/aurora.xml"
 
-# Seed dummy compiled RRO APKs into $SB_MOD/overlays/
 mkdir -p "$SB_MOD/overlays"
 printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
 printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUILiteBlur.apk"
@@ -629,15 +628,20 @@ chmod +x "$SB_BIN/cmd"
 
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island=1" "HyperOS 3 auto-enables FEAT_ISLAND on >= 6 GB RAM"
+assert_eq "$( [ -f "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'yes' || printf 'no' )" "yes" "Stages zero-byte Lockscreen Video Depth marker"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUI.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceSystemUI.apk on >= 6 GB RAM"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUILiteBlur.apk" ] && printf 'yes' || printf 'no' )" "no" "RRO skips LiteBlur overlay when full FEAT_BLUR is active"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceThemeManager.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceThemeManager.apk"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiWallpaper.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceMiWallpaper.apk"
 
-run_service
+CORESURFACE_VIDEO_DEPTH_PATH="$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "HyperOS 3 FEAT_BLUR achieves 100% verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_ISLAND=verified_active" "Verifier marks FEAT_ISLAND as verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_VIDEO_DEPTH=verified_active" "Verifier marks FEAT_VIDEO_DEPTH as verified_active"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_RRO_OVERLAYS=verified_active" "Verifier marks active RRO overlays via cmd overlay list as verified_active"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_RRO_ACTIVE=3" "Verifier counts 3/3 active RRO overlays"
+assert_file_contains "$SB_STATE/verify.state" "COMPAT_SCORE_PCT=100" "ROM Compatibility Score reaches 100% when all active features match"
 
 # Turning FEAT_RRO_OVERLAYS=0 via webui_ctl immediately unstages RRO APKs for next boot
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_RRO_OVERLAYS 0 >/dev/null
@@ -648,10 +652,56 @@ PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_RRO_OVERLAYS 1 >/dev/null
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUILiteBlur.apk" ] && printf 'yes' || printf 'no' )" "yes" "Enabling RRO with FEAT_BLUR=0 stages CoreSurfaceSystemUILiteBlur.apk"
 
-# Watchdog Safe-Mode (boot_strikes=2) clears staged RRO APKs fail-closed
+# Watchdog Safe-Mode (boot_strikes=2) clears staged RRO APKs & Video Depth marker fail-closed
 printf '2\n' > "$SB_STATE/boot_strikes"
 run_post_fs_data
 assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears staged RRO overlays fail-closed"
+assert_eq "$( [ -e "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears Video Depth marker fail-closed"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 11: 1-Click Presets, Instant Settings Hot-Sync & Diagnostic Report ===\n'
+setup_sandbox "t11_presets_hotsync"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora"
+write_mock_meminfo "7800000"
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
+
+# Preset: flagship-max -> enables all core features and hot-syncs settings immediately
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" preset flagship-max >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_ISLAND=1" "Preset flagship-max sets FEAT_ISLAND=1"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_VIDEO_DEPTH=1" "Preset flagship-max sets FEAT_VIDEO_DEPTH=1"
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "Preset flagship-max immediately hot-syncs settings"
+
+# Preset: stock-safe -> turns off heavy features and immediately rolls back settings
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" preset stock-safe >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_BLUR=0" "Preset stock-safe disables FEAT_BLUR"
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=1" "Preset stock-safe immediately rolls back disable_window_blurs=1"
+assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Preset stock-safe clears staged RRO overlays"
+
+# Preset: balanced + hot-sync + diag-report
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" preset balanced >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_BLUR=auto" "Preset balanced restores FEAT_BLUR=auto"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" hot-sync >/dev/null
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync applies settings without reboot"
+
+_diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
+printf '%s\n' "$_diag" > "$SB/diag.txt"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.0.0 Diagnostic Report ===" "diag-report outputs structured header"
+assert_file_contains "$SB/diag.txt" "Compatibility Score:" "diag-report includes Compatibility Score"
+assert_file_contains "$SB/diag.txt" "FEAT_ISLAND=" "diag-report includes per-feature verification summary"
+
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" preset invalid-mode >/dev/null 2>&1; then
+  fail "WebUI should reject unknown preset name"
+else
+  pass "WebUI rejects unknown preset name"
+fi
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

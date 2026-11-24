@@ -84,8 +84,6 @@ cs_detect_ram_tier() {
 }
 
 # Load user config safely without executing arbitrary shell code.
-# Sets: CFG_FEAT_BLUR, CFG_FEAT_ANIMATIONS, CFG_FEAT_XML_PATCHER, CFG_FEAT_RRO_OVERLAYS,
-#       CFG_FEAT_MULTITASK, CFG_FEAT_DISPLAY_HZ, CFG_FEAT_HYPERAI, CFG_FEAT_AOD_UNLOCK
 cs_load_config() {
   _cs_cfg_file=$1
 
@@ -93,12 +91,15 @@ cs_load_config() {
   CFG_FEAT_ANIMATIONS="auto"
   CFG_FEAT_XML_PATCHER="auto"
   CFG_FEAT_RRO_OVERLAYS="auto"
+  CFG_FEAT_ISLAND="auto"
+  CFG_FEAT_VIDEO_DEPTH="auto"
   CFG_FEAT_MULTITASK="auto"
   CFG_FEAT_DISPLAY_HZ="auto"
   CFG_FEAT_HYPERAI="0"
   CFG_FEAT_AOD_UNLOCK="0"
   export CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
-    CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ CFG_FEAT_HYPERAI CFG_FEAT_AOD_UNLOCK
+    CFG_FEAT_ISLAND CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ \
+    CFG_FEAT_HYPERAI CFG_FEAT_AOD_UNLOCK
 
   [ -r "$_cs_cfg_file" ] || return 0
 
@@ -119,6 +120,12 @@ cs_load_config() {
       FEAT_RRO_OVERLAYS)
         case "$_cs_v" in auto|1|0) CFG_FEAT_RRO_OVERLAYS="$_cs_v" ;; esac
         ;;
+      FEAT_ISLAND)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_ISLAND="$_cs_v" ;; esac
+        ;;
+      FEAT_VIDEO_DEPTH)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_VIDEO_DEPTH="$_cs_v" ;; esac
+        ;;
       FEAT_MULTITASK)
         case "$_cs_v" in auto|1|0) CFG_FEAT_MULTITASK="$_cs_v" ;; esac
         ;;
@@ -136,19 +143,20 @@ cs_load_config() {
 }
 
 # Resolve effective per-feature enablement from config + dynamic hardware tiering.
-# Sets: EFF_FEAT_BLUR, EFF_FEAT_ANIMATIONS, EFF_FEAT_XML_PATCHER, EFF_FEAT_RRO_OVERLAYS,
-#       EFF_FEAT_MULTITASK, EFF_FEAT_DISPLAY_HZ, EFF_FEAT_HYPERAI, EFF_FEAT_AOD_UNLOCK
 cs_resolve_features() {
   EFF_FEAT_BLUR="0"
   EFF_FEAT_ANIMATIONS="0"
   EFF_FEAT_XML_PATCHER="0"
   EFF_FEAT_RRO_OVERLAYS="0"
+  EFF_FEAT_ISLAND="0"
+  EFF_FEAT_VIDEO_DEPTH="0"
   EFF_FEAT_MULTITASK="0"
   EFF_FEAT_DISPLAY_HZ="0"
   EFF_FEAT_HYPERAI="0"
   EFF_FEAT_AOD_UNLOCK="0"
   export EFF_FEAT_BLUR EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER EFF_FEAT_RRO_OVERLAYS \
-    EFF_FEAT_MULTITASK EFF_FEAT_DISPLAY_HZ EFF_FEAT_HYPERAI EFF_FEAT_AOD_UNLOCK
+    EFF_FEAT_ISLAND EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK EFF_FEAT_DISPLAY_HZ \
+    EFF_FEAT_HYPERAI EFF_FEAT_AOD_UNLOCK
 
   # FEAT_BLUR: High GPU/RAM load -> default ON only if RAM >= 6 GB (mid/high)
   case "$CFG_FEAT_BLUR" in
@@ -161,7 +169,7 @@ cs_resolve_features() {
     0) EFF_FEAT_BLUR="0" ;;
   esac
 
-  # FEAT_ANIMATIONS: Default ON across all tiers (device_level scales with RAM tier)
+  # FEAT_ANIMATIONS: Default ON across all tiers (scales with RAM tier)
   case "$CFG_FEAT_ANIMATIONS" in
     1|auto) EFF_FEAT_ANIMATIONS="1" ;;
     0) EFF_FEAT_ANIMATIONS="0" ;;
@@ -182,6 +190,36 @@ cs_resolve_features() {
       fi
       ;;
     0) EFF_FEAT_RRO_OVERLAYS="0" ;;
+  esac
+
+  # FEAT_ISLAND: HyperOS Dynamic Island -> auto ON on HyperOS >= 2 and RAM >= 6 GB
+  case "$CFG_FEAT_ISLAND" in
+    1)
+      if [ "$CS_ROM_FAMILY" = "hyperos" ]; then
+        EFF_FEAT_ISLAND="1"
+      fi
+      ;;
+    auto)
+      if [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "${CS_HYPEROS_MAJOR:-0}" -ge 2 ] && [ "$CS_RAM_TIER" != "low" ]; then
+        EFF_FEAT_ISLAND="1"
+      fi
+      ;;
+    0) EFF_FEAT_ISLAND="0" ;;
+  esac
+
+  # FEAT_VIDEO_DEPTH: Lockscreen Video Depth -> auto ON on HyperOS and RAM >= 6 GB
+  case "$CFG_FEAT_VIDEO_DEPTH" in
+    1)
+      if [ "$CS_ROM_FAMILY" = "hyperos" ]; then
+        EFF_FEAT_VIDEO_DEPTH="1"
+      fi
+      ;;
+    auto)
+      if [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "$CS_RAM_TIER" != "low" ]; then
+        EFF_FEAT_VIDEO_DEPTH="1"
+      fi
+      ;;
+    0) EFF_FEAT_VIDEO_DEPTH="0" ;;
   esac
 
   # FEAT_MULTITASK: Default ON only when RAM >= 8 GB (high)

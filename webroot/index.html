@@ -18,12 +18,13 @@
       </div>
       <div class="badge-row">
         <span id="watchdog-badge" class="badge badge-neutral">Memeriksa Watchdog…</span>
+        <span id="compat-badge" class="badge badge-neutral hidden">Skor ROM: -</span>
         <span id="coreflow-badge" class="badge badge-coreflow hidden">CoreFlow Thermal Guard Active</span>
       </div>
     </header>
 
     <div id="reboot-banner" class="banner banner-info hidden" role="status">
-      <strong>Perubahan disimpan.</strong> Reboot perangkat agar konfigurasi baru diterapkan &amp; diverifikasi.
+      <strong>Perubahan disimpan.</strong> Reboot perangkat agar properti early-boot &amp; RRO baru berlaku.
     </div>
 
     <div id="safemode-banner" class="banner banner-danger hidden" role="alert">
@@ -33,6 +34,29 @@
       </div>
       <button id="btn-reset-safemode" class="btn btn-danger" type="button">Reset Safe-Mode &amp; Aktifkan Kembali</button>
     </div>
+
+    <section class="card">
+      <h2>Preset Profil 1-Klik &amp; Aksi Cepat</h2>
+      <p class="hint">Pilih profil aman dalam satu ketukan. Preset langsung menyinkronkan <code>settings</code> tanpa reboot dan menyiapkan RRO untuk boot berikutnya.</p>
+      <div class="preset-grid">
+        <button type="button" class="btn-preset" data-preset="stock-safe">
+          <strong>Stock Safe</strong>
+          <span>Paling ringan &amp; hemat daya</span>
+        </button>
+        <button type="button" class="btn-preset" data-preset="balanced">
+          <strong>Balanced Daily</strong>
+          <span>Auto sesuai RAM Tier</span>
+        </button>
+        <button type="button" class="btn-preset" data-preset="flagship-max">
+          <strong>Flagship Max</strong>
+          <span>Semua UI &amp; blur penuh</span>
+        </button>
+      </div>
+      <div class="quick-actions">
+        <button id="btn-hot-sync" class="btn btn-secondary" type="button">Hot-Apply Settings (Tanpa Reboot)</button>
+        <button id="btn-export-diag" class="btn btn-secondary" type="button">Salin Laporan Diagnostik</button>
+      </div>
+    </section>
 
     <section class="card">
       <h2>Lingkungan &amp; Hardware</h2>
@@ -53,7 +77,7 @@
 
     <section class="card">
       <div class="card-head">
-        <h2>Clean-Room RRO Overlays</h2>
+        <h2>Clean-Room RRO &amp; Depth</h2>
         <span id="rro-summary-badge" class="pill">-</span>
       </div>
       <div class="kv-list" id="rro-summary">
@@ -75,7 +99,7 @@
                 <span id="verify-FEAT_BLUR" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Background blur, Control Center/folder blur, &amp; <code>disable_window_blurs=0</code>. Auto ON jika RAM ≥ 6 GB.</p>
+            <p class="feat-desc">SurfaceFlinger/Window blur konsisten, CC/folder blur, MiShadow, smooth corners, &amp; <code>disable_window_blurs=0</code>. Auto ON jika RAM ≥ 6 GB.</p>
           </div>
           <div class="seg-group" data-key="FEAT_BLUR" role="group" aria-label="Advanced Textures and Blur">
             <button type="button" data-val="auto">Auto</button>
@@ -87,13 +111,13 @@
         <div class="feat-card" data-feat="FEAT_ANIMATIONS">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Flagship Animation &amp; Device Level</h3>
+              <h3>Flagship Animation &amp; HyperTransition</h3>
               <div class="meta-pills">
                 <span class="load-pill load-med">Medium RAM</span>
                 <span id="verify-FEAT_ANIMATIONS" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Menyesuaikan <code>ro.miui.device_level</code> &amp; <code>deviceLevelList</code> dinamis sesuai tier RAM.</p>
+            <p class="feat-desc">Computility V1/V2, HyperTransition v3, parallel sweep, &amp; <code>deviceLevelList</code> dinamis sesuai RAM tier.</p>
           </div>
           <div class="seg-group" data-key="FEAT_ANIMATIONS" role="group" aria-label="Flagship Animations">
             <button type="button" data-val="auto">Auto</button>
@@ -138,6 +162,42 @@
           </div>
         </div>
 
+        <div class="feat-card" data-feat="FEAT_ISLAND">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>HyperOS Dynamic Island</h3>
+              <div class="meta-pills">
+                <span class="load-pill load-low">Low Load</span>
+                <span id="verify-FEAT_ISLAND" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Mengaktifkan fitur Island beserta animasi &amp; shader pada HyperOS 2/3. Auto ON jika HyperOS ≥ 2 &amp; RAM ≥ 6 GB.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_ISLAND" role="group" aria-label="HyperOS Dynamic Island">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card" data-feat="FEAT_VIDEO_DEPTH">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Lockscreen Video Depth</h3>
+              <div class="meta-pills">
+                <span class="load-pill load-low">Low Load</span>
+                <span id="verify-FEAT_VIDEO_DEPTH" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Marker zero-byte <code>enable_video_depth</code> untuk efek kedalaman video lockscreen HyperOS. Auto ON jika RAM ≥ 6 GB.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_VIDEO_DEPTH" role="group" aria-label="Lockscreen Video Depth">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
         <div class="feat-card" data-feat="FEAT_MULTITASK">
           <div class="feat-head">
             <div class="feat-title-wrap">
@@ -147,7 +207,7 @@
                 <span id="verify-FEAT_MULTITASK" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Relaksasi <code>low_ram</code>, batas floating window, &amp; freeform multitasking. Auto ON jika RAM ≥ 8 GB.</p>
+            <p class="feat-desc">Relaksasi <code>low_ram</code> &amp; ambang GB, freeform window, one-handed mode, &amp; partial screenshot. Auto ON jika RAM ≥ 8 GB.</p>
           </div>
           <div class="seg-group" data-key="FEAT_MULTITASK" role="group" aria-label="Multitasking">
             <button type="button" data-val="auto">Auto</button>
@@ -165,7 +225,7 @@
                 <span id="verify-FEAT_DISPLAY_HZ" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Flag dukungan smart/high refresh rate &amp; adaptive FPS user-space. Auto ON jika RAM ≥ 8 GB.</p>
+            <p class="feat-desc">Flag dukungan high refresh rate &amp; adaptive FPS user-space (tidak menyentuh <code>fpsList</code> XML bawaan). Auto ON jika RAM ≥ 8 GB.</p>
           </div>
           <div class="seg-group" data-key="FEAT_DISPLAY_HZ" role="group" aria-label="High Refresh Rate">
             <button type="button" data-val="auto">Auto</button>
@@ -232,6 +292,10 @@
         <summary class="summary-title">Log Watchdog &amp; Diagnostik</summary>
         <pre id="diag-log" class="log-box">Memuat log…</pre>
       </details>
+      <div id="diag-export-wrap" class="hidden">
+        <p class="hint" style="margin-top:10px">Laporan diagnostik (bebas IMEI/serial):</p>
+        <textarea id="diag-export-box" class="log-box export-box" rows="8" readonly></textarea>
+      </div>
       <p id="toast-msg" class="toast-msg" aria-live="polite"></p>
     </section>
   </main>

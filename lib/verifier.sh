@@ -1,7 +1,7 @@
 #!/system/bin/sh
-# CoreSurface - User-Space Capability Verifier
+# CoreSurface - User-Space Capability Verifier & ROM Compatibility Scorer
 # Pure POSIX sh. Verifies applied resetprop values, XML bind-mount, RRO overlays
-# via `cmd overlay list --user 0`, and settings after boot completion + SystemUI health.
+# via `cmd overlay list --user 0`, Video Depth marker, and settings -> verify.state.
 
 CS_VERIFY_FILE="$CS_STATE_DIR/verify.state"
 CS_OVERRIDDEN_PROPS_FILE="$CS_STATE_DIR/overridden_props.list"
@@ -66,8 +66,6 @@ cs_verify_xml_mount() {
   fi
 }
 
-# Verify staged clean-room RRO overlays using `cmd overlay list --user 0`.
-# Sets: CS_V_RRO_FEAT, CS_V_RRO_ACTIVE, CS_V_RRO_TOTAL
 cs_verify_rro_overlays() {
   CS_V_RRO_ACTIVE=0
   CS_V_RRO_TOTAL=0
@@ -111,6 +109,23 @@ cs_verify_rro_overlays() {
     CS_V_RRO_FEAT="verified_active"
   else
     CS_V_RRO_FEAT="ignored_by_rom"
+  fi
+}
+
+cs_verify_video_depth() {
+  _cs_vd_path=${CORESURFACE_VIDEO_DEPTH_PATH:-/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth}
+  if [ "$CFG_FEAT_VIDEO_DEPTH" = "0" ]; then
+    CS_V_VIDEO_DEPTH="disabled"
+    return 0
+  fi
+  if [ "$EFF_FEAT_VIDEO_DEPTH" != "1" ]; then
+    CS_V_VIDEO_DEPTH="skipped"
+    return 0
+  fi
+  if [ -e "$_cs_vd_path" ]; then
+    CS_V_VIDEO_DEPTH="verified_active"
+  else
+    CS_V_VIDEO_DEPTH="ignored_by_rom"
   fi
 }
 
@@ -165,7 +180,6 @@ cs_verify_feature() {
         continue
       fi
 
-      # Treat Binder Failure/Exception as skipped (not ignored_by_rom)
       if ! cs_verify_settings_get "$_cs_sns" "$_cs_sk"; then
         cs_log "Verifier: settings --user 0 get ${_cs_sns}/${_cs_sk} returned Binder error; skipping setting check."
         continue
@@ -188,6 +202,18 @@ cs_verify_feature() {
   fi
 }
 
+cs_score_tally() {
+  case "$1" in
+    verified_active)
+      CS_V_FEAT_EVALUATED=$((CS_V_FEAT_EVALUATED + 1))
+      CS_V_FEAT_VERIFIED=$((CS_V_FEAT_VERIFIED + 1))
+      ;;
+    ignored_by_rom)
+      CS_V_FEAT_EVALUATED=$((CS_V_FEAT_EVALUATED + 1))
+      ;;
+  esac
+}
+
 cs_verifier_run() {
   cs_watchdog_init_dir || return 1
 
@@ -199,6 +225,9 @@ cs_verifier_run() {
   CS_V_RRO_FEAT="skipped"
   CS_V_RRO_ACTIVE=0
   CS_V_RRO_TOTAL=0
+  CS_V_VIDEO_DEPTH="skipped"
+  CS_V_FEAT_EVALUATED=0
+  CS_V_FEAT_VERIFIED=0
 
   : > "$CS_OVERRIDDEN_PROPS_FILE"
   CS_VERIFY_TMP="$CS_VERIFY_FILE.tmp.$$"
@@ -206,11 +235,14 @@ cs_verifier_run() {
 
   cs_verify_xml_mount
   cs_verify_rro_overlays
+  cs_verify_video_depth
 
   cs_verify_feature "FEAT_BLUR" "$CFG_FEAT_BLUR" "$EFF_FEAT_BLUR"
   _cs_v_blur=$CS_VF_RESULT
   cs_verify_feature "FEAT_ANIMATIONS" "$CFG_FEAT_ANIMATIONS" "$EFF_FEAT_ANIMATIONS"
   _cs_v_anim=$CS_VF_RESULT
+  cs_verify_feature "FEAT_ISLAND" "$CFG_FEAT_ISLAND" "$EFF_FEAT_ISLAND"
+  _cs_v_island=$CS_VF_RESULT
   cs_verify_feature "FEAT_MULTITASK" "$CFG_FEAT_MULTITASK" "$EFF_FEAT_MULTITASK"
   _cs_v_multi=$CS_VF_RESULT
   cs_verify_feature "FEAT_DISPLAY_HZ" "$CFG_FEAT_DISPLAY_HZ" "$EFF_FEAT_DISPLAY_HZ"
@@ -220,10 +252,24 @@ cs_verifier_run() {
   cs_verify_feature "FEAT_AOD_UNLOCK" "$CFG_FEAT_AOD_UNLOCK" "$EFF_FEAT_AOD_UNLOCK"
   _cs_v_aod=$CS_VF_RESULT
 
+  for _cs_s in "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
+    "$_cs_v_island" "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" "$_cs_v_ai" "$_cs_v_aod"
+  do
+    cs_score_tally "$_cs_s"
+  done
+
+  if [ "$CS_V_FEAT_EVALUATED" -gt 0 ]; then
+    _cs_compat_pct=$((CS_V_FEAT_VERIFIED * 100 / CS_V_FEAT_EVALUATED))
+  else
+    _cs_compat_pct=0
+  fi
+
   cs_verify_set "VERIFY_FEAT_BLUR" "$_cs_v_blur"
   cs_verify_set "VERIFY_FEAT_ANIMATIONS" "$_cs_v_anim"
   cs_verify_set "VERIFY_FEAT_XML_PATCHER" "$CS_V_XML_FEAT"
   cs_verify_set "VERIFY_FEAT_RRO_OVERLAYS" "$CS_V_RRO_FEAT"
+  cs_verify_set "VERIFY_FEAT_ISLAND" "$_cs_v_island"
+  cs_verify_set "VERIFY_FEAT_VIDEO_DEPTH" "$CS_V_VIDEO_DEPTH"
   cs_verify_set "VERIFY_FEAT_MULTITASK" "$_cs_v_multi"
   cs_verify_set "VERIFY_FEAT_DISPLAY_HZ" "$_cs_v_hz"
   cs_verify_set "VERIFY_FEAT_HYPERAI" "$_cs_v_ai"
@@ -234,8 +280,11 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_PROPS_TOTAL" "$CS_V_PROPS_TOTAL"
   cs_verify_set "VERIFY_PROPS_MATCHED" "$CS_V_PROPS_MATCHED"
   cs_verify_set "VERIFY_PROPS_OVERRIDDEN" "$CS_V_PROPS_OVERRIDDEN"
+  cs_verify_set "VERIFY_FEAT_VERIFIED" "$CS_V_FEAT_VERIFIED"
+  cs_verify_set "VERIFY_FEAT_EVALUATED" "$CS_V_FEAT_EVALUATED"
+  cs_verify_set "COMPAT_SCORE_PCT" "$_cs_compat_pct"
 
   mv -f "$CS_VERIFY_TMP" "$CS_VERIFY_FILE"
-  cs_log "Verifier: props ${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL} matched (${CS_V_PROPS_OVERRIDDEN} overridden), xml_mount=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}."
+  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED} features), props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}."
   return 0
 }

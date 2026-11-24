@@ -7,6 +7,9 @@ const FEATURE_KEYS = [
   'FEAT_BLUR',
   'FEAT_ANIMATIONS',
   'FEAT_XML_PATCHER',
+  'FEAT_RRO_OVERLAYS',
+  'FEAT_ISLAND',
+  'FEAT_VIDEO_DEPTH',
   'FEAT_MULTITASK',
   'FEAT_DISPLAY_HZ',
   'FEAT_HYPERAI',
@@ -57,12 +60,15 @@ function ksuExec(command) {
 
 function parseStatusOutput(raw) {
   const kv = {};
+  const rros = [];
   const props = [];
   const overridden = [];
   const logs = [];
   let section = 'kv';
 
   for (const line of raw.split(/\r?\n/)) {
+    if (line === 'rro_start') { section = 'rro'; continue; }
+    if (line === 'rro_end') { section = 'kv'; continue; }
     if (line === 'props_start') { section = 'props'; continue; }
     if (line === 'props_end') { section = 'kv'; continue; }
     if (line === 'overridden_start') { section = 'overridden'; continue; }
@@ -70,6 +76,10 @@ function parseStatusOutput(raw) {
     if (line === 'log_start') { section = 'log'; continue; }
     if (line === 'log_end') { section = 'kv'; continue; }
 
+    if (section === 'rro') {
+      if (line.trim()) rros.push(line.trim());
+      continue;
+    }
     if (section === 'props') {
       if (line.trim()) props.push(line.trim());
       continue;
@@ -89,7 +99,7 @@ function parseStatusOutput(raw) {
     }
   }
 
-  return { kv, props, overridden, logs };
+  return { kv, rros, props, overridden, logs };
 }
 
 function makeKvRow(label, value) {
@@ -137,6 +147,28 @@ function renderWatchdogBadge(kv) {
     badge.classList.add('badge-neutral');
     badge.textContent = 'Watchdog: ' + status;
   }
+}
+
+function renderCompatBadge(kv) {
+  const badge = document.getElementById('compat-badge');
+  const pct = kv.compat_score_pct;
+  const evalCount = Number(kv.verify_feat_evaluated || 0);
+
+  if (!pct || evalCount <= 0) {
+    badge.classList.add('hidden');
+    return;
+  }
+
+  const num = Number(pct);
+  badge.className = 'badge';
+  if (num >= 85) {
+    badge.classList.add('badge-ok');
+  } else if (num >= 50) {
+    badge.classList.add('badge-warn');
+  } else {
+    badge.classList.add('badge-danger');
+  }
+  badge.textContent = 'Skor ROM: ' + pct + '% (' + (kv.verify_feat_verified || '0') + '/' + evalCount + ')';
 }
 
 function setSegmentValue(key, val) {
@@ -219,6 +251,38 @@ function renderXmlSummary(kv) {
   );
 }
 
+function renderRroSummary(kv, rros) {
+  const container = document.getElementById('rro-summary');
+  const badge = document.getElementById('rro-summary-badge');
+  const vStatus = kv.verify_feat_rro_overlays || '';
+  const staged = kv.rro_staged_count || String(rros.length);
+
+  badge.className = 'pill';
+  if (vStatus === 'verified_active') {
+    badge.classList.add('on');
+    badge.textContent = 'Verified Active (' + (kv.verify_rro_active || '0') + '/' + (kv.verify_rro_total || staged) + ')';
+  } else if (vStatus === 'ignored_by_rom') {
+    badge.classList.add('danger');
+    badge.textContent = 'Ignored by ROM';
+  } else if (vStatus === 'disabled' || kv.rro_status === 'disabled') {
+    badge.textContent = 'Disabled';
+  } else if (kv.rro_status === 'staged') {
+    badge.classList.add('on');
+    badge.textContent = 'Staged (' + staged + ')';
+  } else {
+    badge.classList.add('warn');
+    badge.textContent = 'Skipped';
+  }
+
+  const apkNames = rros.map((item) => item.split('|')[0]).filter(Boolean);
+  container.replaceChildren(
+    makeKvRow('RRO Staging', (kv.rro_status || 'skipped') + ' (' + staged + ' APK)'),
+    makeKvRow('Aktif (cmd overlay list)', (kv.verify_rro_active || '0') + ' / ' + (kv.verify_rro_total || staged)),
+    makeKvRow('Lockscreen Video Depth', kv.verify_feat_video_depth || kv.video_depth_status || 'disabled'),
+    makeKvRow('Paket Ter-stage', apkNames.length > 0 ? apkNames.join(', ') : 'Tidak ada')
+  );
+}
+
 function renderPropsList(props, kv) {
   const list = document.getElementById('props-list');
   const count = document.getElementById('props-count');
@@ -285,37 +349,6 @@ function renderOverriddenList(overridden) {
   }
 }
 
-function renderRroSummary(kv, rros) {
-  const container = document.getElementById('rro-summary');
-  const badge = document.getElementById('rro-summary-badge');
-  const vStatus = kv.verify_feat_rro_overlays || '';
-  const staged = kv.rro_staged_count || String(rros.length);
-
-  badge.className = 'pill';
-  if (vStatus === 'verified_active') {
-    badge.classList.add('on');
-    badge.textContent = 'Verified Active (' + (kv.verify_rro_active || '0') + '/' + (kv.verify_rro_total || staged) + ')';
-  } else if (vStatus === 'ignored_by_rom') {
-    badge.classList.add('danger');
-    badge.textContent = 'Ignored by ROM';
-  } else if (vStatus === 'disabled' || kv.rro_status === 'disabled') {
-    badge.textContent = 'Disabled';
-  } else if (kv.rro_status === 'staged') {
-    badge.classList.add('on');
-    badge.textContent = 'Staged (' + staged + ')';
-  } else {
-    badge.classList.add('warn');
-    badge.textContent = 'Skipped';
-  }
-
-  const apkNames = rros.map((item) => item.split('|')[0]).filter(Boolean);
-  container.replaceChildren(
-    makeKvRow('Status Staging', (kv.rro_status || 'skipped') + ' (' + staged + ' APK)'),
-    makeKvRow('Aktif (cmd overlay list)', (kv.verify_rro_active || '0') + ' / ' + (kv.verify_rro_total || staged)),
-    makeKvRow('Paket Ter-stage', apkNames.length > 0 ? apkNames.join(', ') : 'Tidak ada')
-  );
-}
-
 function setToast(msg) {
   document.getElementById('toast-msg').textContent = msg || '';
 }
@@ -331,6 +364,7 @@ async function refreshStatus() {
     }
 
     renderWatchdogBadge(kv);
+    renderCompatBadge(kv);
 
     const cfBadge = document.getElementById('coreflow-badge');
     cfBadge.classList.toggle('hidden', kv.coreflow_guard !== 'active');
@@ -382,6 +416,55 @@ async function updateConfig(key, value) {
   }
 }
 
+async function applyPreset(presetName) {
+  setToast('Menerapkan preset "' + presetName + '"…');
+  try {
+    const res = await ksuExec(CTL_SCRIPT + ' preset ' + presetName);
+    document.getElementById('reboot-banner').classList.remove('hidden');
+    setToast(res);
+    await refreshStatus();
+  } catch (err) {
+    setToast('Gagal menerapkan preset: ' + err.message);
+  }
+}
+
+async function runHotSync() {
+  setToast('Menjalankan Hot-Apply settings & verifikasi ulang…');
+  try {
+    const res = await ksuExec(CTL_SCRIPT + ' hot-sync');
+    setToast(res);
+    await refreshStatus();
+  } catch (err) {
+    setToast('Gagal Hot-Apply: ' + err.message);
+  }
+}
+
+async function exportDiagReport() {
+  setToast('Menyiapkan laporan diagnostik…');
+  try {
+    const report = await ksuExec(CTL_SCRIPT + ' diag-report');
+    const wrap = document.getElementById('diag-export-wrap');
+    const box = document.getElementById('diag-export-box');
+    box.value = report;
+    wrap.classList.remove('hidden');
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(report);
+        setToast('Laporan diagnostik disalin ke clipboard.');
+        return;
+      } catch (_clipErr) {
+        // Fallback to selectable textarea below
+      }
+    }
+    box.focus();
+    box.select();
+    setToast('Laporan diagnostik siap disalin dari kotak teks di bawah.');
+  } catch (err) {
+    setToast('Gagal membuat laporan: ' + err.message);
+  }
+}
+
 async function resetSafeMode() {
   setToast('Mereset Safe-Mode…');
   try {
@@ -400,6 +483,12 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
 });
 
 document.getElementById('btn-reset-safemode').addEventListener('click', resetSafeMode);
+document.getElementById('btn-hot-sync').addEventListener('click', runHotSync);
+document.getElementById('btn-export-diag').addEventListener('click', exportDiagReport);
+
+for (const btn of document.querySelectorAll('.btn-preset')) {
+  btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+}
 
 for (const group of document.querySelectorAll('.seg-group')) {
   const key = group.dataset.key;

@@ -144,6 +144,14 @@ cs_apply_feat_blur() {
   fi
 }
 
+cs_apply_feat_island() {
+  [ "$EFF_FEAT_ISLAND" = "1" ] || return 0
+
+  cs_set_prop "FEAT_ISLAND" "persist.sys.feature.island" "1"
+  cs_set_prop "FEAT_ISLAND" "persist.sys.feature.island.animation" "true"
+  cs_set_prop "FEAT_ISLAND" "persist.sys.feature.island.shader" "true"
+}
+
 cs_apply_feat_multitask() {
   [ "$EFF_FEAT_MULTITASK" = "1" ] || return 0
 
@@ -156,6 +164,9 @@ cs_apply_feat_multitask() {
   cs_set_prop "FEAT_MULTITASK" "persist.sys.miui_freeform_max_count" "4"
   cs_set_prop "FEAT_MULTITASK" "ro.miui.support_multi_window" "true"
   cs_set_prop "FEAT_MULTITASK" "ro.multiwin.fulldecor_support" "true"
+  cs_set_prop "FEAT_MULTITASK" "ro.support_one_handed_mode" "true"
+  cs_set_prop "FEAT_MULTITASK" "ro.miui.has_handy_mode_sf" "1"
+  cs_set_prop "FEAT_MULTITASK" "persist.sys.partial.screenshot.support" "true"
 }
 
 cs_apply_feat_display_hz() {
@@ -191,6 +202,7 @@ cs_apply_all_props() {
 
   cs_apply_feat_animations
   cs_apply_feat_blur
+  cs_apply_feat_island
   cs_apply_feat_multitask
   cs_apply_feat_display_hz
   cs_apply_feat_hyperai
@@ -198,6 +210,6 @@ cs_apply_all_props() {
 
   _cs_count=$(wc -l < "$CS_PROPS_AUDIT_FILE" 2>/dev/null | tr -d ' \t\r\n')
   cs_state_set "APPLIED_PROPS_COUNT" "${_cs_count:-0}"
-  cs_log "Applied ${_cs_count:-0} non-persistent props (blur=${EFF_FEAT_BLUR}, anim=${EFF_FEAT_ANIMATIONS}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ}, ai=${EFF_FEAT_HYPERAI}, aod=${EFF_FEAT_AOD_UNLOCK})."
+  cs_log "Applied ${_cs_count:-0} non-persistent props (blur=${EFF_FEAT_BLUR}, anim=${EFF_FEAT_ANIMATIONS}, island=${EFF_FEAT_ISLAND}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ}, ai=${EFF_FEAT_HYPERAI}, aod=${EFF_FEAT_AOD_UNLOCK})."
   return 0
 }
