@@ -115,7 +115,7 @@ cs_xml_build_patch_spec() {
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_AUDIO:-0}" = "1" ]; then
-      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Assistant, Audio Share, 24-bit/Stereo Record)
+      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Assistant, Audio Share, 24-bit/Stereo/Studio Mic Record)
       printf 'bool|support_dolby|true\n'
       printf 'bool|support_hifi|true\n'
       printf 'bool|support_sound_assist|true\n'
@@ -125,10 +125,13 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_lhdc_offload|true\n'
       printf 'bool|support_audio_loopback|true\n'
       printf 'bool|support_phone_call_noise_suppression|true\n'
+      printf 'bool|support_interview_record_param|true\n'
+      printf 'bool|support_hd_record_param|true\n'
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_SUITE:-0}" = "1" ]; then
-      # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost, Power Modes)
+      # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost,
+      # Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP Record, HDR HBM Boost, Power Modes)
       printf 'bool|support_AI_display|true\n'
       printf 'bool|support_super_resolution|true\n'
       printf 'bool|support_hdr_enhance|true\n'
@@ -139,15 +142,34 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_videobox_cinema_adapt_ce|true\n'
       printf 'bool|support_displayfeature_gamemode|true\n'
       printf 'bool|support_displayfeature_gamemode_HDR|true\n'
+      printf 'bool|support_touchfeature_gamemode|true\n'
+      printf 'bool|support_game_mi_time|true\n'
       printf 'bool|support_wild_boost|true\n'
       printf 'bool|support_wild_boost_bat_perf|true\n'
       printf 'bool|support_mi_game_macro|true\n'
       printf 'bool|support_game_gunsight|true\n'
+      printf 'bool|support_gallery_hdr|true\n'
+      printf 'bool|gallery_support_dolby|true\n'
+      printf 'bool|gallery_support_analytic_face_and_scene|true\n'
+      printf 'bool|gallery_support_video_compress|true\n'
+      printf 'bool|gallery_support_time_burst_video|true\n'
+      printf 'bool|support_local_ocr|true\n'
+      printf 'bool|support_miplay_cast_privacy|true\n'
+      printf 'bool|support_voip_record|true\n'
+      printf 'bool|support_conversation_toolbox_voiprecord|true\n'
+      printf 'bool|support_new_silentmode|true\n'
+      printf 'bool|support_dark_mode_notify|true\n'
+      printf 'bool|support_manual_brightness_boost|true\n'
+      printf 'bool|support_dolby_version_brighten|true\n'
+      printf 'bool|support_hdr_hbm_brighten|true\n'
+      printf 'bool|support_autobrightness_optimize|true\n'
+      printf 'bool|support_autobrightness_by_application_category|true\n'
       printf 'bool|support_app_hiding|true\n'
       printf 'bool|is_support_partial_screenshot|true\n'
       printf 'bool|support_ui_orientation_v2|true\n'
       printf 'bool|support_power_mode|true\n'
       printf 'bool|support_power_save_new|true\n'
+      printf 'integer|support_inner_record|1\n'
     fi
   } > "$_cs_spec_file"
 }

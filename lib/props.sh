@@ -293,15 +293,18 @@ cs_apply_feat_blur() {
   if [ "${EFF_FEAT_ADV_TEXTURES:-0}" != "1" ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
   elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
-    # Complete HyperOS 3 Advanced Textures v4 compositor contract (strictly memory-only resetprop -n):
+    # Complete HyperOS 3 Advanced Textures v4 + Flagship Compositor contract (strictly resetprop -n):
     # - Uses native HyperOS 3 visual release 4 (NOT legacy HOS 2 release 3 or blur_version=2)
-    # - Completes mishadow/smoothcorner/blurnoise tokens so enabling Advanced Textures in
-    #   Settings -> Display renders -1 Screen & Folder blur without black-backdrop blinks
+    # - Completes MiShadow, G2 SmoothCorner, Backdrop Sampling & BlurNoise tokens
     # - Keeps background_blur_status_default=false & omits enable_blurs_on_windows for Toast/Recents safety
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "4"
+    cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "ro.miui.backdrop_sampling_enabled" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
   else
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
@@ -354,13 +357,17 @@ cs_apply_feat_flagship_suite() {
   [ "$EFF_FEAT_FLAGSHIP_SUITE" = "1" ] || return 0
 
   # Verified HyperOS Flagship Porting Suite props (Dynamic Font Anim, Multi-Window Full-Decor,
-  # Live Photo v3, Power Modes, Launch Response Optimization, AI Subtitles & Voice Translation)
+  # Live Photo v3, Power Modes, AI Wakeup, Battery AI & Night Charge, Launch Response, AI Subtitles)
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.miui.ui.font.animation" "enable"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.multiwin.fulldecor_support" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.product.camera.livephoto.support" "3"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.camera.sound.forced" "0"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.power_mode_support" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.power_meter_enhanced" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.launch_response_optimization.enable" "true"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.support_ai_wakeup_effect" "true"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.vendor.night.charge" "true"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.vendor.battery.ai.predict" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.translate.state.supportAiSubtitles" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.translate.state.supportVoiceTrans" "true"
 }

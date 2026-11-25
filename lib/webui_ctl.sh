@@ -150,7 +150,7 @@ cs_cmd_status() {
   _cs_rro_status=$(cs_state_get "RRO_STATUS")
   _cs_rro_staged=$(cs_state_get "RRO_STAGED_COUNT")
 
-  printf 'module_version=%s\n' "v1.0.0"
+  printf 'module_version=%s\n' "v1.1.0"
   printf 'watchdog_status=%s\n' "${_cs_wd_status:-unknown}"
   printf 'watchdog_reason=%s\n' "${_cs_wd_reason:-none}"
   printf 'boot_strikes=%s\n' "${_cs_strikes:-0}"
@@ -394,7 +394,7 @@ cs_cmd_diag_report() {
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
 
-  printf '=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===\n'
+  printf '=== CoreSurface v1.1.0 Flagship Motion Diagnostic Report ===\n'
   printf 'ROM: %s (%s) | HyperOS Major: %s | Android SDK: %s\n' \
     "$CS_ROM_FAMILY" "${CS_ROM_VERSION:-Unknown}" "$CS_HYPEROS_MAJOR" "$CS_ANDROID_SDK"
   printf 'RAM: %s MB (%s) | Tier: %s (cfg=%s, detected=%s) | CoreFlow Guard: %s\n' \

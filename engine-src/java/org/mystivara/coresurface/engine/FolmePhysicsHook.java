@@ -10,7 +10,9 @@ import android.os.Looper;
 import android.view.Display;
 import android.view.ViewPropertyAnimator;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.Animation;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.Interpolator;
 import android.view.animation.PathInterpolator;
 
 import java.lang.reflect.Field;
@@ -164,6 +166,9 @@ public final class FolmePhysicsHook {
             uiHooks++;
         }
         if (hookUniversalViewPropertyAnimator()) {
+            uiHooks++;
+        }
+        if (hookWindowAnimation()) {
             uiHooks++;
         }
         if (uiHooks > 0) {
@@ -400,8 +405,8 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         SpringPhysicsCurve curve = getCurveForProfile(profile);
-                        // Drive damping cleanly toward the chosen physical signature (80% profile / 20% stock)
-                        param.args[0] = clamp(d * 0.20f + curve.getDampingRatio() * 0.80f, 0.76f, 0.95f);
+                        // Drive damping strongly toward iOS 27 x ColorOS 17 (0.68..0.75) or HyperOS 4 (0.88..0.94)
+                        param.args[0] = clamp(d * 0.15f + curve.getDampingRatio() * 0.85f, 0.68f, 0.95f);
                         telemetry.incSpringsTuned();
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringDamp");
@@ -432,8 +437,8 @@ public final class FolmePhysicsHook {
                         }
                         SpringPhysicsCurve curve = getCurveForProfile(profile);
                         // Weighted geometric blend strongly favoring analytical k = (2*pi/T)^2
-                        double targetK = Math.pow(s, 0.25) * Math.pow(curve.getStiffnessK(), 0.75);
-                        param.args[0] = clamp((float) targetK, 145.0f, 1450.0f);
+                        double targetK = Math.pow(s, 0.20) * Math.pow(curve.getStiffnessK(), 0.80);
+                        param.args[0] = clamp((float) targetK, 125.0f, 1450.0f);
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringStiff");
                     }
@@ -448,10 +453,10 @@ public final class FolmePhysicsHook {
 
     /**
      * Universal UI Interface Curve Hook on ValueAnimator.setInterpolator.
-     * Upgrades finite UI transitions (dialogs, panels, sheets, cards, subpages) to our
-     * analytical SpringPhysicsCurve AND applies subtle profile-authentic duration scaling
-     * (1.24x silky glide for iOS/ColorOS 17; 0.90x crisp whip for HyperOS 4) while strictly
-     * sparing LinearInterpolator, exit ease-in, progress spinners, and infinite animations.
+     * - Spatial ObjectAnimators (translation/scale/rotation) receive native iOS 27 x ColorOS 17
+     *   underdamped spatial bounce + lock-free one-shot duration scaling.
+     * - Non-spatial ValueAnimators (alpha/blur/color/clip) receive strict [0, 1] monotonic
+     *   SpringPhysicsCurve with untouched duration (zero window blink, zero color wrap).
      */
     private boolean hookUniversalValueAnimator() {
         try {
@@ -472,7 +477,7 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         Object raw = param.args[0];
-                        if (!(raw instanceof TimeInterpolator) || (raw instanceof SpringPhysicsCurve)) {
+                        if (!(raw instanceof TimeInterpolator) || isCoreSurfaceCurve(raw)) {
                             return;
                         }
                         ValueAnimator va = (ValueAnimator) param.thisObject;
@@ -485,11 +490,9 @@ public final class FolmePhysicsHook {
                         }
                         if (isUpgradeableInterpolator((TimeInterpolator) raw)) {
                             SpringPhysicsCurve curve = getCurveForProfile(profile);
-                            param.args[0] = curve;
-                            // Only scale duration on spatial ObjectAnimators (never raw ValueAnimators
-                            // like BlurUtils.sBlurAnim or pure alpha fades, which are synced to
-                            // window/surface detach lifecycles and would blink if stretched).
-                            if (dur >= 120L && dur <= 550L && isSpatialObjectAnimator(va)) {
+                            boolean spatial = isSpatialObjectAnimator(va);
+                            param.args[0] = spatial ? curve.getSpatialInterpolator() : curve;
+                            if (spatial && dur >= 120L && dur <= 550L) {
                                 long scaled = computeNonCompoundingDuration(va, dur, curve.getDurationScale());
                                 if (scaled != dur) {
                                     va.setDuration(scaled);
@@ -531,12 +534,12 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         Object raw = param.args[0];
-                        if (!(raw instanceof TimeInterpolator) || (raw instanceof SpringPhysicsCurve)) {
+                        if (!(raw instanceof TimeInterpolator) || isCoreSurfaceCurve(raw)) {
                             return;
                         }
                         if (isUpgradeableInterpolator((TimeInterpolator) raw)) {
                             SpringPhysicsCurve curve = getCurveForProfile(profile);
-                            param.args[0] = curve;
+                            param.args[0] = curve.getSpatialInterpolator();
                             ViewPropertyAnimator vpa = (ViewPropertyAnimator) param.thisObject;
                             long dur = vpa.getDuration();
                             if (dur >= 120L && dur <= 550L) {
@@ -556,6 +559,60 @@ public final class FolmePhysicsHook {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    /**
+     * Layer 7: Window / Activity / Dialog XML Animation.setInterpolator hook.
+     * Uses strict monotonic [0, 1] SpringPhysicsCurve so page & popup transitions flow
+     * effortlessly without clip-rect or alpha glitches.
+     */
+    private boolean hookWindowAnimation() {
+        try {
+            Method mAnim = Animation.class.getDeclaredMethod("setInterpolator", Interpolator.class);
+            XposedBridge.hookMethod(mAnim, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("WinAnimInterp")) {
+                        return;
+                    }
+                    try {
+                        String profile = config.getMotionProfile();
+                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()) {
+                            return;
+                        }
+                        if (!(param.thisObject instanceof Animation)
+                                || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        Object raw = param.args[0];
+                        if (!(raw instanceof Interpolator) || isCoreSurfaceCurve(raw)) {
+                            return;
+                        }
+                        Animation anim = (Animation) param.thisObject;
+                        if (anim.getRepeatCount() == Animation.INFINITE || anim.getRepeatCount() > 0) {
+                            return;
+                        }
+                        if (isUpgradeableInterpolator((Interpolator) raw)) {
+                            param.args[0] = getCurveForProfile(profile);
+                            telemetry.incCurvesApplied();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("WinAnimInterp");
+                    }
+                }
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private boolean isCoreSurfaceCurve(Object raw) {
+        if (raw instanceof SpringPhysicsCurve) {
+            return true;
+        }
+        SpringPhysicsCurve cur = activeCurve;
+        return cur != null && raw == cur.getSpatialInterpolator();
     }
 
     private static boolean isSpatialObjectAnimator(ValueAnimator va) {
@@ -671,10 +728,10 @@ public final class FolmePhysicsHook {
         float hzFactor = clamp((currentRefreshHz - 60.0f) / 60.0f, 0.0f, 1.0f);
 
         if (EngineConfig.MOTION_SILK.equals(profile)) {
-            // iOS 18 / ColorOS 17 Silk: unmistakable buoyant damping (0.78..0.84) + silky 1.32x-1.45x glide
-            float outDamp = clamp(stockDamp * 0.20f + targetDamp * 0.80f, 0.76f, 0.86f);
-            float scale = 1.28f + 0.16f * hzFactor;
-            float outResp = clamp(Math.max(stockResp * scale, targetResp * 0.88f), 0.28f, 0.66f);
+            // Native iOS 27 x ColorOS 17 Silk: unmistakable fluid flow + crisp elastic bounce (0.69..0.76)
+            float outDamp = clamp(stockDamp * 0.15f + targetDamp * 0.85f, 0.69f, 0.76f);
+            float scale = 1.35f + 0.17f * hzFactor;
+            float outResp = clamp(Math.max(stockResp * scale, targetResp * 0.90f), 0.32f, 0.72f);
             out[0] = outDamp;
             out[1] = outResp;
         } else {
@@ -694,9 +751,9 @@ public final class FolmePhysicsHook {
         float hzFactor = clamp((currentRefreshHz - 60.0f) / 60.0f, 0.0f, 1.0f);
 
         if (EngineConfig.MOTION_SILK.equals(profile)) {
-            out[0] = clamp(stockDamp * 0.20f + targetDamp * 0.80f, 0.76f, 0.86f);
-            float scale = 1.28f + 0.16f * hzFactor;
-            out[1] = clamp(Math.max(stockResp * scale, targetResp * 0.88f), 0.28f, 0.66f);
+            out[0] = clamp(stockDamp * 0.15f + targetDamp * 0.85f, 0.69f, 0.76f);
+            float scale = 1.35f + 0.17f * hzFactor;
+            out[1] = clamp(Math.max(stockResp * scale, targetResp * 0.90f), 0.32f, 0.72f);
         } else {
             out[0] = clamp(stockDamp * 0.25f + targetDamp * 0.75f, 0.86f, 0.94f);
             float scale = 0.92f + 0.08f * hzFactor;

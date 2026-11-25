@@ -83,7 +83,7 @@ function makeKvRow(label, value) {
 }
 
 function formatMotion(p) {
-  if (p === 'silk') return 'iOS · ColorOS 17 Silk';
+  if (p === 'silk') return 'iOS 27 · ColorOS 17 Silk';
   if (p === 'hyperos4') return 'HyperOS 4 Flagship';
   if (p === 'off' || p === '0') return 'Stock ROM';
   return p || '-';

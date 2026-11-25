@@ -421,7 +421,7 @@ assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_b
 assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="device_level">3</integer>' "XML patcher upgrades lower <integer> 1 -> 3 in flagship tier"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_display_expert_mode">true</bool>' "XML patcher enables Custom Color Expert across all modes"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_aod">false</bool>' "XML patcher does NOT touch AOD tag when FEAT_AOD_UNLOCK=0"
-assert_file_not_contains "$SB_STATE/work/device_features.xml" 'gallery_support_video_compress' "Zero-gimmick: Gallery Pro XML tags completely removed"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="gallery_support_video_compress">true</bool>' "Flagship Suite XML enables verified Gallery video compress"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "XML patcher preserves stock display color tag"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_double_tap_to_wake">true</bool>' "XML patcher preserves stock double_tap tag"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<integer-array name="fpsList">' "XML patcher preserves stock fpsList array"
@@ -758,7 +758,7 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync
 _diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
 printf '%s\n' "$_diag" > "$SB/diag.txt"
-assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===" "diag-report outputs structured Flagship Motion header"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.1.0 Flagship Motion Diagnostic Report ===" "diag-report outputs structured Flagship Motion header"
 assert_file_contains "$SB/diag.txt" "Motion Engine:" "diag-report includes Motion Engine telemetry line"
 assert_file_contains "$SB/diag.txt" "Custom Color Expert:" "diag-report includes Custom Color Expert status"
 assert_file_contains "$SB/diag.txt" "AOD Unlock:" "diag-report includes AOD Unlock status"
@@ -1239,8 +1239,8 @@ assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;g
 _act_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/action.sh")
 printf '%s\n' "$_act_out" > "$SB/action.out"
-assert_file_contains "$SB/action.out" "CoreSurface v1.0.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
-assert_file_contains "$SB/action.out" "=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===" "action.sh runs diagnostic report cleanly"
+assert_file_contains "$SB/action.out" "CoreSurface v1.1.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
+assert_file_contains "$SB/action.out" "=== CoreSurface v1.1.0 Flagship Motion Diagnostic Report ===" "action.sh runs diagnostic report cleanly"
 
 # Test uninstall.sh disarms active debug.coresurface.cfg and uninstalls CoreSurfaceEngine APK
 printf 'debug.coresurface.cfg=motion=hyperos4;native=1;guard=1;thermallod=1;aod=1\n' > "$SB_PROPS_DB"
@@ -1335,8 +1335,12 @@ assert_file_contains "$SB_PROPS_LOG" "persist.sys.sf.disable_blurs=false" "Blur 
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.launcher_blur_supported=true" "Blur contract sets persist.sys.launcher_blur_supported=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_setting=1" "Blur contract sets persist.sys.background_blur_setting=1"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "HyperOS 3 Flagship sets native Advanced Textures release=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.mi_shadow_supported=true" "HyperOS 3 Flagship sets mi_shadow_supported=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=true" "HyperOS 3 Flagship sets support_window_mishadow=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_view_mishadow=true" "HyperOS 3 Flagship sets support_view_mishadow=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_smoothcorner=true" "HyperOS 3 Flagship sets support_window_smoothcorner=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_view_smoothcorner=true" "HyperOS 3 Flagship sets support_view_smoothcorner=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "HyperOS 3 Flagship sets ro.miui.backdrop_sampling_enabled=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "HyperOS 3 Flagship sets add_blurnoise_supported=true"
 # Audio & Speaker props
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Flagship Audio sets ro.vendor.audio.spk.stereo=true"
@@ -1352,12 +1356,17 @@ assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_h
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_assist">true</bool>' "Flagship Audio XML enables support_sound_assist"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_24bit_record">true</bool>' "Flagship Audio XML enables support_24bit_record"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_stereo_record">true</bool>' "Flagship Audio XML enables support_stereo_record"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_interview_record_param">true</bool>' "Flagship Audio XML enables studio interview mic mode"
 # Flagship Porting Suite props
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Flagship Suite sets ro.miui.ui.font.animation=enable"
 assert_file_contains "$SB_PROPS_LOG" "ro.multiwin.fulldecor_support=true" "Flagship Suite sets ro.multiwin.fulldecor_support=true"
 assert_file_contains "$SB_PROPS_LOG" "ro.product.camera.livephoto.support=3" "Flagship Suite sets ro.product.camera.livephoto.support=3"
+assert_file_contains "$SB_PROPS_LOG" "ro.camera.sound.forced=0" "Flagship Suite allows muting camera shutter sound"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.power_mode_support=true" "Flagship Suite sets persist.sys.power_mode_support=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.launch_response_optimization.enable=true" "Flagship Suite sets persist.sys.launch_response_optimization.enable=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_ai_wakeup_effect=true" "Flagship Suite sets AI wakeup effect"
+assert_file_contains "$SB_PROPS_LOG" "persist.vendor.night.charge=true" "Flagship Suite sets optimized Night Charge"
+assert_file_contains "$SB_PROPS_LOG" "persist.vendor.battery.ai.predict=true" "Flagship Suite sets AI Battery Prediction"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.translate.state.supportAiSubtitles=true" "Flagship Suite sets supportAiSubtitles=true"
 # Flagship Porting Suite XML tags
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_AI_display">true</bool>' "Flagship Suite XML enables support_AI_display"
@@ -1366,6 +1375,12 @@ assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_h
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_support_video_tool_box">true</bool>' "Flagship Suite XML enables is_support_video_tool_box"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Flagship Suite XML enables support_wild_boost"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_game_gunsight">true</bool>' "Flagship Suite XML enables support_game_gunsight"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_gallery_hdr">true</bool>' "Flagship Suite XML enables Gallery HDR"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="gallery_support_dolby">true</bool>' "Flagship Suite XML enables Gallery Dolby"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_local_ocr">true</bool>' "Flagship Suite XML enables on-device Local OCR"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_miplay_cast_privacy">true</bool>' "Flagship Suite XML enables MiPlay Cast Privacy"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_voip_record">true</bool>' "Flagship Suite XML enables VoIP Call Recording"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="support_inner_record">1</integer>' "Flagship Suite XML enables Internal Audio Recording"
 
 run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_FLAGSHIP_AUDIO=verified_active" "Verifier marks FEAT_FLAGSHIP_AUDIO=verified_active"

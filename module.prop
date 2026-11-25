@@ -1,6 +1,6 @@
 id=coresurface
 name=CoreSurface
-version=v1.0.0
-versionCode=100
+version=v1.1.0
+versionCode=110
 author=Mystivara
-description=Clean-room, dynamic HyperOS user-space capability unlocker with bootloop watchdog and hardware-tiered defaults.
+description=Pure user-space HyperOS 4-Tier flagship experience: ultra-lightweight 60-144Hz iOS 27 x ColorOS 17 Folme physics, flagship audio & complete porting suite.
