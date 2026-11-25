@@ -19,10 +19,22 @@ import java.lang.ref.WeakReference;
 public final class CoreSurfaceChoreographer implements Choreographer.FrameCallback {
     public static final int PROP_TRANSLATION_Y = 1;
     public static final int PROP_TRANSLATION_X = 2;
+    public static final int PROP_SCALE_XY = 3;
+    public static final int PROP_ROTATION_X = 4;
+    public static final int PROP_ROTATION_Y = 5;
+    public static final int PROP_ALPHA = 6;
 
-    private static final int MAX_SLOTS = 16;
+    // 192 pre-allocated slots (~18 KB RAM, ZERO per-frame heap allocation):
+    // supports full 3D staggered Home Screen unlock (32+ icons x 5 axes + Hotseat + Workspace)
+    private static final int MAX_SLOTS = 192;
     private static final double EPS_PX = 0.25;
-    private static final double EPS_VEL = 4.0;
+    private static final double EPS_PX_VEL = 4.0;
+    private static final double EPS_SCALE = 0.0015;
+    private static final double EPS_SCALE_VEL = 0.025;
+    private static final double EPS_DEG = 0.06;
+    private static final double EPS_DEG_VEL = 0.8;
+    private static final double EPS_ALPHA = 0.008;
+    private static final double EPS_ALPHA_VEL = 0.06;
     private static final double NS_TO_SEC = 1e-9;
 
     private static final class TrackSlot {
@@ -30,6 +42,7 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
         WeakReference<View> viewRef;
         int viewIdentity;
         int propId;
+        double delayRemainSec;
         final CoreSpringSolver solver = new CoreSpringSolver();
     }
 
@@ -46,19 +59,34 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
     }
 
     /**
-     * Starts or mid-flight retargets a physical spring on a View property.
+     * Starts or mid-flight retargets a physical spring on a View property immediately.
      * Must be invoked on the main (UI) thread.
      */
     public void springTo(View view, int propId, float startFromIfNew, float target,
-                         float initialVelocityPxPerSec, float dampingRatio, float responseSec) {
+                         float initialVelocityPerSec, float dampingRatio, float responseSec) {
+        springToDelayed(view, propId, startFromIfNew, target, initialVelocityPerSec,
+                dampingRatio, responseSec, 0.0f);
+    }
+
+    /**
+     * Starts or mid-flight retargets a physical spring on a View property with optional stagger delay.
+     * During delay, the view holds `startFromIfNew` cleanly, then springs seamlessly on VSync.
+     */
+    public void springToDelayed(View view, int propId, float startFromIfNew, float target,
+                                float initialVelocityPerSec, float dampingRatio, float responseSec,
+                                float delaySec) {
         if (view == null || Looper.myLooper() != Looper.getMainLooper()) {
             return;
+        }
+        if (propId == PROP_ROTATION_X || propId == PROP_ROTATION_Y) {
+            ensurePerspectiveCamera(view);
         }
         int identity = System.identityHashCode(view);
         TrackSlot slot = findSlot(identity, propId);
         if (slot != null && slot.active) {
             // True mid-flight interruptibility: keep live (x, v), just retarget & update spring params
             slot.viewRef = new WeakReference<>(view);
+            slot.delayRemainSec = 0.0;
             slot.solver.configure(dampingRatio, responseSec);
             slot.solver.retarget(target);
         } else {
@@ -70,8 +98,9 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
             slot.viewRef = new WeakReference<>(view);
             slot.viewIdentity = identity;
             slot.propId = propId;
+            slot.delayRemainSec = Math.max(0.0, delaySec);
             slot.solver.configure(dampingRatio, responseSec);
-            slot.solver.reset(startFromIfNew, target, initialVelocityPxPerSec);
+            slot.solver.reset(startFromIfNew, target, initialVelocityPerSec);
             applyProperty(view, propId, startFromIfNew);
             if (telemetry != null) {
                 telemetry.incSpringsTuned();
@@ -81,7 +110,7 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
     }
 
     /**
-     * Smoothly cancels or snaps any active track on the given View back to rest (0f).
+     * Smoothly cancels any active track on the given (View, property) and restores its resting value.
      */
     public void cancelAndReset(View view, int propId) {
         if (view == null || Looper.myLooper() != Looper.getMainLooper()) {
@@ -91,7 +120,27 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
         if (slot != null && slot.active) {
             slot.active = false;
             slot.viewRef = null;
-            applyProperty(view, propId, 0.0f);
+            slot.delayRemainSec = 0.0;
+            applyProperty(view, propId, restValueFor(propId));
+        }
+    }
+
+    /**
+     * Cancels all active spring tracks on the given View and snaps every animated axis to rest.
+     */
+    public void cancelAllForView(View view) {
+        if (view == null || Looper.myLooper() != Looper.getMainLooper()) {
+            return;
+        }
+        int identity = System.identityHashCode(view);
+        for (int i = 0; i < MAX_SLOTS; i++) {
+            TrackSlot slot = slots[i];
+            if (slot.active && slot.viewIdentity == identity) {
+                slot.active = false;
+                slot.viewRef = null;
+                slot.delayRemainSec = 0.0;
+                applyProperty(view, slot.propId, restValueFor(slot.propId));
+            }
         }
     }
 
@@ -115,8 +164,14 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
                 continue;
             }
 
+            if (slot.delayRemainSec > 0.0) {
+                slot.delayRemainSec -= dtSec;
+                stillActive++;
+                continue;
+            }
+
             double next = slot.solver.step(dtSec);
-            if (slot.solver.isAtRest(EPS_PX, EPS_VEL)) {
+            if (isSlotAtRest(slot)) {
                 slot.solver.snapToTarget();
                 applyProperty(v, slot.propId, (float) slot.solver.getTarget());
                 slot.active = false;
@@ -132,6 +187,41 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
         } else {
             running = false;
             lastFrameNanos = 0L;
+        }
+    }
+
+    private static boolean isSlotAtRest(TrackSlot slot) {
+        switch (slot.propId) {
+            case PROP_SCALE_XY:
+                return slot.solver.isAtRest(EPS_SCALE, EPS_SCALE_VEL);
+            case PROP_ROTATION_X:
+            case PROP_ROTATION_Y:
+                return slot.solver.isAtRest(EPS_DEG, EPS_DEG_VEL);
+            case PROP_ALPHA:
+                return slot.solver.isAtRest(EPS_ALPHA, EPS_ALPHA_VEL);
+            default:
+                return slot.solver.isAtRest(EPS_PX, EPS_PX_VEL);
+        }
+    }
+
+    private static float restValueFor(int propId) {
+        if (propId == PROP_SCALE_XY || propId == PROP_ALPHA) {
+            return 1.0f;
+        }
+        return 0.0f;
+    }
+
+    private static void ensurePerspectiveCamera(View v) {
+        try {
+            float density = v.getResources() != null
+                    ? v.getResources().getDisplayMetrics().density : 2.75f;
+            // Balanced 3D perspective camera distance (~1280dp equivalent in px):
+            // crisp depth perception without extreme fish-eye distortion
+            float desired = 1280.0f * density * density;
+            if (Math.abs(v.getCameraDistance() - desired) > 100.0f) {
+                v.setCameraDistance(desired);
+            }
+        } catch (Throwable ignored) {
         }
     }
 
@@ -164,10 +254,29 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
 
     private static void applyProperty(View v, int propId, float value) {
         try {
-            if (propId == PROP_TRANSLATION_Y) {
-                v.setTranslationY(value);
-            } else if (propId == PROP_TRANSLATION_X) {
-                v.setTranslationX(value);
+            switch (propId) {
+                case PROP_TRANSLATION_Y:
+                    v.setTranslationY(value);
+                    break;
+                case PROP_TRANSLATION_X:
+                    v.setTranslationX(value);
+                    break;
+                case PROP_SCALE_XY:
+                    float sc = Math.max(0.55f, Math.min(1.60f, value));
+                    v.setScaleX(sc);
+                    v.setScaleY(sc);
+                    break;
+                case PROP_ROTATION_X:
+                    v.setRotationX(Math.max(-22.0f, Math.min(22.0f, value)));
+                    break;
+                case PROP_ROTATION_Y:
+                    v.setRotationY(Math.max(-22.0f, Math.min(22.0f, value)));
+                    break;
+                case PROP_ALPHA:
+                    v.setAlpha(Math.max(0.0f, Math.min(1.0f, value)));
+                    break;
+                default:
+                    break;
             }
         } catch (Throwable ignored) {
         }
