@@ -122,16 +122,18 @@ _cs_tier_key() {
 _cs_motion_label() {
   case "$1" in
     1) printf 'Stock Flagship (100%% Folme Native Xiaomi — Ultra Ringan)' ;;
-    2) printf 'Flagship Crisp (Penyesuaian Halus 70/30 — Responsif)' ;;
-    3) printf 'Smooth Flow (Penyesuaian Halus 70/30 — Mengalir)' ;;
+    2) printf 'iOS Fluid (CoreSpringSolver Critically-Damped + WMShell)' ;;
+    3) printf 'ColorOS Quantum (Parallel Interruptible + Snappy Takeoff)' ;;
+    4) printf 'HyperOS 4 Crisp (Tegas, Cepat & Zero Overshoot)' ;;
   esac
 }
 
 _cs_motion_key() {
   case "$1" in
     1) printf '0' ;;
-    2) printf 'hyperos4' ;;
-    3) printf 'silk' ;;
+    2) printf 'ios' ;;
+    3) printf 'coloros' ;;
+    4) printf 'hyperos4' ;;
   esac
 }
 
@@ -185,20 +187,22 @@ _cs_run_vol_selector() {
   _cs_chosen_tier=$(_cs_tier_key "$_cs_sel")
   _cs_cfg_write_key "$_cs_vs_cfg" "CS_TIER_MODE" "$_cs_chosen_tier"
 
-  # Step 2: Select Live Motion Profile (default: 1 = Stock Flagship native Folme)
+  # Step 2: Select Live True Physics Motion Profile (default: 1 = Stock Flagship)
   _cs_msel=1
   case "${CFG_FEAT_MOTION_PROFILE:-}" in
-    hyperos4) _cs_msel=2 ;;
-    silk)     _cs_msel=3 ;;
-    *)        _cs_msel=1 ;;
+    ios)           _cs_msel=2 ;;
+    coloros|silk)  _cs_msel=3 ;;
+    hyperos4)      _cs_msel=4 ;;
+    *)             _cs_msel=1 ;;
   esac
 
   _cs_ui_print ""
-  _cs_ui_print "  PILIH PROFIL ANIMASI FOLME (60/120 Hz)"
+  _cs_ui_print "  PILIH MESIN FISIKA ANIMASI (60–144 Hz)"
   _cs_ui_print "  [Vol+] = Ganti Profil  |  [Vol-] = Pilih (8 detik = default)"
   _cs_ui_print "  1. $(_cs_motion_label 1)"
   _cs_ui_print "  2. $(_cs_motion_label 2)"
   _cs_ui_print "  3. $(_cs_motion_label 3)"
+  _cs_ui_print "  4. $(_cs_motion_label 4)"
   _cs_ui_print "-> Aktif: [$_cs_msel] $(_cs_motion_label "$_cs_msel")"
 
   _cs_loops=0
@@ -211,7 +215,7 @@ _cs_run_vol_selector() {
       break
     fi
     if [ "$_cs_key" = "UP" ]; then
-      _cs_msel=$(( (_cs_msel % 3) + 1 ))
+      _cs_msel=$(( (_cs_msel % 4) + 1 ))
       _cs_ui_print "-> Aktif: [$_cs_msel] $(_cs_motion_label "$_cs_msel")"
     else
       _cs_ui_print "- Terpilih: [$_cs_msel] $(_cs_motion_label "$_cs_msel")"

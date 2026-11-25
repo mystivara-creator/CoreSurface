@@ -29,16 +29,20 @@ public final class LivingFlowHomeHook {
     private final FolmePhysicsHook folmeHook;
     private final SurgicalBlurGuardHook blurGuard;
     private final DeviceLevelUnlockHook deviceLevelHook;
+    private final LauncherChoreographyHook launcherChoreo;
     private final TelemetryReporter telemetry;
 
     public LivingFlowHomeHook(ProcessBootstrap bootstrap, DeviceBugGuard bugGuard,
                               FolmePhysicsHook folmeHook, SurgicalBlurGuardHook blurGuard,
-                              DeviceLevelUnlockHook deviceLevelHook, TelemetryReporter telemetry) {
+                              DeviceLevelUnlockHook deviceLevelHook,
+                              LauncherChoreographyHook launcherChoreo,
+                              TelemetryReporter telemetry) {
         this.bootstrap = bootstrap;
         this.bugGuard = bugGuard;
         this.folmeHook = folmeHook;
         this.blurGuard = blurGuard;
         this.deviceLevelHook = deviceLevelHook;
+        this.launcherChoreo = launcherChoreo;
         this.telemetry = telemetry;
     }
 
@@ -47,6 +51,7 @@ public final class LivingFlowHomeHook {
         blurGuard.installHomeRecentsGuard(cl);
         deviceLevelHook.install(cl);
         folmeHook.install(cl);
+        launcherChoreo.install(cl);
         bootstrap.install();
 
         XC_MethodHook sanitizeHook = new XC_MethodHook() {

@@ -15,16 +15,14 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * Lightweight Native Folme & SpringForce Physics Refinement Hook.
+ * Lightweight Native Folme & SpringForce Physics Calibration + Live Display/Thermal Spec Hub.
  *
  * Strictly zero-gimmick, ultra-low overhead:
- * - NEVER hijacks standard Android ValueAnimator, ViewPropertyAnimator, or XML Animation.
- * - NEVER stretches durations or injects synthetic overshoot onto standard UI widgets.
- * - In `off` (Stock Flagship) mode: 100% pass-through so unlocked Xiaomi Native Flagship
- *   Folme runs completely untouched.
- * - In `hyperos4` (Flagship Crisp) or `silk` (Smooth Flow) mode: applies a gentle 70/30
- *   blend to true physics springs (`EaseManager.getStyle`, `AnimConfig.setEase`, `SpringForce`)
- *   so every component keeps its natural Xiaomi rhythm while feeling consistently smooth.
+ * - NEVER hijacks global Android ValueAnimator, ViewPropertyAnimator, or XML Animation.
+ * - In `off` (Stock Flagship) mode: 100% pass-through so native unlocked Xiaomi Folme runs untouched.
+ * - In `ios`, `coloros`, or `hyperos4` mode: provides the live-synchronized MotionProfileSpec
+ *   (60–144 Hz + Thermal LOD) to ShellTransitionPhysicsEngine, LauncherChoreographyHook,
+ *   SystemUIChoreographyHook, and gently calibrates native Folme/SpringForce springs.
  */
 public final class FolmePhysicsHook {
     private static final int DEFAULT_SPRING_STYLE = -2;
@@ -38,9 +36,9 @@ public final class FolmePhysicsHook {
     private volatile boolean displayAttached = false;
     private volatile float currentRefreshHz = 60.0f;
     private volatile float cachedThermalScale = 1.0f;
-    private volatile SpringPhysicsCurve activeCurve = SpringPhysicsCurve.forProfile(
+    private volatile MotionProfileSpec activeSpec = MotionProfileSpec.forProfile(
             EngineConfig.MOTION_HYPEROS4, 60.0f, 1.0f);
-    private volatile String activeCurveProfile = EngineConfig.MOTION_HYPEROS4;
+    private volatile String activeSpecProfile = EngineConfig.MOTION_HYPEROS4;
 
     public FolmePhysicsHook(EngineConfig config, ThermalLodController lodController,
                             DeviceBugGuard bugGuard, TelemetryReporter telemetry) {
@@ -48,8 +46,8 @@ public final class FolmePhysicsHook {
         this.lodController = lodController;
         this.bugGuard = bugGuard;
         this.telemetry = telemetry;
-        this.lodController.addListener(this::rebuildCurveState);
-        this.config.addListener(this::rebuildCurveState);
+        this.lodController.addListener(this::rebuildSpecState);
+        this.config.addListener(this::rebuildSpecState);
     }
 
     public void attachContext(Context context) {
@@ -57,7 +55,7 @@ public final class FolmePhysicsHook {
             return;
         }
         displayAttached = true;
-        rebuildCurveState();
+        rebuildSpecState();
         try {
             Context appCtx = context.getApplicationContext() != null ? context.getApplicationContext() : context;
             DisplayManager dm = (DisplayManager) appCtx.getSystemService(Context.DISPLAY_SERVICE);
@@ -85,6 +83,26 @@ public final class FolmePhysicsHook {
         }
     }
 
+    public MotionProfileSpec getActiveSpec() {
+        String profile = config.getMotionProfile();
+        if (EngineConfig.MOTION_OFF.equals(profile)) {
+            return null;
+        }
+        if (!profile.equals(activeSpecProfile)) {
+            activeSpecProfile = profile;
+            activeSpec = MotionProfileSpec.forProfile(profile, currentRefreshHz, cachedThermalScale);
+        }
+        return activeSpec;
+    }
+
+    public float getCurrentRefreshHz() {
+        return currentRefreshHz;
+    }
+
+    public float getCachedThermalScale() {
+        return cachedThermalScale;
+    }
+
     private void updateDisplayRate(DisplayManager dm) {
         try {
             Display d = dm.getDisplay(Display.DEFAULT_DISPLAY);
@@ -93,14 +111,14 @@ public final class FolmePhysicsHook {
                 if (hz >= 45.0f && hz <= 240.0f && Math.abs(hz - currentRefreshHz) >= 0.5f) {
                     currentRefreshHz = hz;
                     telemetry.setDisplayHz(Math.round(hz));
-                    rebuildCurveState();
+                    rebuildSpecState();
                 }
             }
         } catch (Throwable ignored) {
         }
     }
 
-    private void rebuildCurveState() {
+    private void rebuildSpecState() {
         float lod = lodController.getEffectiveLod();
         if (lod <= ThermalLodController.LOD_ECO + 0.05f) {
             cachedThermalScale = 0.35f;
@@ -110,18 +128,10 @@ public final class FolmePhysicsHook {
             cachedThermalScale = 1.0f;
         }
         String profile = config.getMotionProfile();
-        activeCurveProfile = profile;
+        activeSpecProfile = profile;
         if (!EngineConfig.MOTION_OFF.equals(profile)) {
-            activeCurve = SpringPhysicsCurve.forProfile(profile, currentRefreshHz, cachedThermalScale);
+            activeSpec = MotionProfileSpec.forProfile(profile, currentRefreshHz, cachedThermalScale);
         }
-    }
-
-    private SpringPhysicsCurve getCurveForProfile(String profile) {
-        if (!profile.equals(activeCurveProfile)) {
-            activeCurveProfile = profile;
-            activeCurve = SpringPhysicsCurve.forProfile(profile, currentRefreshHz, cachedThermalScale);
-        }
-        return activeCurve;
     }
 
     public int install(ClassLoader cl) {
@@ -212,11 +222,11 @@ public final class FolmePhysicsHook {
                         return;
                     }
                     try {
-                        String profile = config.getMotionProfile();
-                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()) {
+                        if (bugGuard.isAnimationDisabledByUser()) {
                             return;
                         }
-                        if (param.args == null || param.args.length < 2) {
+                        MotionProfileSpec spec = getActiveSpec();
+                        if (spec == null || param.args == null || param.args.length < 2) {
                             return;
                         }
                         if (!(param.args[0] instanceof Integer) || !(param.args[1] instanceof float[])) {
@@ -231,12 +241,12 @@ public final class FolmePhysicsHook {
                         }
                         float damping = factors[0];
                         float response = factors[1];
-                        // Only gently refine normal UI transition springs; leave micro/extreme springs native
+                        // Only calibrate normal UI transition springs; leave micro/extreme springs native
                         if (damping < 0.65f || damping > 1.05f || response < 0.18f || response > 0.70f) {
                             return;
                         }
                         float[] copy = factors.clone();
-                        applySubtleSpringBlend(copy, damping, response, profile, getCurveForProfile(profile));
+                        applyProfileSpringBlend(copy, damping, response, spec);
                         param.args[1] = copy;
                         telemetry.incSpringsTuned();
                     } catch (Throwable ignored) {
@@ -259,11 +269,11 @@ public final class FolmePhysicsHook {
                         return;
                     }
                     try {
-                        String profile = config.getMotionProfile();
-                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()) {
+                        if (bugGuard.isAnimationDisabledByUser()) {
                             return;
                         }
-                        if (param.args == null || param.args.length < 2) {
+                        MotionProfileSpec spec = getActiveSpec();
+                        if (spec == null || param.args == null || param.args.length < 2) {
                             return;
                         }
                         if (!(param.args[0] instanceof Integer) || !(param.args[1] instanceof double[])) {
@@ -282,7 +292,7 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         double[] copy = factors.clone();
-                        applySubtleSpringBlendDouble(copy, damping, response, profile, getCurveForProfile(profile));
+                        applyProfileSpringBlendDouble(copy, damping, response, spec);
                         param.args[1] = copy;
                         telemetry.incSpringsTuned();
                     } catch (Throwable ignored) {
@@ -312,18 +322,19 @@ public final class FolmePhysicsHook {
                         return;
                     }
                     try {
-                        String profile = config.getMotionProfile();
-                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()
-                                || param.args == null || param.args.length < 1) {
+                        if (bugGuard.isAnimationDisabledByUser() || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        MotionProfileSpec spec = getActiveSpec();
+                        if (spec == null) {
                             return;
                         }
                         float d = (Float) param.args[0];
                         if (d < 0.70f || d > 1.05f) {
                             return;
                         }
-                        SpringPhysicsCurve curve = getCurveForProfile(profile);
-                        // Gentle 70% native / 30% target blend preserves natural widget character
-                        param.args[0] = clamp(d * 0.70f + curve.getDampingRatio() * 0.30f, 0.80f, 0.98f);
+                        float w = spec.folmeBlendWeight;
+                        param.args[0] = clamp(d * (1.0f - w) + spec.folmeDamping * w, 0.82f, 0.99f);
                         telemetry.incSpringsTuned();
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringDamp");
@@ -343,17 +354,19 @@ public final class FolmePhysicsHook {
                         return;
                     }
                     try {
-                        String profile = config.getMotionProfile();
-                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()
-                                || param.args == null || param.args.length < 1) {
+                        if (bugGuard.isAnimationDisabledByUser() || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        MotionProfileSpec spec = getActiveSpec();
+                        if (spec == null) {
                             return;
                         }
                         float s = (Float) param.args[0];
                         if (s < 150.0f || s > 1800.0f) {
                             return;
                         }
-                        SpringPhysicsCurve curve = getCurveForProfile(profile);
-                        double targetK = Math.pow(s, 0.75) * Math.pow(curve.getStiffnessK(), 0.25);
+                        double w = spec.folmeBlendWeight * 0.85;
+                        double targetK = Math.pow(s, 1.0 - w) * Math.pow(spec.folmeStiffnessK, w);
                         param.args[0] = clamp((float) targetK, 150.0f, 1650.0f);
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringStiff");
@@ -367,28 +380,18 @@ public final class FolmePhysicsHook {
         return hooked;
     }
 
-    private void applySubtleSpringBlend(float[] out, float stockDamp, float stockResp,
-                                        String profile, SpringPhysicsCurve curve) {
-        float targetDamp = curve.getDampingRatio();
-        if (EngineConfig.MOTION_SILK.equals(profile)) {
-            out[0] = clamp(stockDamp * 0.70f + targetDamp * 0.30f, 0.80f, 0.96f);
-            out[1] = clamp(stockResp * 1.06f, 0.20f, 0.56f);
-        } else {
-            out[0] = clamp(stockDamp * 0.70f + targetDamp * 0.30f, 0.86f, 0.98f);
-            out[1] = clamp(stockResp * 0.94f, 0.18f, 0.48f);
-        }
+    private static void applyProfileSpringBlend(float[] out, float stockDamp, float stockResp,
+                                                MotionProfileSpec spec) {
+        float w = spec.folmeBlendWeight;
+        out[0] = clamp(stockDamp * (1.0f - w) + spec.folmeDamping * w, 0.82f, 0.99f);
+        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.20f, 0.52f);
     }
 
-    private void applySubtleSpringBlendDouble(double[] out, float stockDamp, float stockResp,
-                                              String profile, SpringPhysicsCurve curve) {
-        float targetDamp = curve.getDampingRatio();
-        if (EngineConfig.MOTION_SILK.equals(profile)) {
-            out[0] = clamp(stockDamp * 0.70f + targetDamp * 0.30f, 0.80f, 0.96f);
-            out[1] = clamp(stockResp * 1.06f, 0.20f, 0.56f);
-        } else {
-            out[0] = clamp(stockDamp * 0.70f + targetDamp * 0.30f, 0.86f, 0.98f);
-            out[1] = clamp(stockResp * 0.94f, 0.18f, 0.48f);
-        }
+    private static void applyProfileSpringBlendDouble(double[] out, float stockDamp, float stockResp,
+                                                      MotionProfileSpec spec) {
+        float w = spec.folmeBlendWeight;
+        out[0] = clamp(stockDamp * (1.0f - w) + spec.folmeDamping * w, 0.82f, 0.99f);
+        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.20f, 0.52f);
     }
 
     private static int resolveSpringStyleConstant(Class<?> easeClass) {

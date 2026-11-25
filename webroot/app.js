@@ -83,8 +83,9 @@ function makeKvRow(label, value) {
 }
 
 function formatMotion(p) {
-  if (p === 'silk') return 'Smooth Flow (Folme)';
-  if (p === 'hyperos4') return 'Flagship Crisp (Folme)';
+  if (p === 'ios') return 'iOS Fluid (CoreSpring)';
+  if (p === 'coloros' || p === 'silk') return 'ColorOS Quantum (CoreSpring)';
+  if (p === 'hyperos4') return 'HyperOS 4 Crisp (CoreSpring)';
   if (p === 'off' || p === '0') return 'Stock Flagship (Native)';
   return p || '-';
 }
@@ -127,7 +128,11 @@ function renderVerifyPill(featKey, status, isPending) {
 function setSegmentValue(key, val) {
   const group = document.querySelector('.seg-group[data-key="' + key + '"]');
   if (!group) return;
-  const normalized = (val === 'auto') ? '1' : val;
+  let normalized = (val === 'auto') ? '1' : val;
+  if (key === 'FEAT_MOTION_PROFILE') {
+    if (normalized === 'silk') normalized = 'coloros';
+    if (normalized === 'off') normalized = '0';
+  }
   for (const btn of group.querySelectorAll('button')) {
     btn.classList.toggle('active', btn.dataset.val === normalized);
   }

@@ -253,7 +253,7 @@ cs_verify_engine() {
     CS_V_MOTION_PROFILE="skipped"
   elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
     case ",$CS_V_ENGINE_HOOKS," in
-      *,FolmePhysics,*)
+      *,FolmePhysics,*|*,ShellTransitionPhysics,*|*,LauncherChoreography,*|*,SystemUIChoreography,*)
         CS_V_MOTION_PROFILE="verified_active"
         ;;
       *)

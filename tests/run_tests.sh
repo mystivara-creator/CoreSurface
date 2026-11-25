@@ -621,7 +621,7 @@ for _gk in FEAT_NATIVE_TIER FEAT_SURGICAL_GUARD FEAT_THERMAL_LOD FEAT_AOD_UNLOCK
   PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
   assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts key ${_gk}=0"
 done
-for _mp in hyperos4 silk 0; do
+for _mp in ios coloros hyperos4 silk 0; do
   PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE "$_mp" >/dev/null
   assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=${_mp}" "WebUI accepts FEAT_MOTION_PROFILE=${_mp}"
 done
@@ -999,7 +999,7 @@ chmod +x "$SB_BIN/getevent"
 PATH="$SB_BIN:$PATH" MODPATH="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/customize.sh" >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=balanced_pro" "Volume Up x2 + Volume Down selects balanced_pro tier"
-assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=hyperos4" "Volume Up + Volume Down selects Flagship Crisp (hyperos4) profile"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=ios" "Volume Up + Volume Down selects iOS Fluid (ios) profile"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiWallpaper.apk" ] && printf 'yes' || printf 'no' )" "yes" "customize.sh stages balanced_pro RRO overlays immediately after volume selection"
 
 # Non-interactive fallback leaves CS_TIER_MODE=auto cleanly without hanging
@@ -1458,6 +1458,156 @@ printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=6" "HyperOS 4.1+ Never-Downgrade preserves stock advanced_visual_release=6"
 assert_file_not_contains "$SB_STATE/os_bugs.state" "LEAKED_PERSIST_PROPS" "HyperOS 4.1+ release=6 is not flagged as leaked"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 22: True Physics Engine (CoreSpringSolver ODE, Interruptibility, iOS Fluid vs ColorOS Quantum) ===\n'
+setup_sandbox "t22_true_physics_engine"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+
+# Live zero-Binder switch to distinct iOS Fluid & ColorOS Quantum profiles (0 reboot!)
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE ios >/dev/null
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=ios;" "WebUI live switch pushes motion=ios zero-Binder IPC"
+assert_file_not_contains "$SB_STATE/state.prop" "FEAT_MOTION_PROFILE" "Live iOS Fluid switch requires 0 reboot"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE coloros >/dev/null
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=coloros;" "WebUI live switch pushes motion=coloros zero-Binder IPC"
+
+# Verifier accepts ShellTransitionPhysics / LauncherChoreography as genuine active motion hooks
+cat > "$SB/sysui_wmshell_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=coloros
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=ToastGuard,ShellTransitionPhysics,SystemUIChoreography
+NATIVE_GATES=10
+FOLME_HOOKS=4
+SPRINGS_TUNED=18
+CURVES_APPLIED=12
+EOF
+cat > "$SB/home_choreo_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=coloros
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=RecentsGuard,LauncherChoreography
+NATIVE_GATES=8
+FOLME_HOOKS=3
+SPRINGS_TUNED=24
+CURVES_APPLIED=0
+EOF
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/sysui_wmshell_telem.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/home_choreo_telem.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+  run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=verified_active" "Verifier marks FEAT_MOTION_PROFILE verified_active via WMShell + LauncherChoreography hooks"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MOTION=coloros" "Verifier reports active coloros physics profile"
+
+# Host JVM mathematical verification of CoreSpringSolver & MotionProfileSpec (exact ODE & interruptibility)
+if command -v javac >/dev/null 2>&1 && command -v java >/dev/null 2>&1; then
+  _jdir="$SB/jvm_physics_test"
+  mkdir -p "$_jdir/classes"
+  cat > "$_jdir/PhysicsMathTest.java" <<'EOF'
+import org.mystivara.coresurface.engine.CoreSpringSolver;
+import org.mystivara.coresurface.engine.MotionProfileSpec;
+
+public final class PhysicsMathTest {
+    public static void main(String[] args) {
+        // 1. Exact convergence across underdamped, critically damped, and overdamped regimes
+        double[] zetas = new double[] { 0.85, 1.00, 1.20 };
+        for (double z : zetas) {
+            CoreSpringSolver s = new CoreSpringSolver(z, 0.34);
+            s.reset(0.0, 1.0, 0.0);
+            for (int i = 0; i < 180; i++) {
+                s.step(1.0 / 120.0);
+            }
+            if (Math.abs(s.getPosition() - 1.0) > 0.005 || Double.isNaN(s.getPosition())) {
+                throw new AssertionError("Failed convergence for zeta=" + z + " pos=" + s.getPosition());
+            }
+        }
+
+        // 2. Unconditional stability under severe frame drop (dt = 50ms)
+        CoreSpringSolver drop = new CoreSpringSolver(0.86, 0.32);
+        drop.reset(0.0, 100.0, 250.0);
+        for (int i = 0; i < 40; i++) {
+            drop.step(0.050);
+        }
+        if (Math.abs(drop.getPosition() - 100.0) > 0.5 || Double.isNaN(drop.getPosition())) {
+            throw new AssertionError("Frame-drop instability: pos=" + drop.getPosition());
+        }
+
+        // 3. True mid-flight interruptibility: retarget preserves exact position & velocity (C1 continuous)
+        CoreSpringSolver intr = new CoreSpringSolver(0.88, 0.35);
+        intr.reset(0.0, 100.0, 0.0);
+        for (int i = 0; i < 8; i++) {
+            intr.step(1.0 / 120.0);
+        }
+        double posBefore = intr.getPosition();
+        double velBefore = intr.getVelocity();
+        if (!(posBefore > 5.0 && velBefore > 50.0)) {
+            throw new AssertionError("Spring not in motion before interrupt: pos=" + posBefore + " vel=" + velBefore);
+        }
+        intr.retarget(0.0);
+        if (intr.getPosition() != posBefore || intr.getVelocity() != velBefore) {
+            throw new AssertionError("Retarget broke C1 continuity");
+        }
+        for (int i = 0; i < 180; i++) {
+            intr.step(1.0 / 120.0);
+        }
+        if (Math.abs(intr.getPosition()) > 0.25) {
+            throw new AssertionError("Interrupted spring failed to settle to new target 0: " + intr.getPosition());
+        }
+
+        // 4. Distinct physics character: iOS Fluid vs ColorOS Quantum
+        MotionProfileSpec ios = MotionProfileSpec.forProfile("ios", 120.0f, 1.0f);
+        MotionProfileSpec cos = MotionProfileSpec.forProfile("coloros", 120.0f, 1.0f);
+        if (ios.shellAllowOvershoot || !(ios.shellDamping > cos.shellDamping)) {
+            throw new AssertionError("iOS Fluid must be higher-damped critically fluid without overshoot");
+        }
+        if (!(ios.shellSettleMs > cos.shellSettleMs)) {
+            throw new AssertionError("iOS Fluid must have longer fluid settle tail than ColorOS Quantum");
+        }
+        if (!(cos.shellInitialVelocity > ios.shellInitialVelocity) || !(cos.appVelocityScale > ios.appVelocityScale)) {
+            throw new AssertionError("ColorOS Quantum must have snappier launch velocity & handoff than iOS Fluid");
+        }
+        double iosEarly = CoreSpringSolver.evaluateUnit(ios.shellDamping, ios.shellResponseSec, 0.10, ios.shellInitialVelocity);
+        double cosEarly = CoreSpringSolver.evaluateUnit(cos.shellDamping, cos.shellResponseSec, 0.10, cos.shellInitialVelocity);
+        if (!(cosEarly > iosEarly)) {
+            throw new AssertionError("ColorOS Quantum must launch faster at 100ms than iOS Fluid");
+        }
+        // Legacy silk alias maps cleanly to coloros
+        MotionProfileSpec legacy = MotionProfileSpec.forProfile("silk", 120.0f, 1.0f);
+        if (!MotionProfileSpec.PROFILE_COLOROS.equals(legacy.profileId)) {
+            throw new AssertionError("Legacy silk alias must map cleanly to coloros");
+        }
+        System.out.println("PHYSICS_MATH_OK");
+    }
+}
+EOF
+  if javac --release 11 -d "$_jdir/classes" \
+      "$REPO_ROOT/engine-src/java/org/mystivara/coresurface/engine/CoreSpringSolver.java" \
+      "$REPO_ROOT/engine-src/java/org/mystivara/coresurface/engine/MotionProfileSpec.java" \
+      "$_jdir/PhysicsMathTest.java" 2>"$_jdir/compile.err" \
+    && java -cp "$_jdir/classes" PhysicsMathTest >"$_jdir/run.out" 2>&1; then
+    assert_file_contains "$_jdir/run.out" "PHYSICS_MATH_OK" "CoreSpringSolver ODE, frame-drop stability, mid-flight interruptibility & iOS vs ColorOS math verified"
+  else
+    fail "CoreSpringSolver host JVM physics verification failed ($(cat "$_jdir/compile.err" "$_jdir/run.out" 2>/dev/null || true))"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

@@ -277,9 +277,9 @@ cs_cmd_set() {
     FEAT_MOTION_PROFILE)
       _cs_is_live="1"
       case "$_cs_set_v" in
-        hyperos4|silk|0) ;;
+        ios|coloros|hyperos4|silk|0) ;;
         *)
-          printf 'Invalid value for %s: %s (expected hyperos4|silk|0)\n' "$_cs_set_k" "$_cs_set_v" >&2
+          printf 'Invalid value for %s: %s (expected ios|coloros|hyperos4|0)\n' "$_cs_set_k" "$_cs_set_v" >&2
           return 1
           ;;
       esac

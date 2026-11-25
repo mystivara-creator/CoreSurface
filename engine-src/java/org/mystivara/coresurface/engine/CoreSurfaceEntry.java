@@ -58,13 +58,18 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
             ProcessBootstrap bootstrap = new ProcessBootstrap(config, telemetry, lodController, bugGuard, folmeHook);
 
             if (PKG_SYSTEMUI.equals(pkg)) {
-                new LivingFlowSystemUIHook(bootstrap, folmeHook, blurGuard, deviceLevelHook)
+                CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(telemetry);
+                ShellTransitionPhysicsEngine shellEngine = new ShellTransitionPhysicsEngine(folmeHook, bugGuard, telemetry);
+                SystemUIChoreographyHook sysUiChoreo = new SystemUIChoreographyHook(folmeHook, choreo, bugGuard, telemetry);
+                new LivingFlowSystemUIHook(bootstrap, folmeHook, blurGuard, deviceLevelHook, shellEngine, sysUiChoreo)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Universal Motion + BugGuard in com.android.systemui");
+                XposedBridge.log("CoreSurfaceEngine: initialized True Physics (WMShell + Shade + Folme) in com.android.systemui");
             } else if (PKG_HOME.equals(pkg)) {
-                new LivingFlowHomeHook(bootstrap, bugGuard, folmeHook, blurGuard, deviceLevelHook, telemetry)
+                CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(telemetry);
+                LauncherChoreographyHook launcherChoreo = new LauncherChoreographyHook(folmeHook, choreo, bugGuard, telemetry);
+                new LivingFlowHomeHook(bootstrap, bugGuard, folmeHook, blurGuard, deviceLevelHook, launcherChoreo, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Universal Motion + RecentsGuard in com.miui.home");
+                XposedBridge.log("CoreSurfaceEngine: initialized True Physics (RectF + Folder + RecentsGuard) in com.miui.home");
             } else if (PKG_AOD.equals(pkg)) {
                 new LivingFlowAodHook(config, bootstrap, bugGuard, telemetry)
                         .install(lpparam.classLoader);

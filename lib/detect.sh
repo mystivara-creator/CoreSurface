@@ -326,7 +326,7 @@ cs_load_config() {
         ;;
       FEAT_MOTION_PROFILE)
         case "$_cs_v" in
-          hyperos4|silk|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
+          ios|coloros|hyperos4|silk|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
           off) CFG_FEAT_MOTION_PROFILE="0" ;;
         esac
         ;;
@@ -430,6 +430,8 @@ cs_resolve_features() {
 
   # Live Motion Profile & Safety Controllers (active across ALL tiers including Native Flagship)
   case "$CFG_FEAT_MOTION_PROFILE" in
+    ios)      EFF_FEAT_MOTION_PROFILE="ios" ;;
+    coloros)  EFF_FEAT_MOTION_PROFILE="coloros" ;;
     hyperos4) EFF_FEAT_MOTION_PROFILE="hyperos4" ;;
     silk)     EFF_FEAT_MOTION_PROFILE="silk" ;;
     *)        EFF_FEAT_MOTION_PROFILE="off" ;;

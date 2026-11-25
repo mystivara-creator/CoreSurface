@@ -354,6 +354,11 @@ code {
   gap: 3px;
 }
 
+.seg-group.seg-grid-2x2 {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .seg-group button {
   border: 0;
   background: transparent;

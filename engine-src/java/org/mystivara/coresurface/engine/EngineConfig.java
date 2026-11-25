@@ -21,12 +21,14 @@ public final class EngineConfig {
     public static final String SETTINGS_KEY = "coresurface_engine_v1";
 
     public static final String MOTION_OFF = "off";
+    public static final String MOTION_IOS = "ios";
+    public static final String MOTION_COLOROS = "coloros";
     public static final String MOTION_HYPEROS4 = "hyperos4";
-    public static final String MOTION_SILK = "silk";
+    public static final String MOTION_SILK = "silk"; // legacy alias -> coloros
 
     private static final long REFRESH_INTERVAL_MS = 3000L;
 
-    private volatile String motionProfile = MOTION_HYPEROS4;
+    private volatile String motionProfile = MOTION_OFF;
     private volatile boolean nativeTier = true;
     private volatile boolean surgicalGuard = true;
     private volatile boolean thermalLod = true;
@@ -163,8 +165,10 @@ public final class EngineConfig {
                 boolean on = "1".equals(v) || "true".equalsIgnoreCase(v);
                 switch (k) {
                     case "motion":
-                        if (MOTION_SILK.equals(v)) {
-                            motionProfile = MOTION_SILK;
+                        if (MOTION_IOS.equals(v)) {
+                            motionProfile = MOTION_IOS;
+                        } else if (MOTION_COLOROS.equals(v) || MOTION_SILK.equals(v)) {
+                            motionProfile = MOTION_COLOROS;
                         } else if (MOTION_HYPEROS4.equals(v)) {
                             motionProfile = MOTION_HYPEROS4;
                         } else {
