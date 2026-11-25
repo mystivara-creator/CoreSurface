@@ -837,6 +837,37 @@ PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_
 assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=luminous=1;tilt=0;livingflow=1;guard=1;" "Live toggle updates Settings.Global IPC instantly"
 assert_file_not_contains "$SB_STATE/state.prop" "FEAT_LUMINOUS_TILT" "Live Engine toggle does NOT add to PENDING_KEYS (zero reboot required)"
 
+# 13d: SELinux-safe pm install -r -S <size> streaming in service.sh (idempotent)
+SB_PM_LOG="$SB/pm.calls"
+: > "$SB_PM_LOG"
+printf 'FAKE_ENGINE_APK_BYTES_1234567890' > "$SB_STATE/CoreSurfaceEngine.apk"
+cat > "$SB_BIN/pm" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$SB_PM_LOG"
+case "\$1" in
+  path)
+    if [ -f "$SB_STATE/.engine_installed.sig" ]; then
+      printf 'package:/data/app/org.mystivara.coresurface.engine/base.apk\n'
+      exit 0
+    fi
+    exit 1
+    ;;
+  install)
+    cat >/dev/null
+    printf 'Success\n'
+    exit 0
+    ;;
+esac
+exit 1
+EOF
+chmod +x "$SB_BIN/pm"
+run_service
+assert_file_contains "$SB_PM_LOG" "install -r -S 32" "service.sh installs CoreSurfaceEngine.apk via SELinux-safe stdin stream (pm install -r -S)"
+assert_eq "$( [ -f "$SB_STATE/.engine_installed.sig" ] && printf 'yes' || printf 'no' )" "yes" "service.sh records idempotent .engine_installed.sig stamp"
+: > "$SB_PM_LOG"
+run_service
+assert_file_not_contains "$SB_PM_LOG" "install -r" "service.sh skips redundant pm install when APK signature unchanged"
+
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

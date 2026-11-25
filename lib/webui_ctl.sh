@@ -381,26 +381,49 @@ cs_cmd_install_engine() {
     printf 'Perintah pm tidak tersedia.\n' >&2
     return 1
   fi
-  _cs_out=$(pm install -r "$_cs_apk" 2>&1 || true)
-  case "$_cs_out" in
-    *Success*)
-      cs_verifier_run || true
-      cs_log "WebUI installed/updated CoreSurfaceEngine.apk."
-      printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
-      return 0
-      ;;
-  esac
-  if command -v su >/dev/null 2>&1; then
-    _cs_out=$(su 2000 -c "pm install -r ${_cs_apk}" 2>&1 || true)
+
+  _cs_sz=$(wc -c < "$_cs_apk" 2>/dev/null | tr -d ' \t\r\n')
+  _cs_out=""
+  if [ -n "$_cs_sz" ] && [ "$_cs_sz" -gt 0 ] 2>/dev/null; then
+    _cs_out=$(pm install -r -S "$_cs_sz" < "$_cs_apk" 2>&1 || true)
     case "$_cs_out" in
       *Success*)
         cs_verifier_run || true
-        cs_log "WebUI installed/updated CoreSurfaceEngine.apk via UID 2000."
+        cs_log "WebUI installed/updated CoreSurfaceEngine.apk (stream)."
         printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
         return 0
         ;;
     esac
   fi
+
+  _cs_tmp_apk="/data/local/tmp/coresurface_engine_install.apk"
+  if cp "$_cs_apk" "$_cs_tmp_apk" 2>/dev/null; then
+    chmod 0644 "$_cs_tmp_apk" 2>/dev/null || true
+    _cs_out=$(pm install -r "$_cs_tmp_apk" 2>&1 || true)
+    case "$_cs_out" in
+      *Success*)
+        rm -f "$_cs_tmp_apk" 2>/dev/null || true
+        cs_verifier_run || true
+        cs_log "WebUI installed/updated CoreSurfaceEngine.apk."
+        printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
+        return 0
+        ;;
+    esac
+    if command -v su >/dev/null 2>&1; then
+      _cs_out=$(su 2000 -c "pm install -r ${_cs_tmp_apk}" 2>&1 || true)
+      case "$_cs_out" in
+        *Success*)
+          rm -f "$_cs_tmp_apk" 2>/dev/null || true
+          cs_verifier_run || true
+          cs_log "WebUI installed/updated CoreSurfaceEngine.apk via UID 2000."
+          printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
+          return 0
+          ;;
+      esac
+    fi
+    rm -f "$_cs_tmp_apk" 2>/dev/null || true
+  fi
+
   printf 'Gagal memasang APK (%s). Pasang manual dari %s\n' "$_cs_out" "$_cs_apk" >&2
   return 1
 }

@@ -1,5 +1,7 @@
 package org.mystivara.coresurface.engine;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -17,6 +19,8 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
     private static final String PKG_HOME = "com.miui.home";
     private static final String PKG_AOD = "com.miui.aod";
 
+    private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
+
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (lpparam == null || lpparam.packageName == null) {
@@ -30,6 +34,10 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
         }
 
         if (!PKG_SYSTEMUI.equals(pkg) && !PKG_HOME.equals(pkg) && !PKG_AOD.equals(pkg)) {
+            return;
+        }
+
+        if (!INITIALIZED.compareAndSet(false, true)) {
             return;
         }
 

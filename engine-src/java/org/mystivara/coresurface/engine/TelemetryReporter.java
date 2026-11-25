@@ -10,13 +10,15 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Zero-gimmick live runtime telemetry writer.
  * Writes verified runtime state (AGSL compilation, bound hooks, guarded Toasts/Recents,
- * Thermal LOD tier) atomically into the hooked app's own SELinux-allowed cache directory
- * so CoreSurface root verifier & WebUI can inspect genuine runtime proof.
+ * Thermal LOD tier) atomically on a single low-priority background thread (zero UI-thread
+ * disk I/O) into the hooked app's own SELinux-allowed cache directory.
  */
 public final class TelemetryReporter {
     public static final String TELEMETRY_FILENAME = "coresurface_telemetry.prop";
@@ -36,6 +38,12 @@ public final class TelemetryReporter {
     private final AtomicInteger flowAnimations = new AtomicInteger(0);
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "CoreSurface-Telemetry");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        return t;
+    });
     private volatile boolean flushScheduled = false;
 
     public TelemetryReporter(String processName) {
@@ -107,7 +115,7 @@ public final class TelemetryReporter {
             return;
         }
         flushScheduled = true;
-        mainHandler.postDelayed(this::flushNow, 400L);
+        mainHandler.postDelayed(() -> ioExecutor.execute(this::flushNow), 600L);
     }
 
     public void flushNow() {
@@ -150,7 +158,6 @@ public final class TelemetryReporter {
                 fos.flush();
             }
             if (!tmp.renameTo(dst)) {
-                // Fallback direct write if rename across mounts is blocked
                 try (FileOutputStream fos = new FileOutputStream(dst)) {
                     fos.write(sb.toString().getBytes(StandardCharsets.UTF_8));
                 }

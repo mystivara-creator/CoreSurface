@@ -105,7 +105,7 @@ APP_SRCS="$WORK_DIR/app_srcs.list"
   find "$GEN_SRC" -name '*.java'
 } | sort > "$APP_SRCS"
 
-javac --release 11 -Xlint:deprecation -cp "${ANDROID_JAR}:${STUB_CLASSES}" -d "$APP_CLASSES" @"$APP_SRCS"
+javac --release 11 -Xlint:all,-processing -Werror -cp "${ANDROID_JAR}:${STUB_CLASSES}" -d "$APP_CLASSES" @"$APP_SRCS"
 
 # 4. Dex compiled engine classes only (excluding Xposed stubs) with d8
 APP_JAR="$WORK_DIR/engine-classes.jar"

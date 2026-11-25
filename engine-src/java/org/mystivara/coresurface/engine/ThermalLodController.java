@@ -2,7 +2,11 @@ package org.mystivara.coresurface.engine;
 
 import android.content.Context;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
+
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * CoreSurface Exclusive: Thermal-Adaptive Visual LOD Controller.
@@ -17,6 +21,9 @@ public final class ThermalLodController {
 
     private final EngineConfig config;
     private final TelemetryReporter telemetry;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
+
     private volatile int thermalStatus = PowerManager.THERMAL_STATUS_NONE;
     private volatile boolean attached = false;
 
@@ -25,13 +32,20 @@ public final class ThermalLodController {
         this.telemetry = telemetry;
     }
 
+    public void addListener(Runnable listener) {
+        if (listener != null) {
+            listeners.addIfAbsent(listener);
+        }
+    }
+
     public void attachContext(Context context) {
         if (context == null || attached || Build.VERSION.SDK_INT < 29) {
             return;
         }
         attached = true;
         try {
-            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            Context appCtx = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+            PowerManager pm = (PowerManager) appCtx.getSystemService(Context.POWER_SERVICE);
             if (pm == null) {
                 return;
             }
@@ -42,8 +56,21 @@ public final class ThermalLodController {
     }
 
     private void updateStatus(int status) {
+        if (thermalStatus == status && attached) {
+            telemetry.setThermalState(getTierName(), status);
+            return;
+        }
         thermalStatus = status;
         telemetry.setThermalState(getTierName(), status);
+        // Dispatch UI shader LOD refresh strictly on the main thread
+        mainHandler.post(() -> {
+            for (Runnable r : listeners) {
+                try {
+                    r.run();
+                } catch (Throwable ignored) {
+                }
+            }
+        });
     }
 
     public float getEffectiveLod() {

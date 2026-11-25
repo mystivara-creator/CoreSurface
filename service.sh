@@ -37,6 +37,45 @@ case "$_cs_cur_status" in
     ;;
 esac
 
+cs_pm_install_apk() {
+  _cs_pi_apk=$1
+  [ -r "$_cs_pi_apk" ] || return 1
+  command -v pm >/dev/null 2>&1 || return 1
+
+  _cs_pi_size=$(wc -c < "$_cs_pi_apk" 2>/dev/null | tr -d ' \t\r\n')
+  if [ -n "$_cs_pi_size" ] && [ "$_cs_pi_size" -gt 0 ] 2>/dev/null; then
+    _cs_pi_out=$(pm install -r -S "$_cs_pi_size" < "$_cs_pi_apk" 2>&1 || true)
+    case "$_cs_pi_out" in
+      *Success*) return 0 ;;
+    esac
+  fi
+
+  # SELinux-safe fallback: stage in /data/local/tmp (readable by installd & UID 2000)
+  _cs_pi_tmp="/data/local/tmp/coresurface_engine_install.apk"
+  if cp "$_cs_pi_apk" "$_cs_pi_tmp" 2>/dev/null; then
+    chmod 0644 "$_cs_pi_tmp" 2>/dev/null || true
+    _cs_pi_out=$(pm install -r "$_cs_pi_tmp" 2>&1 || true)
+    case "$_cs_pi_out" in
+      *Success*)
+        rm -f "$_cs_pi_tmp" 2>/dev/null || true
+        return 0
+        ;;
+    esac
+    if command -v su >/dev/null 2>&1; then
+      _cs_pi_out=$(su 2000 -c "pm install -r ${_cs_pi_tmp}" 2>&1 || true)
+      case "$_cs_pi_out" in
+        *Success*)
+          rm -f "$_cs_pi_tmp" 2>/dev/null || true
+          return 0
+          ;;
+      esac
+    fi
+    rm -f "$_cs_pi_tmp" 2>/dev/null || true
+  fi
+
+  return 1
+}
+
 cs_install_engine_if_needed() {
   _cs_apk="$CS_STATE_DIR/CoreSurfaceEngine.apk"
   [ -r "$_cs_apk" ] || _cs_apk="$MODDIR/engine/CoreSurfaceEngine.apk"
@@ -49,33 +88,21 @@ cs_install_engine_if_needed() {
   [ -r "$_cs_stamp" ] && _cs_prev_sig=$(cat "$_cs_stamp" 2>/dev/null || true)
 
   _cs_pm_check=$(pm path org.mystivara.coresurface.engine 2>&1 || true)
+  if [ -z "$_cs_pm_check" ] && command -v su >/dev/null 2>&1; then
+    _cs_pm_check=$(su 2000 -c "pm path org.mystivara.coresurface.engine" 2>&1 || true)
+  fi
   if [ -n "$_cs_cur_sig" ] && [ "$_cs_cur_sig" = "$_cs_prev_sig" ]; then
     case "$_cs_pm_check" in
       package:*) return 0 ;;
     esac
   fi
 
-  _cs_inst_out=$(pm install -r "$_cs_apk" 2>&1 || true)
-  case "$_cs_inst_out" in
-    *Success*)
-      printf '%s\n' "$_cs_cur_sig" > "$_cs_stamp" 2>/dev/null || true
-      cs_log "Engine Installer: installed/updated CoreSurfaceEngine.apk (enable in LSPosed)."
-      return 0
-      ;;
-  esac
-
-  if command -v su >/dev/null 2>&1; then
-    _cs_inst_out=$(su 2000 -c "pm install -r ${_cs_apk}" 2>&1 || true)
-    case "$_cs_inst_out" in
-      *Success*)
-        printf '%s\n' "$_cs_cur_sig" > "$_cs_stamp" 2>/dev/null || true
-        cs_log "Engine Installer: installed/updated CoreSurfaceEngine.apk via UID 2000."
-        return 0
-        ;;
-    esac
+  if cs_pm_install_apk "$_cs_apk"; then
+    printf '%s\n' "$_cs_cur_sig" > "$_cs_stamp" 2>/dev/null || true
+    cs_log "Engine Installer: installed/updated CoreSurfaceEngine.apk (enable in LSPosed)."
+  else
+    cs_log "Engine Installer: automatic pm install skipped (install manually from ${_cs_apk})."
   fi
-
-  cs_log "Engine Installer: automatic pm install skipped (install manually from ${_cs_apk})."
   return 0
 }
 

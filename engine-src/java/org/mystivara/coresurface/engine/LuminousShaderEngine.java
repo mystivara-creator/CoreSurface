@@ -8,27 +8,31 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.DisplayMetrics;
 import android.view.View;
 
 import java.lang.ref.WeakReference;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * CoreSurface Luminous Optical Glass Engine (Native Android 13-16 AGSL GPU Shader).
- * Renders real per-pixel optical bevel refraction, subtle RGB chromatic edge dispersion
- * (at FULL LOD), and touch/tilt-reactive specular rim lighting via RuntimeShader.
  *
- * Zero idle battery drain: Sensor.TYPE_GRAVITY is registered ONLY while at least one
- * decorated view is visibly attached on screen, and immediately unregistered when hidden.
+ * Production hardening:
+ * - Premultiplied-alpha accurate compositing (no white blowout on translucent glass tiles).
+ * - Seam-free analytical rounded-box normals (no sign(0.0) dead line).
+ * - Strict UI-thread SensorManager delivery via mainHandler (zero CalledFromWrongThreadException).
+ * - Geometry bounds check (only genuine tile/card/slider/pill sizes, never tiny icons or fullscreen).
+ * - Zero idle battery drain: Sensor.TYPE_GRAVITY active ONLY while a decorated view is visible.
  */
 public final class LuminousShaderEngine {
-    private static final int TAG_LUMINOUS_STATE = 0x5C30A11F;
 
     /**
-     * Clean-room AGSL Optical Glass & Specular Rim Fragment Shader.
-     * Operates directly on the live UI contents texture in Skia/HWUI GPU pipeline.
+     * Clean-room AGSL Optical Glass & Specular Rim Fragment Shader (SkSL compliant).
      */
     private static final String LUMINOUS_GLASS_AGSL =
             "uniform shader contents;\n"
@@ -40,8 +44,8 @@ public final class LuminousShaderEngine {
           + "uniform float iLod;\n"
           + "\n"
           + "float sdRoundedBox(float2 p, float2 b, float r) {\n"
-          + "    float2 q = abs(p) - b + float2(r);\n"
-          + "    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;\n"
+          + "    float2 q = abs(p) - b + float2(r, r);\n"
+          + "    return min(max(q.x, q.y), 0.0) + length(max(q, float2(0.0, 0.0))) - r;\n"
           + "}\n"
           + "\n"
           + "half4 main(float2 fragCoord) {\n"
@@ -54,53 +58,61 @@ public final class LuminousShaderEngine {
           + "        return contents.eval(fragCoord);\n"
           + "    }\n"
           + "\n"
-          + "    // Compute analytical normal near rounded glass rim\n"
-          + "    float2 q = abs(p) - halfRes + float2(r);\n"
+          + "    // Seam-free sign (-1.0 or +1.0, never 0.0)\n"
+          + "    float2 sgn = step(float2(0.0, 0.0), p) * 2.0 - float2(1.0, 1.0);\n"
+          + "    float2 q = abs(p) - halfRes + float2(r, r);\n"
           + "    float2 rawN = (max(q.x, q.y) > 0.0)\n"
-          + "        ? normalize(max(q, 0.0) + float2(1e-4)) * sign(p)\n"
-          + "        : ((q.x > q.y) ? float2(sign(p.x), 0.0) : float2(0.0, sign(p.y)));\n"
+          + "        ? normalize(max(q, float2(0.0, 0.0)) + float2(1e-4, 1e-4)) * sgn\n"
+          + "        : ((q.x > q.y) ? float2(sgn.x, 0.0) : float2(0.0, sgn.y));\n"
           + "\n"
-          + "    // Bevel thickness (~14px optical rim)\n"
+          + "    // Bevel thickness (~14px optical glass rim)\n"
           + "    float edgeBand = clamp(1.0 - (-d / 14.0), 0.0, 1.0);\n"
-          + "    float rimLine = smoothstep(0.62, 0.98, edgeBand);\n"
+          + "    float rimLine = smoothstep(0.60, 0.98, edgeBand);\n"
+          + "    float2 maxUv = res - float2(1.0, 1.0);\n"
           + "\n"
           + "    half4 baseColor;\n"
           + "    if (iLod >= 0.85) {\n"
-          + "        // FULL LOD: Optical bevel refraction + subtle chromatic dispersion\n"
-          + "        float refr = edgeBand * edgeBand * 3.8;\n"
-          + "        float2 uvR = clamp(fragCoord - rawN * (refr * 1.18), float2(0.0), res - float2(1.0));\n"
-          + "        float2 uvG = clamp(fragCoord - rawN * refr, float2(0.0), res - float2(1.0));\n"
-          + "        float2 uvB = clamp(fragCoord - rawN * (refr * 0.82), float2(0.0), res - float2(1.0));\n"
+          + "        // FULL LOD: Optical bevel refraction + subtle RGB chromatic dispersion\n"
+          + "        float refr = edgeBand * edgeBand * 3.6;\n"
+          + "        float2 uvR = clamp(fragCoord - rawN * (refr * 1.16), float2(0.0, 0.0), maxUv);\n"
+          + "        float2 uvG = clamp(fragCoord - rawN * refr, float2(0.0, 0.0), maxUv);\n"
+          + "        float2 uvB = clamp(fragCoord - rawN * (refr * 0.84), float2(0.0, 0.0), maxUv);\n"
           + "        half4 cR = contents.eval(uvR);\n"
           + "        half4 cG = contents.eval(uvG);\n"
           + "        half4 cB = contents.eval(uvB);\n"
           + "        baseColor = half4(cR.r, cG.g, cB.b, cG.a);\n"
           + "    } else if (iLod >= 0.5) {\n"
           + "        // BALANCED LOD: Single-tap bevel refraction\n"
-          + "        float2 uv = clamp(fragCoord - rawN * (edgeBand * 2.4), float2(0.0), res - float2(1.0));\n"
+          + "        float2 uv = clamp(fragCoord - rawN * (edgeBand * 2.2), float2(0.0, 0.0), maxUv);\n"
           + "        baseColor = contents.eval(uv);\n"
           + "    } else {\n"
           + "        // ECO LOD: Zero extra texture taps (120 FPS thermal protection)\n"
           + "        baseColor = contents.eval(fragCoord);\n"
           + "    }\n"
           + "\n"
-          + "    // Dynamic directional specular rim highlight (tilt + top-left optical key light)\n"
-          + "    float2 lightDir = normalize(iLightPos + float2(1e-4));\n"
+          + "    // Directional specular rim highlight (tilt + optical key light)\n"
+          + "    float2 lightDir = normalize(iLightPos + float2(1e-4, 1e-4));\n"
           + "    float specAlign = pow(clamp(dot(rawN, lightDir) * 0.5 + 0.5, 0.0, 1.0), 3.0);\n"
           + "    float counterRim = pow(clamp(dot(rawN, -lightDir) * 0.5 + 0.5, 0.0, 1.0), 4.0) * 0.35;\n"
-          + "    float spec = rimLine * (specAlign * 0.30 + counterRim * 0.22 + 0.05) * (0.45 + 0.55 * iLod);\n"
+          + "    float spec = rimLine * (specAlign * 0.28 + counterRim * 0.20 + 0.04) * (0.45 + 0.55 * iLod);\n"
           + "\n"
           + "    // Interactive touch-point radial luminous bloom\n"
           + "    float touchFalloff = 0.0;\n"
           + "    if (iTouchGlow > 0.01) {\n"
           + "        float distToTouch = length(fragCoord - iTouchPos) / max(res.x, res.y);\n"
-          + "        touchFalloff = exp(-distToTouch * 4.2) * iTouchGlow * 0.22;\n"
+          + "        touchFalloff = exp(-distToTouch * 4.2) * iTouchGlow * 0.20;\n"
           + "    }\n"
           + "\n"
-          + "    half alphaMask = baseColor.a;\n"
-          + "    half3 glowAdd = half3(spec + touchFalloff) * alphaMask;\n"
-          + "    half3 finalRgb = clamp(baseColor.rgb + glowAdd, half3(0.0), half3(1.0));\n"
-          + "    return half4(finalRgb, alphaMask);\n"
+          + "    // Premultiplied-alpha safe glass specular compositing\n"
+          + "    half inAlpha = clamp(baseColor.a, half(0.0), half(1.0));\n"
+          + "    if (inAlpha <= half(0.01)) {\n"
+          + "        return baseColor;\n"
+          + "    }\n"
+          + "    half addVal = half(spec + touchFalloff);\n"
+          + "    half outAlpha = clamp(inAlpha + addVal * half(0.35), half(0.0), half(1.0));\n"
+          + "    half3 glow = half3(addVal, addVal, addVal) * outAlpha;\n"
+          + "    half3 finalRgb = min(baseColor.rgb + glow, half3(outAlpha, outAlpha, outAlpha));\n"
+          + "    return half4(finalRgb, outAlpha);\n"
           + "}\n";
 
     private static final class ViewLuminousState {
@@ -122,7 +134,10 @@ public final class LuminousShaderEngine {
     private final EngineConfig config;
     private final ThermalLodController lodController;
     private final TelemetryReporter telemetry;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Set<ViewLuminousState> activeStates = new CopyOnWriteArraySet<>();
+    // UI-thread-only map (no View.setTag resource-id collision risk)
+    private final WeakHashMap<View, ViewLuminousState> viewStateMap = new WeakHashMap<>();
 
     private volatile boolean shaderVerified = false;
     private volatile boolean sensorRegistered = false;
@@ -137,6 +152,7 @@ public final class LuminousShaderEngine {
         @Override
         public void onSensorChanged(SensorEvent event) {
             if (!config.isLuminousGlass() || !config.isLuminousTilt()) {
+                unregisterSensor();
                 return;
             }
             long now = System.currentTimeMillis();
@@ -167,6 +183,7 @@ public final class LuminousShaderEngine {
         this.lodController = lodController;
         this.telemetry = telemetry;
         verifyAgslSupport();
+        this.lodController.addListener(this::refreshAllVisibleViews);
     }
 
     private void verifyAgslSupport() {
@@ -211,12 +228,17 @@ public final class LuminousShaderEngine {
         }
     }
 
+    public boolean isDecorated(View view) {
+        return isMainThread() && view != null && viewStateMap.containsKey(view);
+    }
+
     public void decorateView(final View view, float cornerRadiusDp) {
-        if (!isSupported() || view == null) {
+        if (!isSupported() || view == null || !isMainThread()) {
             return;
         }
-        if (view.getTag(TAG_LUMINOUS_STATE) instanceof ViewLuminousState) {
-            updateViewEffect((ViewLuminousState) view.getTag(TAG_LUMINOUS_STATE));
+        ViewLuminousState existing = viewStateMap.get(view);
+        if (existing != null) {
+            updateViewEffect(existing);
             return;
         }
 
@@ -226,7 +248,7 @@ public final class LuminousShaderEngine {
             float radiusPx = Math.max(12.0f, cornerRadiusDp * density);
             RuntimeShader shader = new RuntimeShader(LUMINOUS_GLASS_AGSL);
             final ViewLuminousState state = new ViewLuminousState(view, shader, radiusPx);
-            view.setTag(TAG_LUMINOUS_STATE, state);
+            viewStateMap.put(view, state);
             activeStates.add(state);
             telemetry.incLuminousViews();
 
@@ -258,14 +280,13 @@ public final class LuminousShaderEngine {
     }
 
     public void pulseTouchGlow(View view, float x, float y, float glowStrength) {
-        if (view == null || !isSupported()) {
+        if (view == null || !isSupported() || !isMainThread()) {
             return;
         }
-        Object tag = view.getTag(TAG_LUMINOUS_STATE);
-        if (!(tag instanceof ViewLuminousState)) {
+        ViewLuminousState state = viewStateMap.get(view);
+        if (state == null) {
             return;
         }
-        ViewLuminousState state = (ViewLuminousState) tag;
         state.touchX = x;
         state.touchY = y;
         state.touchGlow = clamp(glowStrength, 0.0f, 1.0f);
@@ -273,6 +294,10 @@ public final class LuminousShaderEngine {
     }
 
     public void refreshAllVisibleViews() {
+        if (!isMainThread()) {
+            mainHandler.post(this::refreshAllVisibleViews);
+            return;
+        }
         boolean anyVisible = false;
         Iterator<ViewLuminousState> it = activeStates.iterator();
         while (it.hasNext()) {
@@ -295,7 +320,7 @@ public final class LuminousShaderEngine {
     }
 
     private void updateViewEffect(ViewLuminousState state) {
-        if (Build.VERSION.SDK_INT < 33) {
+        if (Build.VERSION.SDK_INT < 33 || !isMainThread()) {
             return;
         }
         View view = state.viewRef.get();
@@ -304,15 +329,13 @@ public final class LuminousShaderEngine {
         }
         try {
             if (!config.isLuminousGlass()) {
-                if (state.effectApplied) {
-                    view.setRenderEffect(null);
-                    state.effectApplied = false;
-                }
+                clearEffectIfNeeded(view, state);
                 return;
             }
             int w = view.getWidth();
             int h = view.getHeight();
-            if (w <= 8 || h <= 8) {
+            if (!isEligibleTileGeometry(view, w, h)) {
+                clearEffectIfNeeded(view, state);
                 return;
             }
             float lod = lodController.getEffectiveLod();
@@ -333,7 +356,35 @@ public final class LuminousShaderEngine {
         }
     }
 
+    private static void clearEffectIfNeeded(View view, ViewLuminousState state) {
+        if (state.effectApplied && Build.VERSION.SDK_INT >= 31) {
+            view.setRenderEffect(null);
+            state.effectApplied = false;
+        }
+    }
+
+    /**
+     * Strict geometry guard: prevents applying glass bevel refraction to tiny status icons
+     * (< 44dp) or full-screen root containers (>= 98% width and >= 75% height).
+     */
+    private static boolean isEligibleTileGeometry(View view, int w, int h) {
+        if (w <= 0 || h <= 0 || view.getResources() == null) {
+            return false;
+        }
+        DisplayMetrics dm = view.getResources().getDisplayMetrics();
+        float minW = 44.0f * dm.density;
+        float minH = 34.0f * dm.density;
+        if (w < minW || h < minH) {
+            return false;
+        }
+        return !(w >= dm.widthPixels * 0.98f && h >= dm.heightPixels * 0.75f);
+    }
+
     private void syncSensorRegistration() {
+        if (!isMainThread()) {
+            mainHandler.post(this::syncSensorRegistration);
+            return;
+        }
         if (!config.isLuminousGlass() || !config.isLuminousTilt() || sensorManager == null || gravitySensor == null) {
             unregisterSensor();
             return;
@@ -348,8 +399,9 @@ public final class LuminousShaderEngine {
         }
         if (hasVisible && !sensorRegistered) {
             try {
+                // Deliver sensor callbacks strictly on mainHandler (UI thread safe)
                 sensorRegistered = sensorManager.registerListener(
-                        gravityListener, gravitySensor, SensorManager.SENSOR_DELAY_UI);
+                        gravityListener, gravitySensor, SensorManager.SENSOR_DELAY_UI, mainHandler);
             } catch (Throwable ignored) {
                 sensorRegistered = false;
             }
@@ -366,6 +418,10 @@ public final class LuminousShaderEngine {
             }
             sensorRegistered = false;
         }
+    }
+
+    private static boolean isMainThread() {
+        return Looper.myLooper() == Looper.getMainLooper();
     }
 
     private static float clamp(float v, float min, float max) {

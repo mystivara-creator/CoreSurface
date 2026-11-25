@@ -92,10 +92,33 @@ cs_verify_engine() {
     esac
   fi
 
-  # 2. Aggregate genuine live telemetry written by hooked processes
-  _cs_t_sysui=${CORESURFACE_ENGINE_SYSUI_TELEM:-/data/user_de/0/com.android.systemui/cache/coresurface_telemetry.prop}
-  _cs_t_home=${CORESURFACE_ENGINE_HOME_TELEM:-/data/user/0/com.miui.home/cache/coresurface_telemetry.prop}
-  _cs_t_aod=${CORESURFACE_ENGINE_AOD_TELEM:-/data/user_de/0/com.miui.aod/cache/coresurface_telemetry.prop}
+  # 2. Aggregate genuine live telemetry written by hooked processes (supports both user_de & user cache)
+  _cs_t_sysui=${CORESURFACE_ENGINE_SYSUI_TELEM:-}
+  if [ -z "$_cs_t_sysui" ]; then
+    if [ -r /data/user_de/0/com.android.systemui/cache/coresurface_telemetry.prop ]; then
+      _cs_t_sysui=/data/user_de/0/com.android.systemui/cache/coresurface_telemetry.prop
+    else
+      _cs_t_sysui=/data/user/0/com.android.systemui/cache/coresurface_telemetry.prop
+    fi
+  fi
+
+  _cs_t_home=${CORESURFACE_ENGINE_HOME_TELEM:-}
+  if [ -z "$_cs_t_home" ]; then
+    if [ -r /data/user/0/com.miui.home/cache/coresurface_telemetry.prop ]; then
+      _cs_t_home=/data/user/0/com.miui.home/cache/coresurface_telemetry.prop
+    else
+      _cs_t_home=/data/user_de/0/com.miui.home/cache/coresurface_telemetry.prop
+    fi
+  fi
+
+  _cs_t_aod=${CORESURFACE_ENGINE_AOD_TELEM:-}
+  if [ -z "$_cs_t_aod" ]; then
+    if [ -r /data/user_de/0/com.miui.aod/cache/coresurface_telemetry.prop ]; then
+      _cs_t_aod=/data/user_de/0/com.miui.aod/cache/coresurface_telemetry.prop
+    else
+      _cs_t_aod=/data/user/0/com.miui.aod/cache/coresurface_telemetry.prop
+    fi
+  fi
 
   for _cs_tf in "$_cs_t_sysui" "$_cs_t_home" "$_cs_t_aod"; do
     [ -r "$_cs_tf" ] || continue
