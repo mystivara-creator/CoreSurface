@@ -1434,5 +1434,29 @@ assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Nati
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Native Flagship motion_only skips Flagship Suite prop overrides"
 
 # ---------------------------------------------------------------------------
+printf '=== Test 21: HyperOS 4.0 (Android 17) Bionic Material & Never-Downgrade Visual Release ===\n'
+setup_sandbox "t21_hyperos4_bionic_material"
+write_mock_getprop "OS4.0" "" "37" "1" "malachite" "Redmi Note 16 Pro"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/malachite.xml"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=5" "HyperOS 4 Flagship sets native advanced_visual_release=5"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.bionic_material_supported=true" "HyperOS 4 Flagship enables persist.sys.bionic_material_supported=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.cpulevel=6" "HyperOS 4 Flagship sets computility cpulevel=6"
+assert_file_not_contains "$SB_STATE/os_bugs.state" "LEAKED_PERSIST_PROPS" "HyperOS 4 does not falsely flag native release=5 as leaked prop"
+
+# Future HyperOS 4.1+ ROM with stock advanced_visual_release=6 must NEVER be downgraded to 5
+setup_sandbox "t21b_hyperos4_never_downgrade_avr6"
+write_mock_getprop "OS4.1" "" "37" "1" "malachite" "Redmi Note 16 Pro"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/malachite.xml"
+printf 'persist.sys.advanced_visual_release=6\n' > "$SB_PROPS_DB"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=6" "HyperOS 4.1+ Never-Downgrade preserves stock advanced_visual_release=6"
+assert_file_not_contains "$SB_STATE/os_bugs.state" "LEAKED_PERSIST_PROPS" "HyperOS 4.1+ release=6 is not flagged as leaked"
+
+# ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

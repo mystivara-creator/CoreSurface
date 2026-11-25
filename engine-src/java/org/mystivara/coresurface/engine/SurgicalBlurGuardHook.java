@@ -139,9 +139,12 @@ public final class SurgicalBlurGuardHook {
         }
 
         // 2. Intercept MIUI View background blur setters ONLY on true Recents/Overview/NavStub views
-        //    (explicitly excludes Folder, -1 Screen / App Vault, Wallpaper, Workspace & Control Center)
-        hooked += hookViewMiBlurForRecents("setMiBackgroundBlurMode");
-        hooked += hookViewMiBlurForRecents("setMiViewBlurMode");
+        //    (explicitly excludes Folder, -1 Screen / App Vault, Wallpaper, Workspace & Control Center;
+        //    skipped cleanly when MiBlur API is absent)
+        if (bugGuard.hasMiBlurApi()) {
+            hooked += hookViewMiBlurForRecents("setMiBackgroundBlurMode");
+            hooked += hookViewMiBlurForRecents("setMiViewBlurMode");
+        }
 
         // 3. Guard MiuiHome Recents window FLAG_BLUR_BEHIND / blurBehindRadius
         try {

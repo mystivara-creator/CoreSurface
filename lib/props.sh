@@ -292,13 +292,29 @@ cs_apply_feat_blur() {
 
   if [ "${EFF_FEAT_ADV_TEXTURES:-0}" != "1" ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
+  elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 4 ]; then
+    # Native HyperOS 4+ Bionic Material & Advanced Textures contract (verified against OS4.0 factory dump):
+    # - Never-Downgrade advanced_visual_release: min 5 (preserves 6+ on future HOS 4.1+ ROMs)
+    # - Enables persist.sys.bionic_material_supported=true + MiShadow + G2 SmoothCorner + Backdrop Sampling
+    _cs_avr=$(cs_max_uint 5 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
+    cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
+    cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
+    cs_set_prop "FEAT_BLUR" "persist.sys.bionic_material_supported" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "ro.miui.backdrop_sampling_enabled" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
   elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
     # Complete HyperOS 3 Advanced Textures v4 + Flagship Compositor contract (strictly resetprop -n):
-    # - Uses native HyperOS 3 visual release 4 (NOT legacy HOS 2 release 3 or blur_version=2)
+    # - Never-Downgrade advanced_visual_release: min 4 (preserves 5+ on HOS 3.1/3.2 ROMs)
     # - Completes MiShadow, G2 SmoothCorner, Backdrop Sampling & BlurNoise tokens
     # - Keeps background_blur_status_default=false & omits enable_blurs_on_windows for Toast/Recents safety
+    _cs_avr=$(cs_max_uint 4 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
-    cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "4"
+    cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
     cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"
@@ -307,9 +323,10 @@ cs_apply_feat_blur() {
     cs_set_prop "FEAT_BLUR" "ro.miui.backdrop_sampling_enabled" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
   else
+    _cs_avr=$(cs_max_uint 3 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"
-    cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "3"
+    cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
   fi
 }
 
