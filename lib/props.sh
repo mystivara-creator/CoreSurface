@@ -52,7 +52,7 @@ cs_resetprop_delete_persist() {
 # One-time cleanup for devices upgrading from earlier preview builds that had system.prop.
 # Purges leaked persist.* keys from /data/property so Toast/Recent Apps regressions vanish immediately.
 cs_purge_leaked_persist_props() {
-  _cs_marker="$CS_STATE_DIR/.purged_leaked_persist_v1"
+  _cs_marker="$CS_STATE_DIR/.purged_leaked_persist_v2"
   [ -f "$_cs_marker" ] && return 0
 
   cs_find_resetprop || return 0
@@ -65,6 +65,8 @@ cs_purge_leaked_persist_props() {
     persist.sys.add_blurnoise_supported \
     persist.sys.multi_task.mask_blur_enable \
     persist.sys.background_blur_setting \
+    persist.sys.background_blur_status_default \
+    persist.sys.background_blur_version \
     persist.sys.launcher_blur_supported \
     persist.sys.sf.disable_blurs \
     persist.sys.computility.cpulevel \
@@ -153,9 +155,7 @@ cs_apply_feat_animations() {
 cs_apply_feat_blur() {
   [ "$EFF_FEAT_BLUR" = "1" ] || return 0
 
-  # Clean SurfaceFlinger & HyperOS blur stack (omits backdrop_sampling_enabled,
-  # background_blur_setting, MiShadow, smoothcorner, and enable_blurs_on_windows
-  # which bloat Toast bounds on HyperOS 3).
+  # Clean SurfaceFlinger & HyperOS Control Center/Shade/Folder/Launcher blur.
   cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.sf.blurs_are_expensive" "0"
   cs_set_prop "FEAT_BLUR" "sf.blurs_are_expensive" "0"
@@ -165,11 +165,15 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "persist.sys.miui_folder_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "1"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
-  cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
-  cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"
 
-  # HyperOS 3+ drops legacy persist.sys.advanced_visual_release=3; apply only on HyperOS 1/2 & MIUI
-  if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
+  # On HyperOS 3+, forcing Advanced Textures (status_default=true + blur_version=2)
+  # causes bloated Toast blur boxes and dark/black Recent Apps on non-flagship GPUs.
+  # Keep the Settings toggle available, default OFF on HyperOS 3+ while preserving CC/Folder/Shade blur.
+  if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
+    cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
+  else
+    cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "3"
   fi
 }

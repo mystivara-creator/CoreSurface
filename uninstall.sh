@@ -15,7 +15,7 @@ if [ -r "$MODDIR/lib/props.sh" ]; then
   # shellcheck source=lib/props.sh
   . "$MODDIR/lib/props.sh"
   cs_clear_system_prop "$MODDIR" || true
-  rm -f "$CS_STATE_DIR/.purged_leaked_persist_v1" 2>/dev/null || true
+  rm -f "$CS_STATE_DIR/.purged_leaked_persist_v1" "$CS_STATE_DIR/.purged_leaked_persist_v2" 2>/dev/null || true
   cs_purge_leaked_persist_props || true
 fi
 

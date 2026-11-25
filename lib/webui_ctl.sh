@@ -132,6 +132,7 @@ cs_cmd_status() {
   printf 'cfg_feat_video_depth=%s\n' "$CFG_FEAT_VIDEO_DEPTH"
   printf 'cfg_feat_multitask=%s\n' "$CFG_FEAT_MULTITASK"
   printf 'cfg_feat_display_hz=%s\n' "$CFG_FEAT_DISPLAY_HZ"
+  printf 'cfg_feat_color_expert=%s\n' "$CFG_FEAT_COLOR_EXPERT"
   printf 'cfg_feat_hyperai=%s\n' "$CFG_FEAT_HYPERAI"
   printf 'cfg_feat_aod_unlock=%s\n' "$CFG_FEAT_AOD_UNLOCK"
 
@@ -143,6 +144,7 @@ cs_cmd_status() {
   printf 'eff_feat_video_depth=%s\n' "$EFF_FEAT_VIDEO_DEPTH"
   printf 'eff_feat_multitask=%s\n' "$EFF_FEAT_MULTITASK"
   printf 'eff_feat_display_hz=%s\n' "$EFF_FEAT_DISPLAY_HZ"
+  printf 'eff_feat_color_expert=%s\n' "$EFF_FEAT_COLOR_EXPERT"
   printf 'eff_feat_hyperai=%s\n' "$EFF_FEAT_HYPERAI"
   printf 'eff_feat_aod_unlock=%s\n' "$EFF_FEAT_AOD_UNLOCK"
 
@@ -163,6 +165,7 @@ cs_cmd_status() {
   printf 'verify_feat_video_depth=%s\n' "$(cs_verify_get VERIFY_FEAT_VIDEO_DEPTH)"
   printf 'verify_feat_multitask=%s\n' "$(cs_verify_get VERIFY_FEAT_MULTITASK)"
   printf 'verify_feat_display_hz=%s\n' "$(cs_verify_get VERIFY_FEAT_DISPLAY_HZ)"
+  printf 'verify_feat_color_expert=%s\n' "$(cs_verify_get VERIFY_FEAT_COLOR_EXPERT)"
   printf 'verify_feat_hyperai=%s\n' "$(cs_verify_get VERIFY_FEAT_HYPERAI)"
   printf 'verify_feat_aod_unlock=%s\n' "$(cs_verify_get VERIFY_FEAT_AOD_UNLOCK)"
   printf 'verify_xml_mount=%s\n' "$(cs_verify_get VERIFY_XML_MOUNT)"
@@ -214,7 +217,7 @@ cs_cmd_set() {
           ;;
       esac
       ;;
-    FEAT_HYPERAI|FEAT_AOD_UNLOCK)
+    FEAT_COLOR_EXPERT|FEAT_HYPERAI|FEAT_AOD_UNLOCK)
       case "$_cs_set_v" in
         1|0) ;;
         *)
@@ -252,6 +255,7 @@ cs_cmd_preset() {
       cs_write_config_key "FEAT_VIDEO_DEPTH" "0"
       cs_write_config_key "FEAT_MULTITASK" "0"
       cs_write_config_key "FEAT_DISPLAY_HZ" "0"
+      cs_write_config_key "FEAT_COLOR_EXPERT" "0"
       cs_write_config_key "FEAT_HYPERAI" "0"
       cs_write_config_key "FEAT_AOD_UNLOCK" "0"
       ;;
@@ -264,6 +268,7 @@ cs_cmd_preset() {
       cs_write_config_key "FEAT_VIDEO_DEPTH" "auto"
       cs_write_config_key "FEAT_MULTITASK" "auto"
       cs_write_config_key "FEAT_DISPLAY_HZ" "auto"
+      cs_write_config_key "FEAT_COLOR_EXPERT" "0"
       cs_write_config_key "FEAT_HYPERAI" "0"
       cs_write_config_key "FEAT_AOD_UNLOCK" "0"
       ;;
@@ -335,6 +340,7 @@ cs_cmd_diag_report() {
   printf 'FEAT_VIDEO_DEPTH=%s (%s)\n' "$CFG_FEAT_VIDEO_DEPTH" "$(cs_verify_get VERIFY_FEAT_VIDEO_DEPTH)"
   printf 'FEAT_MULTITASK=%s (%s)\n' "$CFG_FEAT_MULTITASK" "$(cs_verify_get VERIFY_FEAT_MULTITASK)"
   printf 'FEAT_DISPLAY_HZ=%s (%s)\n' "$CFG_FEAT_DISPLAY_HZ" "$(cs_verify_get VERIFY_FEAT_DISPLAY_HZ)"
+  printf 'FEAT_COLOR_EXPERT=%s (%s)\n' "$CFG_FEAT_COLOR_EXPERT" "$(cs_verify_get VERIFY_FEAT_COLOR_EXPERT)"
   printf 'FEAT_HYPERAI=%s (%s)\n' "$CFG_FEAT_HYPERAI" "$(cs_verify_get VERIFY_FEAT_HYPERAI)"
   printf 'FEAT_AOD_UNLOCK=%s (%s)\n' "$CFG_FEAT_AOD_UNLOCK" "$(cs_verify_get VERIFY_FEAT_AOD_UNLOCK)"
   if [ -s "$CS_OVERRIDDEN_PROPS_FILE" ]; then

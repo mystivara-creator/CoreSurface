@@ -12,9 +12,12 @@ const FEATURE_KEYS = [
   'FEAT_VIDEO_DEPTH',
   'FEAT_MULTITASK',
   'FEAT_DISPLAY_HZ',
+  'FEAT_COLOR_EXPERT',
   'FEAT_HYPERAI',
   'FEAT_AOD_UNLOCK'
 ];
+
+const OPT_IN_KEYS = new Set(['FEAT_COLOR_EXPERT', 'FEAT_HYPERAI', 'FEAT_AOD_UNLOCK']);
 
 let execCounter = 0;
 
@@ -391,7 +394,7 @@ async function refreshStatus() {
 
     for (const key of FEATURE_KEYS) {
       const lower = key.toLowerCase();
-      setSegmentValue(key, kv['cfg_' + lower] || (key === 'FEAT_HYPERAI' || key === 'FEAT_AOD_UNLOCK' ? '0' : 'auto'));
+      setSegmentValue(key, kv['cfg_' + lower] || (OPT_IN_KEYS.has(key) ? '0' : 'auto'));
       renderVerifyPill(key, kv['verify_' + lower] || '', pendingSet.has(key), kv['eff_' + lower] || '0');
     }
 

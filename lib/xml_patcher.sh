@@ -93,6 +93,11 @@ cs_xml_build_patch_spec() {
       printf 'integer|freeform_max_count|4\n'
     fi
 
+    if [ "$EFF_FEAT_COLOR_EXPERT" = "1" ]; then
+      # Unlocks Advanced settings / Custom color menu without touching stock Vivid/Saturated/Standard tags
+      printf 'bool|support_display_expert_mode|true\n'
+    fi
+
     if [ "$EFF_FEAT_HYPERAI" = "1" ]; then
       printf 'bool|gallery_support_analytic_face_and_scene|true\n'
       printf 'bool|gallery_support_media_feature|true\n'
@@ -106,6 +111,7 @@ cs_xml_build_patch_spec() {
     if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
       printf 'bool|support_aod|true\n'
       printf 'bool|support_aod_aon|true\n'
+      printf 'bool|aod_support_keycode_goto_dismiss|true\n'
       # HyperOS 3 dynamic safety gate: avoid support_aod_fullscreen on HOS 3+
       if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
         printf 'bool|support_aod_fullscreen|true\n'

@@ -93,15 +93,15 @@
         <div class="feat-card" data-feat="FEAT_BLUR">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Advanced Textures &amp; Blur</h3>
+              <h3>Control Center &amp; Surface Blur</h3>
               <div class="meta-pills">
                 <span class="load-pill load-high">High GPU/RAM</span>
                 <span id="verify-FEAT_BLUR" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">SurfaceFlinger/Window blur konsisten, CC/folder blur, MiShadow, smooth corners, &amp; <code>disable_window_blurs=0</code>. Auto ON jika RAM ≥ 6 GB.</p>
+            <p class="feat-desc">Blur Control Center, Notification Shade, Folder, &amp; Launcher. Di HyperOS 3+ tidak memaksa <em>Advanced textures</em> ON otomatis agar Toast &amp; Recent Apps tetap bersih. Auto ON jika RAM ≥ 6 GB.</p>
           </div>
-          <div class="seg-group" data-key="FEAT_BLUR" role="group" aria-label="Advanced Textures and Blur">
+          <div class="seg-group" data-key="FEAT_BLUR" role="group" aria-label="Control Center and Surface Blur">
             <button type="button" data-val="auto">Auto</button>
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
@@ -117,7 +117,7 @@
                 <span id="verify-FEAT_ANIMATIONS" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Computility V1/V2, HyperTransition v3, parallel sweep, &amp; <code>deviceLevelList</code> dinamis sesuai RAM tier.</p>
+            <p class="feat-desc">HyperTransition, parallel sweep, &amp; <code>deviceLevelList</code> dinamis sesuai RAM tier tanpa menggeser layout Recent Apps.</p>
           </div>
           <div class="seg-group" data-key="FEAT_ANIMATIONS" role="group" aria-label="Flagship Animations">
             <button type="button" data-val="auto">Auto</button>
@@ -153,7 +153,7 @@
                 <span id="verify-FEAT_RRO_OVERLAYS" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Overlay CI-built untuk SystemUI (shade/gradient blur, charging ripple, AOD anim), ThemeManager (Video Wallpaper), &amp; MiWallpaper (Super Wallpaper). Auto ON jika RAM ≥ 6 GB.</p>
+            <p class="feat-desc">Overlay CI-built untuk SystemUI (shade/gradient blur, charging ripple, AOD linkage anim), ThemeManager (Video Wallpaper), &amp; MiWallpaper (Super Wallpaper). Auto ON jika RAM ≥ 6 GB.</p>
           </div>
           <div class="seg-group" data-key="FEAT_RRO_OVERLAYS" role="group" aria-label="Clean-Room RRO Overlays">
             <button type="button" data-val="auto">Auto</button>
@@ -234,6 +234,23 @@
           </div>
         </div>
 
+        <div class="feat-card feat-exp" data-feat="FEAT_COLOR_EXPERT">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Custom Color Scheme (Expert Mode) <span class="tag-warn">Opt-in</span></h3>
+              <div class="meta-pills">
+                <span class="load-pill load-low">Low Load</span>
+                <span id="verify-FEAT_COLOR_EXPERT" class="v-pill v-neutral">-</span>
+              </div>
+            </div>
+            <p class="feat-desc">Membuka menu <em>Advanced settings / Custom</em> (Original PRO, P3, sRGB, RGB/HSV) lewat <code>support_display_expert_mode=true</code> tanpa mengganggu 3 mode bawaan. Efektivitas slider bergantung driver panel.</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_COLOR_EXPERT" role="group" aria-label="Custom Color Scheme Expert Mode">
+            <button type="button" data-val="0">OFF</button>
+            <button type="button" data-val="1">ON</button>
+          </div>
+        </div>
+
         <div class="feat-card feat-exp" data-feat="FEAT_HYPERAI">
           <div class="feat-head">
             <div class="feat-title-wrap">
@@ -254,13 +271,13 @@
         <div class="feat-card feat-exp" data-feat="FEAT_AOD_UNLOCK">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>AOD Limit Unlock <span class="tag-warn">Opt-in</span></h3>
+              <h3>AOD Limit Unlock &amp; Linkage <span class="tag-warn">Opt-in</span></h3>
               <div class="meta-pills">
                 <span class="load-pill load-low">Low Load</span>
                 <span id="verify-FEAT_AOD_UNLOCK" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Membuka batas 10 detik Always-On Display (otomatis melewati fullscreen AOD pada HyperOS 3+).</p>
+            <p class="feat-desc">Membuka batas 10 detik AOD, AON, &amp; keycode dismiss (otomatis melewati fullscreen AOD pada HyperOS 3+ demi mencegah bootloop).</p>
           </div>
           <div class="seg-group" data-key="FEAT_AOD_UNLOCK" role="group" aria-label="AOD Unlock">
             <button type="button" data-val="0">OFF</button>

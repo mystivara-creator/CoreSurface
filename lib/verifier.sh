@@ -254,6 +254,25 @@ cs_score_tally() {
   esac
 }
 
+cs_verify_color_expert() {
+  _cs_ce_xml="$CS_STATE_DIR/work/device_features.xml"
+  if [ "$CFG_FEAT_COLOR_EXPERT" = "0" ]; then
+    CS_V_COLOR_EXPERT="disabled"
+    return 0
+  fi
+  if [ "$EFF_FEAT_COLOR_EXPERT" != "1" ]; then
+    CS_V_COLOR_EXPERT="skipped"
+    return 0
+  fi
+  if [ "$CS_V_XML_MOUNT" = "active" ] && [ -r "$_cs_ce_xml" ] && grep -F -q '<bool name="support_display_expert_mode">true</bool>' "$_cs_ce_xml" 2>/dev/null; then
+    CS_V_COLOR_EXPERT="verified_active"
+  elif [ "$CS_V_XML_MOUNT" = "not_mounted" ]; then
+    CS_V_COLOR_EXPERT="ignored_by_rom"
+  else
+    CS_V_COLOR_EXPERT="skipped"
+  fi
+}
+
 cs_verifier_run() {
   cs_watchdog_init_dir || return 1
 
@@ -266,8 +285,13 @@ cs_verifier_run() {
   CS_V_RRO_ACTIVE=0
   CS_V_RRO_TOTAL=0
   CS_V_VIDEO_DEPTH="skipped"
+  CS_V_COLOR_EXPERT="disabled"
   CS_V_FEAT_EVALUATED=0
   CS_V_FEAT_VERIFIED=0
+  CS_V_SETTINGS_OK="0"
+  if command -v settings >/dev/null 2>&1; then
+    CS_V_SETTINGS_OK="1"
+  fi
 
   : > "$CS_OVERRIDDEN_PROPS_FILE"
   CS_VERIFY_TMP="$CS_VERIFY_FILE.tmp.$$"
@@ -276,6 +300,7 @@ cs_verifier_run() {
   cs_verify_xml_mount
   cs_verify_rro_overlays
   cs_verify_video_depth
+  cs_verify_color_expert
 
   cs_verify_feature "FEAT_BLUR" "$CFG_FEAT_BLUR" "$EFF_FEAT_BLUR"
   _cs_v_blur=$CS_VF_RESULT
@@ -293,7 +318,8 @@ cs_verifier_run() {
   _cs_v_aod=$CS_VF_RESULT
 
   for _cs_s in "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
-    "$_cs_v_island" "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" "$_cs_v_ai" "$_cs_v_aod"
+    "$_cs_v_island" "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" \
+    "$CS_V_COLOR_EXPERT" "$_cs_v_ai" "$_cs_v_aod"
   do
     cs_score_tally "$_cs_s"
   done
@@ -312,6 +338,7 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_FEAT_VIDEO_DEPTH" "$CS_V_VIDEO_DEPTH"
   cs_verify_set "VERIFY_FEAT_MULTITASK" "$_cs_v_multi"
   cs_verify_set "VERIFY_FEAT_DISPLAY_HZ" "$_cs_v_hz"
+  cs_verify_set "VERIFY_FEAT_COLOR_EXPERT" "$CS_V_COLOR_EXPERT"
   cs_verify_set "VERIFY_FEAT_HYPERAI" "$_cs_v_ai"
   cs_verify_set "VERIFY_FEAT_AOD_UNLOCK" "$_cs_v_aod"
   cs_verify_set "VERIFY_XML_MOUNT" "$CS_V_XML_MOUNT"

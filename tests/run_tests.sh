@@ -635,6 +635,8 @@ chmod +x "$SB_BIN/cmd"
 
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_status_default=false" "HyperOS 3 defaults Advanced Textures OFF to prevent bloated Toasts & dark Recent Apps"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_version=2" "HyperOS 3 avoids forcing blur version 2"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=" "Omits mismatched MiShadow window prop that bloats Toasts"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.multiwin.fulldecor_support=" "Omits fulldecor prop that distorts Recent Apps"
 assert_file_contains "$SB_PROPS_LOG" "PURGED:persist.sys.support_window_mishadow" "One-time cleanup purges leaked persist.* keys from /data/property"
@@ -681,21 +683,18 @@ mkdir -p "$SB_MOD/overlays"
 printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
 printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
 
-# Preset: flagship-max -> enables all core features and hot-syncs settings immediately
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" preset flagship-max >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "FEAT_ISLAND=1" "Preset flagship-max sets FEAT_ISLAND=1"
 assert_file_contains "$SB_STATE/config.prop" "FEAT_VIDEO_DEPTH=1" "Preset flagship-max sets FEAT_VIDEO_DEPTH=1"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "Preset flagship-max immediately hot-syncs settings"
 
-# Preset: stock-safe -> turns off heavy features and immediately rolls back settings
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" preset stock-safe >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "FEAT_BLUR=0" "Preset stock-safe disables FEAT_BLUR"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=1" "Preset stock-safe immediately rolls back disable_window_blurs=1"
 assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Preset stock-safe clears staged RRO overlays"
 
-# Preset: balanced + hot-sync + diag-report
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" preset balanced >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "FEAT_BLUR=auto" "Preset balanced restores FEAT_BLUR=auto"
@@ -710,12 +709,52 @@ printf '%s\n' "$_diag" > "$SB/diag.txt"
 assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.0.0 Diagnostic Report ===" "diag-report outputs structured header"
 assert_file_contains "$SB/diag.txt" "Compatibility Score:" "diag-report includes Compatibility Score"
 assert_file_contains "$SB/diag.txt" "FEAT_ISLAND=" "diag-report includes per-feature verification summary"
+assert_file_contains "$SB/diag.txt" "FEAT_COLOR_EXPERT=" "diag-report includes FEAT_COLOR_EXPERT"
 
 if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" preset invalid-mode >/dev/null 2>&1; then
   fail "WebUI should reject unknown preset name"
 else
   pass "WebUI rejects unknown preset name"
 fi
+
+# ---------------------------------------------------------------------------
+printf '=== Test 12: Custom Color Expert Mode (Opt-In) & Complete AOD Tags ===\n'
+setup_sandbox "t12_color_expert_and_aod"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora"
+write_mock_meminfo "7800000"
+cat > "$SB_XML_DIR1/aurora.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_display_expert_mode">false</bool>
+    <bool name="support_screen_effect">true</bool>
+    <bool name="support_double_tap_to_wake">true</bool>
+    <bool name="support_aod">false</bool>
+</features>
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+# Default OFF: support_display_expert_mode stays false
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_display_expert_mode">false</bool>' "FEAT_COLOR_EXPERT=0 leaves support_display_expert_mode untouched"
+
+# Enable FEAT_COLOR_EXPERT=1 & FEAT_AOD_UNLOCK=1 via webui_ctl
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_COLOR_EXPERT 1 >/dev/null
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_AOD_UNLOCK 1 >/dev/null
+printf '0\n' > "$SB_STATE/boot_strikes"
+: > "$SB_PROC_MOUNTS"
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_display_expert_mode">true</bool>' "FEAT_COLOR_EXPERT=1 upgrades support_display_expert_mode -> true"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "FEAT_COLOR_EXPERT=1 preserves stock Vivid/Saturated/Standard tag"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="aod_support_keycode_goto_dismiss">true</bool>' "FEAT_AOD_UNLOCK=1 adds aod_support_keycode_goto_dismiss=true"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_aod_fullscreen' "HyperOS 3 still skips support_aod_fullscreen"
+
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_COLOR_EXPERT=verified_active" "Verifier confirms FEAT_COLOR_EXPERT as verified_active when XML mounted"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

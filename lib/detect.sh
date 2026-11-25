@@ -95,11 +95,12 @@ cs_load_config() {
   CFG_FEAT_VIDEO_DEPTH="auto"
   CFG_FEAT_MULTITASK="auto"
   CFG_FEAT_DISPLAY_HZ="auto"
+  CFG_FEAT_COLOR_EXPERT="0"
   CFG_FEAT_HYPERAI="0"
   CFG_FEAT_AOD_UNLOCK="0"
   export CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
     CFG_FEAT_ISLAND CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ \
-    CFG_FEAT_HYPERAI CFG_FEAT_AOD_UNLOCK
+    CFG_FEAT_COLOR_EXPERT CFG_FEAT_HYPERAI CFG_FEAT_AOD_UNLOCK
 
   [ -r "$_cs_cfg_file" ] || return 0
 
@@ -132,6 +133,9 @@ cs_load_config() {
       FEAT_DISPLAY_HZ)
         case "$_cs_v" in auto|1|0) CFG_FEAT_DISPLAY_HZ="$_cs_v" ;; esac
         ;;
+      FEAT_COLOR_EXPERT)
+        case "$_cs_v" in 1|0) CFG_FEAT_COLOR_EXPERT="$_cs_v" ;; esac
+        ;;
       FEAT_HYPERAI)
         case "$_cs_v" in 1|0) CFG_FEAT_HYPERAI="$_cs_v" ;; esac
         ;;
@@ -152,11 +156,12 @@ cs_resolve_features() {
   EFF_FEAT_VIDEO_DEPTH="0"
   EFF_FEAT_MULTITASK="0"
   EFF_FEAT_DISPLAY_HZ="0"
+  EFF_FEAT_COLOR_EXPERT="0"
   EFF_FEAT_HYPERAI="0"
   EFF_FEAT_AOD_UNLOCK="0"
   export EFF_FEAT_BLUR EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER EFF_FEAT_RRO_OVERLAYS \
     EFF_FEAT_ISLAND EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK EFF_FEAT_DISPLAY_HZ \
-    EFF_FEAT_HYPERAI EFF_FEAT_AOD_UNLOCK
+    EFF_FEAT_COLOR_EXPERT EFF_FEAT_HYPERAI EFF_FEAT_AOD_UNLOCK
 
   # FEAT_BLUR: High GPU/RAM load -> default ON only if RAM >= 6 GB (mid/high)
   case "$CFG_FEAT_BLUR" in
@@ -243,6 +248,11 @@ cs_resolve_features() {
       ;;
     0) EFF_FEAT_DISPLAY_HZ="0" ;;
   esac
+
+  # FEAT_COLOR_EXPERT: Opt-in only (requires XML patcher enabled)
+  if [ "$CFG_FEAT_COLOR_EXPERT" = "1" ] && [ "$EFF_FEAT_XML_PATCHER" = "1" ]; then
+    EFF_FEAT_COLOR_EXPERT="1"
+  fi
 
   # FEAT_HYPERAI: Opt-in only; version-gated on HyperOS + Android SDK >= 34
   if [ "$CFG_FEAT_HYPERAI" = "1" ] && [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "$CS_ANDROID_SDK" -ge 34 ]; then
