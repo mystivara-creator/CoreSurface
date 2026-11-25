@@ -134,6 +134,12 @@ h1 {
   color: #d6eaff;
 }
 
+.banner-warn {
+  background: var(--warn-bg);
+  border-color: rgba(245, 185, 66, 0.4);
+  color: #fde4a6;
+}
+
 .banner-danger {
   background: var(--danger-bg);
   border-color: rgba(255, 107, 122, 0.4);
@@ -376,10 +382,80 @@ code {
   cursor: pointer;
 }
 
+.btn-secondary {
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
 .btn-danger {
   background: var(--danger);
   color: #24070b;
   align-self: flex-start;
+}
+
+.tier-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 360px) {
+  .tier-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.btn-tier {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.btn-tier strong {
+  font-size: 13px;
+}
+
+.btn-tier span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.btn:disabled,
+.btn-tier:disabled,
+.btn-icon:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.btn-tier.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.btn-tier.active strong {
+  color: var(--accent);
+}
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.export-box {
+  width: 100%;
+  resize: vertical;
+  color: var(--text);
 }
 
 .summary-title {

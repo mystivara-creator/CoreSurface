@@ -66,9 +66,9 @@ cs_xml_discover() {
   return 1
 }
 
-# Build desired <bool> and <integer> patch specifications based ONLY on whitelisted
-# active features (FEAT_BLUR, FEAT_ANIMATIONS, FEAT_MULTITASK, FEAT_HYPERAI, FEAT_AOD_UNLOCK).
-# Intentionally excludes FEAT_DISPLAY_HZ, color scheme, fpsList, and double_tap tags.
+# Build desired <bool> and <integer> patch specifications based ONLY on verified
+# active features (zero gimmick: Gallery Pro removed; Low tier excludes Advanced Textures;
+# Custom Color Expert enabled across all tiers).
 # Format per line: type|name|value
 cs_xml_build_patch_spec() {
   _cs_spec_file=$1
@@ -76,12 +76,14 @@ cs_xml_build_patch_spec() {
   {
     if [ "$EFF_FEAT_BLUR" = "1" ]; then
       printf 'bool|support_background_blur|true\n'
-      printf 'bool|support_advanced_textures|true\n'
       printf 'bool|support_realtime_blur|true\n'
+      if [ "${EFF_FEAT_ADV_TEXTURES:-0}" = "1" ]; then
+        printf 'bool|support_advanced_textures|true\n'
+      fi
     fi
 
     if [ "$EFF_FEAT_ANIMATIONS" = "1" ]; then
-      if [ "$CS_RAM_TIER" = "high" ]; then
+      if [ "${CS_EFF_TIER:-low}" = "flagship" ]; then
         printf 'integer|device_level|3\n'
       else
         printf 'integer|device_level|2\n'
@@ -93,26 +95,67 @@ cs_xml_build_patch_spec() {
       printf 'integer|freeform_max_count|4\n'
     fi
 
-    if [ "$EFF_FEAT_HYPERAI" = "1" ]; then
-      printf 'bool|gallery_support_analytic_face_and_scene|true\n'
-      printf 'bool|gallery_support_media_feature|true\n'
+    if [ "$EFF_FEAT_COLOR_EXPERT" = "1" ]; then
+      # Unlocks Advanced settings / Custom color menu across all modes without touching Vivid/Saturated/Standard
+      printf 'bool|support_display_expert_mode|true\n'
     fi
 
-    # Only touch AOD tags when FEAT_AOD_UNLOCK is explicitly enabled
     if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
       printf 'bool|support_aod|true\n'
       printf 'bool|support_aod_aon|true\n'
+      printf 'bool|aod_support_keycode_goto_dismiss|true\n'
+      printf 'bool|is_video_screen|true\n'
+      # Critical non-LTPO AOD unlock (verified from HyperOS MiuiAod & HyperUnlocked):
+      # Stock non-LTPO XML ships is_only_support_keycode_goto=true which hides "Always" & "Scheduled".
+      printf 'bool|is_only_support_keycode_goto|false\n'
       # HyperOS 3 dynamic safety gate: avoid support_aod_fullscreen on HOS 3+
       if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
         printf 'bool|support_aod_fullscreen|true\n'
       fi
     fi
+
+    if [ "${EFF_FEAT_FLAGSHIP_AUDIO:-0}" = "1" ]; then
+      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Assistant, Audio Share, 24-bit/Stereo Record)
+      printf 'bool|support_dolby|true\n'
+      printf 'bool|support_hifi|true\n'
+      printf 'bool|support_sound_assist|true\n'
+      printf 'bool|support_audio_share|true\n'
+      printf 'bool|support_stereo_record|true\n'
+      printf 'bool|support_24bit_record|true\n'
+      printf 'bool|support_lhdc_offload|true\n'
+      printf 'bool|support_audio_loopback|true\n'
+      printf 'bool|support_phone_call_noise_suppression|true\n'
+    fi
+
+    if [ "${EFF_FEAT_FLAGSHIP_SUITE:-0}" = "1" ]; then
+      # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost, Power Modes)
+      printf 'bool|support_AI_display|true\n'
+      printf 'bool|support_super_resolution|true\n'
+      printf 'bool|support_hdr_enhance|true\n'
+      printf 'bool|support_screen_enhance_engine|true\n'
+      printf 'bool|support_truetone|true\n'
+      printf 'bool|is_support_video_tool_box|true\n'
+      printf 'bool|support_videobox_display_effect|true\n'
+      printf 'bool|support_videobox_cinema_adapt_ce|true\n'
+      printf 'bool|support_displayfeature_gamemode|true\n'
+      printf 'bool|support_displayfeature_gamemode_HDR|true\n'
+      printf 'bool|support_wild_boost|true\n'
+      printf 'bool|support_wild_boost_bat_perf|true\n'
+      printf 'bool|support_mi_game_macro|true\n'
+      printf 'bool|support_game_gunsight|true\n'
+      printf 'bool|support_app_hiding|true\n'
+      printf 'bool|is_support_partial_screenshot|true\n'
+      printf 'bool|support_ui_orientation_v2|true\n'
+      printf 'bool|support_power_mode|true\n'
+      printf 'bool|support_power_save_new|true\n'
+    fi
   } > "$_cs_spec_file"
 }
 
-# Non-destructive / Add-Only XML patcher using POSIX awk:
+# Non-destructive XML patcher using POSIX awk:
 # - Protected tags (fpsList, color/screen_effect, double_tap) are never modified.
-# - <bool>: only upgrades false -> true; never downgrades true -> false.
+# - Capability <bool>: only upgrades false -> true; never downgrades true -> false.
+# - Whitelisted restriction-removal <bool> (is_only_support_keycode_goto): flips true -> false.
 # - <integer>: only upgrades when desired > existing; never lowers an existing higher value.
 # - Missing whitelisted tags are appended cleanly before </features>.
 cs_xml_patch_file() {
@@ -126,6 +169,9 @@ cs_xml_patch_file() {
         return 1
       }
       return 0
+    }
+    function is_restriction_bool(name) {
+      return (name == "is_only_support_keycode_goto")
     }
     NR == FNR {
       if (NF == 3 && !is_protected($2)) {
@@ -161,14 +207,17 @@ cs_xml_patch_file() {
         if (pos > 0 && cpos > pos) {
           val_start = pos + length(target)
           cur = substr(line, val_start, cpos - val_start)
+          gsub(/^[ \t]+|[ \t]+$/, "", cur)
           indent = ""
           if (match(line, /^[ \t]*/)) {
             indent = substr(line, 1, RLENGTH)
           }
           if (t == "bool") {
-            # Add-only: only change false -> true
+            # Add-only for capabilities (false -> true), plus explicit restriction removal (true -> false)
             if (cur == "false" && pval[k] == "true") {
               printf "%s<bool name=\"%s\">true</bool>\n", indent, k
+            } else if (cur == "true" && pval[k] == "false" && is_restriction_bool(k)) {
+              printf "%s<bool name=\"%s\">false</bool>\n", indent, k
             } else {
               print line
             }
@@ -204,6 +253,27 @@ cs_xml_restore_selinux_context() {
   fi
 }
 
+# Unmount any stale CoreSurface/soft-reboot bind-mount on a device_features XML.
+# Must be called BEFORE reading the stock XML so soft-reboots never patch our own patched XML!
+cs_xml_unmount_if_mounted() {
+  _cs_um_target=${1:-}
+  _cs_mounts=${CORESURFACE_PROC_MOUNTS:-/proc/mounts}
+  [ -r "$_cs_mounts" ] || return 0
+
+  if [ -n "$_cs_um_target" ]; then
+    if awk -v target="$_cs_um_target" '$2 == target { found=1; exit } END { exit(found ? 0 : 1) }' "$_cs_mounts" 2>/dev/null; then
+      umount -l "$_cs_um_target" 2>/dev/null || umount "$_cs_um_target" 2>/dev/null || true
+    fi
+    return 0
+  fi
+
+  # No target specified: unmount any mounted device_features/*.xml cleanly
+  _cs_mounted_xmls=$(awk '$2 ~ /\/device_features\/.*\.xml$/ { print $2 }' "$_cs_mounts" 2>/dev/null || true)
+  for _cs_mx in $_cs_mounted_xmls; do
+    umount -l "$_cs_mx" 2>/dev/null || umount "$_cs_mx" 2>/dev/null || true
+  done
+}
+
 # Run full fail-closed XML discovery, patching, validation, SELinux restore, and bind-mount.
 # Always returns 0 so XML patch failures never disrupt boot.
 cs_xml_apply() {
@@ -211,6 +281,7 @@ cs_xml_apply() {
   : > "$CS_XML_PATCH_LIST"
 
   if [ "$EFF_FEAT_XML_PATCHER" != "1" ]; then
+    cs_xml_unmount_if_mounted || true
     cs_state_set "XML_STATUS" "disabled"
     cs_state_set "XML_REASON" "disabled_by_config"
     cs_state_set "XML_SOURCE" "none"
@@ -226,6 +297,10 @@ cs_xml_apply() {
     cs_log "XML Patcher: no valid device_features XML discovered; skipping cleanly."
     return 0
   fi
+
+  # On soft reboot, unmount any stale bind-mount BEFORE reading the source XML
+  # so we always patch the true factory XML rather than a previous boot's output.
+  cs_xml_unmount_if_mounted "$CS_XML_DISCOVERED"
 
   mkdir -p "$CS_XML_WORK_DIR" 2>/dev/null || {
     cs_state_set "XML_STATUS" "skipped"
@@ -261,14 +336,16 @@ cs_xml_apply() {
     return 0
   fi
 
-  # Fail-closed XML structural check before bind-mount
-  if ! cs_xml_is_valid_features_xml "$_cs_tmp_xml"; then
+  # Fail-closed XML structural & non-truncation check before bind-mount
+  _cs_src_lines=$(wc -l < "$CS_XML_DISCOVERED" 2>/dev/null | tr -d ' \t\r\n')
+  _cs_dst_lines=$(wc -l < "$_cs_tmp_xml" 2>/dev/null | tr -d ' \t\r\n')
+  if ! cs_xml_is_valid_features_xml "$_cs_tmp_xml" || [ "${_cs_dst_lines:-0}" -lt "${_cs_src_lines:-1}" ]; then
     rm -f "$_cs_spec" "$_cs_tmp_xml"
     cs_state_set "XML_STATUS" "skipped"
     cs_state_set "XML_REASON" "xml_validation_failed"
     cs_state_set "XML_SOURCE" "$CS_XML_DISCOVERED"
     cs_state_set "XML_PATCHED_TAGS" "0"
-    cs_log "XML Patcher: patched XML failed validation (empty or missing </features>); fail-closed skip."
+    cs_log "XML Patcher: patched XML failed structural/line-count validation; fail-closed skip."
     return 0
   fi
 

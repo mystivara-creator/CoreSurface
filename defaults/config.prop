@@ -1,12 +1,18 @@
-# CoreSurface v1.0.0 Configuration
-# Values for dynamic hardware-tiered features: auto | 1 | 0
-#   auto = automatically decided by actual RAM tier (<6 GB / 6-7 GB / >=8 GB)
-# Values for experimental opt-in features: 0 | 1 (default OFF)
+# CoreSurface v1.0.0 Configuration (4-Tier Pure Experience Architecture)
+# Tier Mode (selected via Volume Up/Down installer or WebUI):
+#   auto | low | balanced_pro | flagship
+CS_TIER_MODE=auto
 
-FEAT_BLUR=auto
-FEAT_ANIMATIONS=auto
-FEAT_XML_PATCHER=auto
-FEAT_MULTITASK=auto
-FEAT_DISPLAY_HZ=auto
-FEAT_HYPERAI=0
-FEAT_AOD_UNLOCK=0
+# Live Motion Physics Profile (LSPosed Runtime — hot-reload without reboot):
+#   hyperos4 | silk | 0
+FEAT_MOTION_PROFILE=hyperos4
+
+# Core User Toggles:
+#   FEAT_SURGICAL_GUARD:  1 | 0 (HyperOS 3 Toast & Recent Apps fix, live)
+#   FEAT_AOD_UNLOCK:      1 | 0 (Non-LTPO Always-On Display "Always" & "Scheduled" unlock)
+#   FEAT_FLAGSHIP_AUDIO:  auto | 1 | 0 (Dolby/Hi-Fi/Mi Sound/Speaker Stereo & Clear Speaker/Sound Assistant)
+#   FEAT_FLAGSHIP_SUITE:  auto | 1 | 0 (AI Image Engine, Video Toolbox, Dynamic Font Anim, Wild Boost, Live Photo)
+FEAT_SURGICAL_GUARD=1
+FEAT_AOD_UNLOCK=1
+FEAT_FLAGSHIP_AUDIO=auto
+FEAT_FLAGSHIP_SUITE=auto

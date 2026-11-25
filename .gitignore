@@ -1,5 +1,9 @@
 # Build artifacts & local logs
+/build/
 /dist/
+*.apk
+*.idsig
+*.jks
 *.zip
 *.zip.sha256
 *.log

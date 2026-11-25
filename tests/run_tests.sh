@@ -82,7 +82,7 @@ setup_sandbox() {
   : > "$SB_SETTINGS_DB"
   : > "$SB_SETTINGS_LOG"
 
-  cp -R "$REPO_ROOT/lib" "$REPO_ROOT/defaults" "$REPO_ROOT/post-fs-data.sh" "$REPO_ROOT/service.sh" "$REPO_ROOT/uninstall.sh" "$SB_MOD/"
+  cp -R "$REPO_ROOT/lib" "$REPO_ROOT/defaults" "$REPO_ROOT/post-fs-data.sh" "$REPO_ROOT/service.sh" "$REPO_ROOT/action.sh" "$REPO_ROOT/uninstall.sh" "$SB_MOD/"
 
   # Fast no-op sleep mock
   cat > "$SB_BIN/sleep" <<'EOF'
@@ -99,9 +99,15 @@ exit 0
 EOF
   chmod +x "$SB_BIN/chcon"
 
-  # Strict resetprop mock: MUST receive -n as first argument, and updates live_props.db
+  # Strict resetprop mock:
+  # - Permits `-p -d <key>` exclusively for one-time leaked persist.* cleanup
+  # - MUST receive `-n` for every property write (never writes /data/property)
   cat > "$SB_BIN/resetprop" <<EOF
 #!/bin/sh
+if [ "\${1:-}" = "-p" ] && [ "\${2:-}" = "-d" ]; then
+  printf 'PURGED:%s\n' "\${3:-}" >> "$SB_PROPS_LOG"
+  exit 0
+fi
 if [ "\${1:-}" != "-n" ]; then
   printf 'NON_PERSIST_VIOLATION:%s\n' "\$*" >> "$SB_PROPS_LOG"
   exit 99
@@ -175,6 +181,7 @@ write_mock_getprop() {
   _sdk=$3
   _boot=${4:-1}
   _dev=${5:-testdevice}
+  _mkt=${6:-}
   cat > "$SB_BIN/getprop" <<EOF
 #!/bin/sh
 k=\${1:-}
@@ -184,6 +191,7 @@ case "\$k" in
   ro.build.version.sdk) printf '%s\n' "$_sdk" ; exit 0 ;;
   sys.boot_completed) printf '%s\n' "$_boot" ; exit 0 ;;
   ro.product.device) printf '%s\n' "$_dev" ; exit 0 ;;
+  ro.product.marketname) printf '%s\n' "$_mkt" ; exit 0 ;;
 esac
 awk -F '=' -v key="\$k" '\$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$SB_PROPS_DB" 2>/dev/null || true
 EOF
@@ -218,6 +226,7 @@ run_post_fs_data() {
   CORESURFACE_MODDIR="$SB_MOD" \
   CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_PROC_MOUNTS="$SB_PROC_MOUNTS" \
   CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
   sh "$SB_MOD/post-fs-data.sh"
 }
@@ -325,49 +334,94 @@ assert_eq "$(cat "$SB_STATE/boot_strikes")" "1" "SystemUI PID change keeps boot_
 assert_file_contains "$SB_STATE/state.prop" "WATCHDOG_STATUS=degraded" "State records degraded on PID change"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 5: Dynamic RAM Tiering (<6GB, 6-7GB, >=8GB) & Mandatory resetprop -n ===\n'
-setup_sandbox "t5_ram_low"
-write_mock_getprop "OS2.0" "" "35" "1"
-write_mock_meminfo "4096000"
+printf '=== Test 5: 4-Tier Hardware Classification (Non-Pro vs Pro/Pro+ vs Flagship) & resetprop -n ===\n'
+# 5a: Mid-Range Non-Pro (Redmi Note 15 5G, 8GB) -> auto detects low (Blur ON, NO Advanced Textures)
+setup_sandbox "t5_mid_non_pro"
+write_mock_getprop "OS3.0" "" "36" "1" "middev" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/middev.xml"
 run_post_fs_data
-assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "4GB: all resetprop calls use -n"
-assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=2" "4GB: FEAT_ANIMATIONS sets device_level=2"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "4GB: FEAT_BLUR auto OFF on < 6 GB"
-assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "4GB: FEAT_MULTITASK auto OFF"
+assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "Non-Pro: all resetprop calls use -n"
+assert_file_contains "$SB_STATE/state.prop" "DETECTED_TIER=low" "Non-Pro 8GB Redmi Note 15 5G auto-detects low tier"
+assert_file_contains "$SB_STATE/state.prop" "EFF_TIER=low" "Non-Pro effective tier is low"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.has_blur=1" "Low tier keeps standard blur enabled"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_status_default=false" "Low tier keeps Advanced Textures OFF"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" "support_advanced_textures" "Low tier NEVER injects support_advanced_textures in XML"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_display_expert_mode">true</bool>' "Low tier includes Custom Color Expert mode"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:2,g:2" "Low tier uses light animation deviceLevelList"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "Low tier keeps heavy multitask flags OFF"
 
-setup_sandbox "t5_ram_mid"
-write_mock_getprop "OS2.0" "" "35" "1"
-write_mock_meminfo "6000000"
+# 5b: Mid-Range Pro/Pro+ (Redmi Note 15 Pro+ 5G / POCO X8 Pro, 8GB) -> auto detects balanced_pro
+setup_sandbox "t5_mid_pro"
+write_mock_getprop "OS3.0" "" "36" "1" "prodev" "Redmi Note 15 Pro+ 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/prodev.xml"
 run_post_fs_data
-assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "6GB: all resetprop calls use -n"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:2,g:3" "6GB: FEAT_ANIMATIONS sets mid deviceLevelList"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "6GB: FEAT_BLUR auto ON on 6-7 GB"
-assert_file_not_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "6GB: FEAT_MULTITASK auto OFF"
+assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "Mid Pro+: all resetprop calls use -n"
+assert_file_contains "$SB_STATE/state.prop" "DETECTED_TIER=balanced_pro" "Redmi Note 15 Pro+ 5G auto-detects balanced_pro tier"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:2,g:3" "Balance Pro/Pro+ sets mid-pro deviceLevelList"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyper_transition=true" "Balance Pro/Pro+ enables HyperTransition"
+assert_file_contains "$SB_PROPS_LOG" "ro.sf.blurs_are_expensive=0" "Balance Pro/Pro+ unlocks consistent SurfaceFlinger blur"
+assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "Balance Pro/Pro+ enables multitask relaxation"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.support_high_refresh_rate=true" "Balance Pro/Pro+ enables high refresh rate flag"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_display_expert_mode">true</bool>' "Balance Pro/Pro+ includes Custom Color Expert"
 
-setup_sandbox "t5_ram_high"
-write_mock_getprop "OS2.0" "" "35" "1"
-write_mock_meminfo "7800000"
+# 5c: Flagship Tier (12GB RAM or explicit CS_TIER_MODE=flagship)
+setup_sandbox "t5_flagship"
+write_mock_getprop "OS2.0" "" "35" "1" "ultradev" "Xiaomi 15 Ultra"
+write_mock_meminfo "11800000"
 run_post_fs_data
-assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "8GB: all resetprop calls use -n"
-assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=3" "8GB: FEAT_ANIMATIONS sets flagship device_level=3"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_supported=true" "8GB: FEAT_BLUR auto ON"
-assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "8GB: FEAT_MULTITASK auto ON"
-assert_file_contains "$SB_PROPS_LOG" "ro.miui.support_high_refresh_rate=true" "8GB: FEAT_DISPLAY_HZ auto ON"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "8GB: FEAT_HYPERAI remains OFF by default"
+assert_file_not_contains "$SB_PROPS_LOG" "NON_PERSIST_VIOLATION" "Flagship: all resetprop calls use -n"
+assert_file_contains "$SB_STATE/state.prop" "DETECTED_TIER=flagship" "12GB Xiaomi 15 Ultra auto-detects flagship tier"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.device_level=3" "Flagship: sets device_level=3"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:3,g:3" "Flagship: sets c:3,g:3 deviceLevelList"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyper_transition=true" "Flagship: enables HyperTransition"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.enable_parallel_sweep=true" "Flagship: enables parallel sweep"
+assert_file_contains "$SB_PROPS_LOG" "ro.sf.blurs_are_expensive=0" "Flagship: disables blurs_are_expensive throttle"
+assert_file_not_contains "$SB_PROPS_LOG" "enable_blurs_on_windows=" "Flagship: omits enable_blurs_on_windows that bloats Toasts"
+assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "Flagship: enables multitask relaxation"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.support_high_refresh_rate=true" "Flagship: enables high refresh rate"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "Zero-gimmick: never emits placebo hyperai prop"
+
+# 5d: Genuine Native Flagship (stock XML already has device_level=3 + support_background_blur=true) -> motion_only passthrough
+setup_sandbox "t5_native_flagship_passthrough"
+write_mock_getprop "OS3.0" "" "36" "1" "xuanyuan" "Xiaomi 15 Ultra"
+write_mock_meminfo "15600000"
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+cat > "$SB_XML_DIR1/xuanyuan.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <integer name="device_level">3</integer>
+    <bool name="support_background_blur">true</bool>
+    <bool name="support_display_expert_mode">true</bool>
+</features>
+EOF
+run_post_fs_data
+assert_file_contains "$SB_STATE/state.prop" "DETECTED_TIER=motion_only" "Genuine Native Flagship auto-detects motion_only passthrough"
+assert_file_contains "$SB_STATE/state.prop" "EFF_TIER=motion_only" "Native Flagship effective tier is motion_only"
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=hyperos4;native=0;guard=1;thermallod=1;aod=0" "Native Flagship still syncs live Folme Motion IPC"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.device_level=" "Native Flagship skips redundant device_level prop override"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.has_blur=1" "Native Flagship skips redundant blur prop overrides"
+assert_eq "$(wc -l < "$SB_MOUNT_LOG" | tr -d ' ')" "0" "Native Flagship skips XML bind-mount when factory XML already has expert color"
+assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Native Flagship skips staging RRO overlays"
 
 # ---------------------------------------------------------------------------
 printf '=== Test 6: Dynamic device_features XML Patcher (Non-Destructive, SELinux, Fail-Closed) ===\n'
 # 6a: Runtime ro.product.device auto-discovery + non-destructive patch + SELinux + bind-mount
 setup_sandbox "t6_xml_happy"
 write_mock_getprop "OS2.0" "" "35" "1" "aurora"
-write_mock_meminfo "7800000"
+write_mock_meminfo "11800000"
 write_sample_xml "$SB_XML_DIR2/aurora.xml"
+printf 'CS_TIER_MODE=flagship\nFEAT_AOD_UNLOCK=0\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_contains "$SB_STATE/state.prop" "XML_STATUS=mounted" "XML patcher mounts discovered runtime device XML"
 assert_file_contains "$SB_STATE/state.prop" "XML_SOURCE=$SB_XML_DIR2/aurora.xml" "XML patcher records exact discovered source path"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_background_blur">true</bool>' "XML patcher upgrades <bool> false -> true"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="device_level">3</integer>' "XML patcher upgrades lower <integer> 1 -> 3"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="device_level">3</integer>' "XML patcher upgrades lower <integer> 1 -> 3 in flagship tier"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_display_expert_mode">true</bool>' "XML patcher enables Custom Color Expert across all modes"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_aod">false</bool>' "XML patcher does NOT touch AOD tag when FEAT_AOD_UNLOCK=0"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'gallery_support_video_compress' "Zero-gimmick: Gallery Pro XML tags completely removed"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "XML patcher preserves stock display color tag"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_double_tap_to_wake">true</bool>' "XML patcher preserves stock double_tap tag"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<integer-array name="fpsList">' "XML patcher preserves stock fpsList array"
@@ -388,15 +442,7 @@ cat > "$SB_XML_DIR1/fallback_model.xml" <<'EOF'
     <bool name="support_aod">false</bool>
 </features>
 EOF
-cat > "$SB_STATE/config.prop" <<'EOF'
-FEAT_BLUR=auto
-FEAT_ANIMATIONS=auto
-FEAT_XML_PATCHER=auto
-FEAT_MULTITASK=auto
-FEAT_DISPLAY_HZ=auto
-FEAT_HYPERAI=1
-FEAT_AOD_UNLOCK=1
-EOF
+printf 'CS_TIER_MODE=balanced_pro\nFEAT_AOD_UNLOCK=1\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_contains "$SB_STATE/state.prop" "XML_SOURCE=$SB_XML_DIR1/fallback_model.xml" "XML patcher falls back to first valid .xml"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="device_level">5</integer>' "XML patcher never lowers existing higher integer device_level=5"
@@ -454,8 +500,8 @@ mv -f "$tmp_db" "$SB_PROPS_DB"
 run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "Verifier marks matching FEAT_BLUR as verified_active"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_XML_PATCHER=verified_active" "Verifier confirms active XML bind-mount in /proc/mounts"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_COLOR_EXPERT=verified_active" "Verifier confirms Custom Color Expert verified_active in XML"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_DISPLAY_HZ=ignored_by_rom" "Verifier detects ROM-overridden FEAT_DISPLAY_HZ as ignored_by_rom"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_HYPERAI=disabled" "Verifier marks opt-in OFF feature as disabled"
 assert_file_contains "$SB_STATE/overridden_props.list" "FEAT_DISPLAY_HZ|ro.miui.support_high_refresh_rate|true|false" "Verifier logs exact overridden prop diff"
 assert_file_contains "$SB_SETTINGS_LOG" "--user 0 get global disable_window_blurs" "Verifier calls settings with --user 0"
 
@@ -487,14 +533,16 @@ exit 0
 EOF
 chmod +x "$SB_BIN/pidof"
 
-# Seed initial vendor settings: disable_window_blurs=1, enable_freeform_support is absent (null)
-printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
+# Seed initial vendor settings: disable_window_blurs=1, stuck HOS3 background_blur_enable=1
+printf 'global|disable_window_blurs=1\nsecure|background_blur_enable=1\n' > "$SB_SETTINGS_DB"
 
 run_post_fs_data
 run_service
 assert_file_contains "$SB_SETTINGS_LOG" "--user 0 get global disable_window_blurs" "Settings TX reads via --user 0"
 assert_file_contains "$SB_SETTINGS_LOG" "--user 0 put global disable_window_blurs 0" "Settings TX writes via --user 0"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "Settings TX applies disable_window_blurs=0 for FEAT_BLUR"
+assert_file_contains "$SB_SETTINGS_DB" "secure|background_blur_enable=0" "One-time HOS3 cleanup clears stuck secure/background_blur_enable=1"
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=" "Settings TX syncs live Engine IPC global/coresurface_engine_v1"
 assert_file_contains "$SB_SETTINGS_DB" "global|enable_freeform_support=1" "Settings TX applies enable_freeform_support=1 for FEAT_MULTITASK"
 assert_file_contains "$SB_STATE/settings_backup.prop" "global|disable_window_blurs=1" "Settings TX backs up original value=1"
 assert_file_contains "$SB_STATE/settings_backup.prop" "global|enable_freeform_support=null" "Settings TX backs up originally absent key as null"
@@ -510,7 +558,7 @@ FEAT_ANIMATIONS=auto
 FEAT_XML_PATCHER=auto
 FEAT_MULTITASK=0
 FEAT_DISPLAY_HZ=auto
-FEAT_HYPERAI=0
+FEAT_GALLERY_PRO=0
 FEAT_AOD_UNLOCK=0
 EOF
 run_service
@@ -518,10 +566,11 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=1" "Disablin
 assert_file_not_contains "$SB_SETTINGS_DB" "global|enable_freeform_support=" "Disabling FEAT_MULTITASK deletes key whose original was null"
 assert_file_contains "$SB_SETTINGS_LOG" "--user 0 delete global enable_freeform_support" "Settings TX deletes null-original key via --user 0"
 
-# Verify uninstall.sh rolls back remaining keys and cleans state dir
+# Verify uninstall.sh rolls back remaining keys (including Engine IPC) and cleans state dir
 assert_file_contains "$SB_SETTINGS_DB" "system|miui_refresh_rate_adaptive=1" "FEAT_DISPLAY_HZ setting active before uninstall"
 PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/uninstall.sh"
 assert_file_not_contains "$SB_SETTINGS_DB" "system|miui_refresh_rate_adaptive=" "uninstall.sh rolls back remaining settings before deleting state"
+assert_file_not_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=" "uninstall.sh cleans up global/coresurface_engine_v1 IPC key"
 assert_eq "$( [ -d "$SB_STATE" ] && printf 'exists' || printf 'removed' )" "removed" "uninstall.sh removes state directory"
 
 # ---------------------------------------------------------------------------
@@ -557,22 +606,35 @@ assert_file_contains "$SB/status.out" "verify_feat_blur=verified_active" "WebUI 
 assert_file_contains "$SB/status.out" "xml_status=mounted" "WebUI exposes XML Patcher mounted status"
 assert_file_contains "$SB/status.out" "xml_source=$SB_XML_DIR1/aurora.xml" "WebUI exposes discovered XML source path"
 
-# Test granular key whitelist (valid + invalid)
-for _gk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_MULTITASK FEAT_DISPLAY_HZ; do
-  PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
-  assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts granular key ${_gk}=0"
+# Test tier & granular key whitelist (valid + invalid)
+for _tm in auto low balanced_pro flagship; do
+  PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" tier "$_tm" >/dev/null
+  assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=${_tm}" "WebUI accepts tier=${_tm}"
 done
-PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_HYPERAI 1 >/dev/null
-assert_file_contains "$SB_STATE/config.prop" "FEAT_HYPERAI=1" "WebUI accepts FEAT_HYPERAI=1"
-PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_AOD_UNLOCK 1 >/dev/null
-assert_file_contains "$SB_STATE/config.prop" "FEAT_AOD_UNLOCK=1" "WebUI accepts FEAT_AOD_UNLOCK=1"
-
-if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_HYPERAI auto >/dev/null 2>&1; then
-  fail "WebUI should reject 'auto' for opt-in FEAT_HYPERAI"
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" tier invalid_tier >/dev/null 2>&1; then
+  fail "WebUI should reject invalid tier mode"
 else
-  pass "WebUI rejects 'auto' for opt-in FEAT_HYPERAI"
+  pass "WebUI rejects invalid tier mode"
 fi
 
+for _gk in FEAT_NATIVE_TIER FEAT_SURGICAL_GUARD FEAT_THERMAL_LOD FEAT_AOD_UNLOCK FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ FEAT_COLOR_EXPERT; do
+  PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
+  assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts key ${_gk}=0"
+done
+for _mp in hyperos4 silk 0; do
+  PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE "$_mp" >/dev/null
+  assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=${_mp}" "WebUI accepts FEAT_MOTION_PROFILE=${_mp}"
+done
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE invalid >/dev/null 2>&1; then
+  fail "WebUI should reject invalid FEAT_MOTION_PROFILE value"
+else
+  pass "WebUI rejects invalid FEAT_MOTION_PROFILE value"
+fi
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_GALLERY_PRO 1 >/dev/null 2>&1; then
+  fail "WebUI should reject removed FEAT_GALLERY_PRO key"
+else
+  pass "Zero-gimmick: WebUI rejects removed FEAT_GALLERY_PRO key"
+fi
 if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set BAD_KEY 1 >/dev/null 2>&1; then
   fail "WebUI should reject unknown key"
 else
@@ -584,6 +646,777 @@ printf '2\n' > "$SB_STATE/boot_strikes"
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" reset-safemode >/dev/null
 assert_eq "$( [ -f "$SB_MOD/disable" ] && printf 'yes' || printf 'no' )" "no" "reset-safemode removes auto-resolved MODDIR/disable"
 assert_eq "$(cat "$SB_STATE/boot_strikes")" "0" "reset-safemode resets boot_strikes=0"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 10: Clean-Room RRO Staging, Fail-Closed Clear, Verifier & Zero-Gimmick HyperOS 3 Audit ===\n'
+setup_sandbox "t10_rro_and_hos3"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora" "Redmi Note 15 Pro+ 5G"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUILiteBlur.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceThemeManager.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceMiWallpaper.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceMiuiAod.apk"
+
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+cat > "$SB_BIN/cmd" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = "overlay" ] && [ "${2:-}" = "list" ]; then
+  printf 'com.android.systemui\n[x] org.mystivara.coresurface.overlay.systemui\n'
+  printf 'com.android.thememanager\n[x] org.mystivara.coresurface.overlay.thememanager\n'
+  printf 'com.miui.miwallpaper\n[x] org.mystivara.coresurface.overlay.miwallpaper\n'
+  printf 'com.miui.aod\n[x] org.mystivara.coresurface.overlay.miuiaod\n'
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$SB_BIN/cmd"
+
+run_post_fs_data
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=3" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
+assert_file_contains "$SB_PROPS_LOG" "PURGED:persist.sys.advanced_visual_release" "Cleanup v3 purges leaked persist.sys.advanced_visual_release from /data/property"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_status_default=false" "HyperOS 3 defaults Advanced Textures OFF to prevent bloated Toasts & dark Recent Apps"
+assert_file_contains "$SB_PROPS_LOG" "debug.sysui.use_control_center=1" "Verified split Control Center prop is applied"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_version=2" "HyperOS 3 avoids forcing blur version 2"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.feature.island=1" "Zero-gimmick: purged placebo persist.sys.feature.island prop"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "Zero-gimmick: purged placebo persist.sys.hyperai_enabled prop"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.aod_limit_disabled=true" "Zero-gimmick: purged placebo persist.sys.aod_limit_disabled prop"
+assert_file_contains "$SB_PROPS_LOG" "PURGED:persist.sys.support_window_mishadow" "One-time cleanup purges leaked persist.* keys from /data/property"
+assert_eq "$( [ -f "$SB_MOD/system.prop" ] && printf 'exists' || printf 'absent' )" "absent" "Never creates system.prop (strictly memory-only resetprop -n)"
+assert_file_contains "$SB_CHCON_LOG" "-R u:object_r:system_file:s0 $SB_MOD/system" "RRO Manager restores SELinux system_file context on staged overlays"
+assert_eq "$( [ -f "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'yes' || printf 'no' )" "yes" "Stages zero-byte Lockscreen Video Depth marker in Balance Pro/Pro+"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUI.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceSystemUI.apk"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUILiteBlur.apk" ] && printf 'yes' || printf 'no' )" "no" "RRO skips LiteBlur overlay when full FEAT_BLUR is active"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiuiAod.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceMiuiAod.apk by default for Non-LTPO AOD"
+
+CORESURFACE_LIVE_OVERLAY_DIR="$SB_MOD/system/product/overlay" \
+CORESURFACE_VIDEO_DEPTH_PATH="$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "HyperOS 3 FEAT_BLUR achieves 100% verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_VIDEO_DEPTH=verified_active" "Verifier marks FEAT_VIDEO_DEPTH as verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_RRO_OVERLAYS=verified_active" "Verifier marks active RRO overlays via cmd overlay list as verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_RRO_ACTIVE=4" "Verifier counts 4/4 active RRO overlays"
+assert_file_contains "$SB_STATE/verify.state" "COMPAT_SCORE_PCT=100" "ROM Compatibility Score reaches 100% when all active features match"
+
+# Low tier keeps SystemUI + ThemeManager RRO but skips heavy MiWallpaper & Video Depth
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" tier low >/dev/null
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUI.apk" ] && printf 'yes' || printf 'no' )" "yes" "Low tier keeps CoreSurfaceSystemUI.apk"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiWallpaper.apk" ] && printf 'yes' || printf 'no' )" "no" "Low tier skips heavy CoreSurfaceMiWallpaper.apk"
+assert_eq "$( [ -e "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'yes' || printf 'no' )" "no" "Low tier skips Video Depth marker"
+
+# Turning FEAT_AOD_UNLOCK=0 removes CoreSurfaceMiuiAod.apk
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_AOD_UNLOCK 0 >/dev/null
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiuiAod.apk" ] && printf 'yes' || printf 'no' )" "no" "Disabling FEAT_AOD_UNLOCK=0 removes CoreSurfaceMiuiAod.apk"
+
+# Turning FEAT_RRO_OVERLAYS=0 via webui_ctl immediately unstages RRO APKs for next boot
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_RRO_OVERLAYS 0 >/dev/null
+assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Setting FEAT_RRO_OVERLAYS=0 clears staged overlays for next boot"
+
+# Watchdog Safe-Mode (boot_strikes=2) clears system.prop, staged RRO APKs & Video Depth marker fail-closed
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" tier flagship >/dev/null
+printf '2\n' > "$SB_STATE/boot_strikes"
+run_post_fs_data
+assert_eq "$( [ -f "$SB_MOD/system.prop" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears system.prop fail-closed"
+assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears staged RRO overlays fail-closed"
+assert_eq "$( [ -e "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'exists' || printf 'cleared' )" "cleared" "Watchdog Safe-Mode clears Video Depth marker fail-closed"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 11: 4-Tier Switching, Instant Hot-Sync & Diagnostic Report ===\n'
+setup_sandbox "t11_tiers_hotsync"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora" "Redmi Note 15 5G"
+write_mock_meminfo "7800000"
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" tier flagship >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=flagship" "tier flagship sets CS_TIER_MODE=flagship"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=silk" "tier flagship sets FEAT_MOTION_PROFILE=silk"
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "tier flagship immediately hot-syncs settings"
+assert_file_contains "$SB_SETTINGS_DB" "secure|aod_mode_time=0" "Non-LTPO AOD sets secure/aod_mode_time=0"
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=silk;native=1;guard=1;thermallod=1;aod=1" "tier flagship pushes live Motion Engine IPC immediately"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" tier low >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=low" "tier low sets CS_TIER_MODE=low"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=hyperos4" "tier low sets crisp FEAT_MOTION_PROFILE=hyperos4"
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "tier low STILL keeps standard blur enabled"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" hot-sync >/dev/null
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync applies settings without reboot"
+
+_diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
+printf '%s\n' "$_diag" > "$SB/diag.txt"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===" "diag-report outputs structured Flagship Motion header"
+assert_file_contains "$SB/diag.txt" "Motion Engine:" "diag-report includes Motion Engine telemetry line"
+assert_file_contains "$SB/diag.txt" "Custom Color Expert:" "diag-report includes Custom Color Expert status"
+assert_file_contains "$SB/diag.txt" "AOD Unlock:" "diag-report includes AOD Unlock status"
+
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" preset invalid-mode >/dev/null 2>&1; then
+  fail "WebUI should reject unknown preset name"
+else
+  pass "WebUI rejects unknown preset name"
+fi
+
+# ---------------------------------------------------------------------------
+printf '=== Test 12: Custom Color Expert Always-On (All Modes) & Non-LTPO AOD XML ===\n'
+setup_sandbox "t12_color_expert_and_aod"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+cat > "$SB_XML_DIR1/aurora.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_display_expert_mode">false</bool>
+    <bool name="support_screen_effect">true</bool>
+    <bool name="support_double_tap_to_wake">true</bool>
+    <bool name="support_aod">false</bool>
+</features>
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+# Even in Low mode (Redmi Note 15 5G), Custom Color Expert & Non-LTPO AOD XML tags are enabled,
+# while support_advanced_textures is NOT injected!
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_display_expert_mode">true</bool>' "Low mode upgrades support_display_expert_mode -> true"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "Preserves stock Vivid/Saturated/Standard tag"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_advanced_textures' "Low mode never adds support_advanced_textures"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="aod_support_keycode_goto_dismiss">true</bool>' "Non-LTPO AOD adds aod_support_keycode_goto_dismiss=true"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_aod_fullscreen' "HyperOS 3 still skips support_aod_fullscreen"
+
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_COLOR_EXPERT=verified_active" "Verifier confirms FEAT_COLOR_EXPERT as verified_active in Low mode"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_AOD_UNLOCK=verified_active" "Verifier confirms FEAT_AOD_UNLOCK as verified_active via XML"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 13: 60/120 Hz Motion Engine, Recents/AOD Telemetry & Zero-Reboot IPC ===\n'
+setup_sandbox "t13_hybrid_engine"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+
+# 13a: Engine APK installed, but NOT enabled in LSPosed yet -> honest pending_lsposed (ZERO gimmick!)
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/missing_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+  run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_INSTALLED=1" "Verifier detects installed CoreSurfaceEngine.apk"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=0" "Verifier honestly reports ENGINE_ACTIVE=0 before LSPosed hook runs"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=pending_lsposed" "Zero-gimmick: marks FEAT_MOTION_PROFILE as pending_lsposed when unhooked"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_NATIVE_TIER=pending_lsposed" "Zero-gimmick: marks FEAT_NATIVE_TIER as pending_lsposed when unhooked"
+
+# 13b: Live telemetry from SystemUI + MiuiHome + MiuiAod (with DISPLAY_HZ & AOD_GATES)
+cat > "$SB/sysui_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=hyperos4
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=ToastGuard,NativeFlagshipTier,FolmePhysics
+NATIVE_GATES=14
+FOLME_HOOKS=6
+AOD_GATES=0
+SPRINGS_TUNED=48
+TOASTS_GUARDED=3
+RECENTS_GUARDED=0
+EOF
+cat > "$SB/home_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=hyperos4
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=ToastGuard,NativeFlagshipTier,FolmePhysics,RecentsGuard
+NATIVE_GATES=11
+FOLME_HOOKS=4
+AOD_GATES=0
+SPRINGS_TUNED=72
+TOASTS_GUARDED=0
+RECENTS_GUARDED=4
+EOF
+cat > "$SB/aod_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=hyperos4
+DISPLAY_HZ=60
+LOD_TIER=FULL
+HOOKS_BOUND=AodNonLtpoUnlock,AodFlagshipTier
+NATIVE_GATES=2
+FOLME_HOOKS=2
+AOD_GATES=4
+SPRINGS_TUNED=5
+TOASTS_GUARDED=0
+RECENTS_GUARDED=0
+EOF
+
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/sysui_telem.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/aod_telem.prop" \
+  run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=1" "Verifier confirms active Engine runtime from telemetry"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MODE=NATIVE_MOTION" "Verifier records honest NATIVE_MOTION engine mode"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MOTION=hyperos4" "Verifier records live MOTION_PROFILE=hyperos4"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HZ=120" "Verifier records highest live DISPLAY_HZ=120"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_LOD=FULL" "Verifier reports live Thermal-Adaptive LOD tier"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=ToastGuard,NativeFlagshipTier,FolmePhysics,RecentsGuard,AodNonLtpoUnlock,AodFlagshipTier" "Verifier deduplicates hook names across SystemUI + MiuiHome + MiuiAod"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_NATIVE_GATES=27" "Verifier aggregates native HyperOS flagship gates"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_FOLME_HOOKS=12" "Verifier aggregates hooked Folme/SpringForce methods"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_AOD_GATES=4" "Verifier aggregates Non-LTPO AOD gates"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_SPRINGS=125" "Verifier aggregates tuned spring animations"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_TOASTS=3" "Verifier reports guarded Toast count"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_RECENTS=4" "Verifier reports guarded Recents count"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=verified_active" "Motion Profile verified_active only with bound FolmePhysics hook"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_NATIVE_TIER=verified_active" "Native Tier verified_active only with bound NativeFlagshipTier hook"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_SURGICAL_GUARD=verified_active" "Surgical Guard verified_active only with bound Toast/Recents hooks"
+
+# 13c: Live Motion Profile switch via webui_ctl pushes zero-Binder debug.coresurface.cfg IMMEDIATELY with ZERO pending reboot!
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_ENGINE_INSTALLED=1 CORESURFACE_ENGINE_SYSUI_TELEM="$SB/sysui_telem.prop" \
+  CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" CORESURFACE_ENGINE_AOD_TELEM="$SB/aod_telem.prop" \
+  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE silk >/dev/null
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=silk;native=1;guard=1;thermallod=1;aod=1" "Live switch updates zero-Binder debug.coresurface.cfg via resetprop -n instantly"
+assert_file_not_contains "$SB_STATE/state.prop" "FEAT_MOTION_PROFILE" "Live Motion Profile switch does NOT add to PENDING_KEYS (zero reboot required)"
+
+# 13d: SELinux-safe pm install -r -S <size> streaming in service.sh (idempotent)
+SB_PM_LOG="$SB/pm.calls"
+: > "$SB_PM_LOG"
+printf 'FAKE_ENGINE_APK_BYTES_1234567890' > "$SB_STATE/CoreSurfaceEngine.apk"
+cat > "$SB_BIN/pm" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$SB_PM_LOG"
+case "\$1" in
+  path)
+    if [ -f "$SB_STATE/.engine_installed.sig" ]; then
+      printf 'package:/data/app/org.mystivara.coresurface.engine/base.apk\n'
+      exit 0
+    fi
+    exit 1
+    ;;
+  install)
+    cat >/dev/null
+    printf 'Success\n'
+    exit 0
+    ;;
+esac
+exit 1
+EOF
+chmod +x "$SB_BIN/pm"
+run_service
+assert_file_contains "$SB_PM_LOG" "install -r -S 32" "service.sh installs CoreSurfaceEngine.apk via SELinux-safe stdin stream (pm install -r -S)"
+assert_eq "$( [ -f "$SB_STATE/.engine_installed.sig" ] && printf 'yes' || printf 'no' )" "yes" "service.sh records idempotent .engine_installed.sig stamp"
+: > "$SB_PM_LOG"
+run_service
+assert_file_not_contains "$SB_PM_LOG" "install -r" "service.sh skips redundant pm install when APK signature unchanged"
+
+# 13e: Signature-mismatch upgrade (INSTALL_FAILED_UPDATE_INCOMPATIBLE) automatically uninstalls old cert & retries
+printf 'UPDATED_ENGINE_APK_BYTES_WITH_NEW_CERT_123456' > "$SB_STATE/CoreSurfaceEngine.apk"
+SB_PM_MARKER="$SB/pm.uninstalled"
+: > "$SB_PM_LOG"
+cat > "$SB_BIN/pm" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$SB_PM_LOG"
+case "\$1" in
+  path)
+    printf 'package:/data/app/org.mystivara.coresurface.engine/base.apk\n'
+    exit 0
+    ;;
+  uninstall)
+    : > "$SB_PM_MARKER"
+    printf 'Success\n'
+    exit 0
+    ;;
+  install)
+    cat >/dev/null
+    if [ ! -f "$SB_PM_MARKER" ]; then
+      printf 'Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package org.mystivara.coresurface.engine signatures do not match newer version]\n'
+      exit 1
+    fi
+    printf 'Success\n'
+    exit 0
+    ;;
+esac
+exit 1
+EOF
+chmod +x "$SB_BIN/pm"
+run_service
+assert_file_contains "$SB_PM_LOG" "uninstall org.mystivara.coresurface.engine" "service.sh automatically uninstalls mismatched-signature old APK before retrying"
+assert_eq "$( [ -f "$SB_PM_MARKER" ] && printf 'yes' || printf 'no' )" "yes" "Signature-mismatch recovery completed cleanly"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 14: Interactive Volume Up / Volume Down 4-Tier Installer (customize.sh) ===\n'
+setup_sandbox "t14_volkey_installer"
+cp "$REPO_ROOT/customize.sh" "$SB_MOD/"
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceThemeManager.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceMiWallpaper.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceMiuiAod.apk"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+
+# Mock getevent sequence: Vol+ (1->2), Vol+ (2->3 balanced_pro), Vol- (confirm tier), Vol+ (1->2 silk), Vol- (confirm motion)
+SB_VK_STEP="$SB/vk.step"
+printf '0\n' > "$SB_VK_STEP"
+cat > "$SB_BIN/getevent" <<EOF
+#!/bin/sh
+n=\$(cat "$SB_VK_STEP")
+n=\$((n + 1))
+printf '%s\n' "\$n" > "$SB_VK_STEP"
+case "\$n" in
+  1|2|4) printf '/dev/input/event1: EV_KEY KEY_VOLUMEUP DOWN\n' ;;
+  3|5)   printf '/dev/input/event1: EV_KEY KEY_VOLUMEDOWN DOWN\n' ;;
+esac
+exit 0
+EOF
+chmod +x "$SB_BIN/getevent"
+
+PATH="$SB_BIN:$PATH" MODPATH="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/customize.sh" >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=balanced_pro" "Volume Up x2 + Volume Down selects balanced_pro tier"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=silk" "Volume Up + Volume Down selects iOS/ColorOS silk profile"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiWallpaper.apk" ] && printf 'yes' || printf 'no' )" "yes" "customize.sh stages balanced_pro RRO overlays immediately after volume selection"
+
+# Non-interactive fallback leaves CS_TIER_MODE=auto cleanly without hanging
+setup_sandbox "t14_noninteractive"
+cp "$REPO_ROOT/customize.sh" "$SB_MOD/"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+PATH="$SB_BIN:$PATH" MODPATH="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_NONINTERACTIVE=1 sh "$SB_MOD/customize.sh" >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=auto" "Non-interactive install preserves default CS_TIER_MODE=auto cleanly"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 15: Device Logic & OS/System Bug Detector + Universal UI Curve Telemetry ===\n'
+setup_sandbox "t15_os_bug_logic"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+# Seed pre-existing stale XML mount + leaked persist prop + vendor blur throttle
+printf '/dev/block/dm-0 /product/etc/device_features/kunzite.xml ext4 ro 0 0\n' > "$SB_PROC_MOUNTS"
+printf 'persist.sys.advanced_visual_release=3\nro.sf.blurs_are_expensive=1\n' > "$SB_PROPS_DB"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+assert_file_contains "$SB_STATE/os_bugs.state" "HOS3_ADVTEX_TOAST_RECENTS" "Device Logic detects HyperOS 3 Advanced Textures Toast/Recents bug"
+assert_file_contains "$SB_STATE/os_bugs.state" "HOS3_AOD_FULLSCREEN_CRASH" "Device Logic detects HyperOS 3 fullscreen AOD crash risk"
+assert_file_contains "$SB_STATE/os_bugs.state" "SDK35_ROOT_BINDER_GUARD" "Device Logic detects Android 16 root Binder restriction"
+assert_file_contains "$SB_STATE/os_bugs.state" "SOFT_REBOOT_STALE_XML" "Device Logic detects stale soft-reboot XML mount"
+assert_file_contains "$SB_STATE/os_bugs.state" "NON_LTPO_AOD_10S_CAP" "Device Logic detects Non-LTPO 10s AOD cap"
+assert_file_contains "$SB_STATE/os_bugs.state" "VENDOR_BLUR_LOWRAM_THROTTLE" "Device Logic detects vendor blurs_are_expensive throttle"
+assert_file_contains "$SB_STATE/os_bugs.state" "LEAKED_PERSIST_PROPS" "Device Logic detects leaked persist.sys.advanced_visual_release"
+
+# Post-boot late scan detects missing meta-overlayfs when staged APK is absent from live overlay dir,
+# and aggregates universal UI Curves telemetry from com.android.settings
+cat > "$SB/settings_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=silk
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=FolmePhysics,UiCurvePhysics
+NATIVE_GATES=0
+FOLME_HOOKS=3
+AOD_GATES=0
+SPRINGS_TUNED=10
+CURVES_APPLIED=64
+TOASTS_GUARDED=0
+RECENTS_GUARDED=0
+CIRCUIT_TRIPS=0
+EOF
+
+CORESURFACE_LIVE_OVERLAY_DIR="$SB/empty_live_overlay" \
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/missing_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+CORESURFACE_ENGINE_SETTINGS_TELEM="$SB/settings_telem.prop" \
+  run_service
+assert_file_contains "$SB_STATE/os_bugs.state" "MISSING_META_OVERLAYFS" "Late Device Logic detects missing meta-overlayfs metamodule"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_CURVES=64" "Verifier aggregates universal UI SpringPhysicsCurve count from Settings"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=FolmePhysics,UiCurvePhysics" "Verifier records UiCurvePhysics universal ValueAnimator hook"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_CIRCUITS=0" "DeviceBugGuard reports 0 circuit breaker trips"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 16: Immutable Stock Snapshot (No Flagship Self-Misclassification) & Never-Downgrade ===\n'
+setup_sandbox "t16_stock_snapshot"
+write_mock_getprop "OS3.0" "" "36" "1" "nonflag" "POCO F7 Ultra"
+write_mock_meminfo "11800000"
+write_sample_xml "$SB_XML_DIR1/nonflag.xml"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+assert_file_contains "$SB_STATE/stock_caps.prop" "STOCK_DEVICE_LEVEL=1" "Early boot snapshots true factory STOCK_DEVICE_LEVEL=1"
+assert_file_contains "$SB_STATE/stock_caps.prop" "STOCK_HAS_BLUR=0" "Early boot snapshots true factory STOCK_HAS_BLUR=0"
+assert_file_contains "$SB_STATE/state.prop" "EFF_TIER=flagship" "12GB non-native device resolves flagship tier at post-fs-data"
+
+# Simulate bind-mount now exposing CoreSurface's patched XML (device_level=3 + blur=true) at original XML path
+cp "$SB_STATE/work/device_features.xml" "$SB_XML_DIR1/nonflag.xml"
+
+# Late boot service.sh and WebUI MUST reuse stock_caps.prop and NOT misclassify as motion_only!
+run_service
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "service.sh keeps flagship blur setting (never misclassified as motion_only)"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "service.sh verifies FEAT_BLUR active instead of skipping"
+
+_st16=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  sh "$SB_MOD/lib/webui_ctl.sh" status)
+printf '%s\n' "$_st16" > "$SB/status16.out"
+assert_file_contains "$SB/status16.out" "detected_tier=flagship" "WebUI preserves true detected_tier=flagship after XML bind-mount"
+assert_file_contains "$SB/status16.out" "eff_tier=flagship" "WebUI preserves true eff_tier=flagship after XML bind-mount"
+
+# Never-Downgrade on persist.sys.deviceLevelList when user selects low tier on stock c:3,g:3
+setup_sandbox "t16_nd_levellist"
+write_mock_getprop "OS3.0" "" "36" "1" "middev" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+printf 'persist.sys.deviceLevelList=v:1,c:3,g:3\n' > "$SB_PROPS_DB"
+printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:3,g:3" "Never-Downgrade preserves stock c:3,g:3 even in low tier"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 17: Android 16 su 2000 Semicolon-Safe IPC & Stale-Boot BOOT_ID Guard ===\n'
+setup_sandbox "t17_binder_and_bootid"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora" "Redmi Note 15 Pro+ 5G"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+# Mock settings that rejects direct UID 0 calls (Android 16 Binder) and only succeeds under SU2000_ACTIVE=1
+cat > "$SB_BIN/settings" <<EOF
+#!/bin/sh
+if [ "\${SU2000_ACTIVE:-0}" != "1" ]; then
+  printf 'Failure calling service settings: Failed transaction (2147483646)\n' >&2
+  exit 1
+fi
+printf '%s\n' "\$*" >> "$SB_SETTINGS_LOG"
+if [ "\${1:-}" = "--user" ]; then
+  shift 2
+fi
+cmd=\${1:-}
+ns=\${2:-}
+key=\${3:-}
+val=\${4:-}
+id="\${ns}|\${key}"
+case "\$cmd" in
+  get)
+    out=\$(awk -F '=' -v id="\$id" '\$1 == id { sub(/^[^=]*=/, ""); print; exit }' "$SB_SETTINGS_DB" 2>/dev/null || true)
+    if [ -z "\$out" ]; then printf 'null\n'; else printf '%s\n' "\$out"; fi
+    ;;
+  put)
+    tmp="$SB_SETTINGS_DB.tmp.\$\$"
+    awk -F '=' -v id="\$id" '\$1 != id { print \$0 }' "$SB_SETTINGS_DB" > "\$tmp" 2>/dev/null || : > "\$tmp"
+    printf '%s=%s\n' "\$id" "\$val" >> "\$tmp"
+    mv -f "\$tmp" "$SB_SETTINGS_DB"
+    ;;
+  delete)
+    tmp="$SB_SETTINGS_DB.tmp.\$\$"
+    awk -F '=' -v id="\$id" '\$1 != id { print \$0 }' "$SB_SETTINGS_DB" > "\$tmp" 2>/dev/null || : > "\$tmp"
+    mv -f "\$tmp" "$SB_SETTINGS_DB"
+    ;;
+esac
+exit 0
+EOF
+chmod +x "$SB_BIN/settings"
+
+cat > "$SB_BIN/su" <<'EOF'
+#!/bin/sh
+# Simulate `su 2000 -c "<cmd>"` executing via real /bin/sh so unquoted semicolons would split!
+if [ "$1" = "2000" ] && [ "$2" = "-c" ]; then
+  SU2000_ACTIVE=1 sh -c "$3"
+  exit $?
+fi
+exit 1
+EOF
+chmod +x "$SB_BIN/su"
+
+run_post_fs_data
+
+# Stale-boot telemetry with an OLD boot_id MUST be rejected by verifier.sh
+printf 'boot-uuid-current-2222\n' > "$SB/boot_id"
+cat > "$SB/stale_sysui.prop" <<'EOF'
+ENGINE_ACTIVE=1
+BOOT_ID=boot-uuid-previous-1111
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=silk
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=FolmePhysics,NativeFlagshipTier
+EOF
+
+CORESURFACE_BOOT_ID_FILE="$SB/boot_id" \
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/stale_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+CORESURFACE_ENGINE_SETTINGS_TELEM="$SB/missing_settings.prop" \
+  run_service
+
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=hyperos4;native=1;guard=1;thermallod=1;aod=1" "su 2000 -c preserves full semicolon-delimited coresurface_engine_v1 without shell splitting"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=0" "Verifier rejects stale telemetry from previous BOOT_ID"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=pending_lsposed" "Stale telemetry does not fake verified_active"
+
+# Matching current BOOT_ID is accepted
+cat > "$SB/fresh_sysui.prop" <<'EOF'
+ENGINE_ACTIVE=1
+BOOT_ID=boot-uuid-current-2222
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=hyperos4
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=FolmePhysics,NativeFlagshipTier,ToastGuard
+BUGS_MITIGATED=HOS3_MiBlurRuntime
+EOF
+
+CORESURFACE_BOOT_ID_FILE="$SB/boot_id" \
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/fresh_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+CORESURFACE_ENGINE_SETTINGS_TELEM="$SB/missing_settings.prop" \
+  run_service
+
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=1" "Verifier accepts live telemetry matching current BOOT_ID"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_BUGS=HOS3_MiBlurRuntime" "Verifier surfaces runtime BUGS_MITIGATED telemetry"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 18: Safe-Mode Engine Kill-Switch, action.sh & Clean Uninstall ===\n'
+setup_sandbox "t18_safemode_action_uninstall"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora" "Redmi Note 15 Pro+ 5G"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+
+# Trigger Safe-Mode (strike 2): post-fs-data applies 0 props, then service.sh disarms lingering Engine IPC
+printf 'debug.coresurface.cfg=motion=silk;native=1;guard=1;thermallod=1;aod=1\n' > "$SB_PROPS_DB"
+printf '2\n' > "$SB_STATE/boot_strikes"
+run_post_fs_data
+assert_eq "$(wc -l < "$SB_PROPS_LOG" | tr -d ' ')" "0" "Safe-Mode post-fs-data executes strictly 0 resetprop calls"
+run_service
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;guard=0;thermallod=0;aod=0" "Safe-Mode service.sh disarms lingering Layer 2 Engine IPC"
+
+# Test action.sh runs cleanly and produces diagnostic report
+_act_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/action.sh")
+printf '%s\n' "$_act_out" > "$SB/action.out"
+assert_file_contains "$SB/action.out" "CoreSurface v1.0.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
+assert_file_contains "$SB/action.out" "=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===" "action.sh runs diagnostic report cleanly"
+
+# Test uninstall.sh disarms active debug.coresurface.cfg and uninstalls CoreSurfaceEngine APK
+printf 'debug.coresurface.cfg=motion=hyperos4;native=1;guard=1;thermallod=1;aod=1\n' > "$SB_PROPS_DB"
+SB_PM_UNINST_LOG="$SB/pm_uninst.log"
+: > "$SB_PM_UNINST_LOG"
+cat > "$SB_BIN/pm" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$SB_PM_UNINST_LOG"
+exit 0
+EOF
+chmod +x "$SB_BIN/pm"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  sh "$SB_MOD/uninstall.sh"
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;guard=0;thermallod=0;aod=0" "uninstall.sh disarms live Engine IPC"
+assert_file_contains "$SB_PM_UNINST_LOG" "uninstall org.mystivara.coresurface.engine" "uninstall.sh cleanly uninstalls CoreSurfaceEngine APK"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 19: Flagship Computility (Level 6/4) Re-Assertion, system/deviceLevelList & Non-LTPO AOD Keycode-Goto Flip ===\n'
+setup_sandbox "t19_computility_and_aod_always"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+cat > "$SB_XML_DIR1/kunzite.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">false</bool>
+    <integer name="device_level">1</integer>
+    <bool name="support_aod">true</bool>
+    <bool name="is_only_support_keycode_goto">true</bool>
+    <bool name="support_screen_effect">true</bool>
+</features>
+EOF
+printf 'CS_TIER_MODE=flagship\nFEAT_AOD_UNLOCK=1\n' > "$SB_STATE/config.prop"
+printf 'persist.sys.computility.cpulevel=2\npersist.sys.computility.gpulevel=2\n' > "$SB_PROPS_DB"
+printf 'system|deviceLevelList=v:1,c:2,g:2\n' > "$SB_SETTINGS_DB"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.cpulevel=6" "Flagship sets persist.sys.computility.cpulevel=6"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.gpulevel=6" "Flagship sets persist.sys.computility.gpulevel=6"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.version=2025" "Flagship sets persist.sys.computility.version=2025"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.cpulevel=4" "Flagship sets persist.sys.computilityV2.cpulevel=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.gpulevel=4" "Flagship sets persist.sys.computilityV2.gpulevel=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.devicelevel=4" "Flagship sets persist.sys.computilityV2.devicelevel=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyper_transition_v=3" "Flagship sets persist.sys.hyper_transition_v=3"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.shell_anim_enable_fcb=true" "Flagship sets ro.miui.shell_anim_enable_fcb=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.hyper.barfollow_anim=true" "Flagship sets persist.hyper.barfollow_anim=true"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_only_support_keycode_goto">false</bool>' "Non-LTPO AOD flips is_only_support_keycode_goto true -> false to unlock Always/Scheduled"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_video_screen">true</bool>' "Non-LTPO AOD enables is_video_screen=true"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "Protected stock display tag remains untouched"
+
+# Simulate HyperOS ComputilityService resetting cpulevel & gpulevel back to 2 during boot
+tmp_db="$SB_PROPS_DB.reverted"
+awk -F '=' '$1 != "persist.sys.computility.cpulevel" && $1 != "persist.sys.computility.gpulevel" { print $0 }' "$SB_PROPS_DB" > "$tmp_db"
+printf 'persist.sys.computility.cpulevel=2\npersist.sys.computility.gpulevel=2\n' >> "$tmp_db"
+mv -f "$tmp_db" "$SB_PROPS_DB"
+
+run_service
+assert_file_contains "$SB_PROPS_DB" "persist.sys.computility.cpulevel=6" "service.sh re-asserts persist.sys.computility.cpulevel=6 after ComputilityService boot overwrite"
+assert_file_contains "$SB_PROPS_DB" "persist.sys.computility.gpulevel=6" "service.sh re-asserts persist.sys.computility.gpulevel=6 after ComputilityService boot overwrite"
+assert_file_contains "$SB_SETTINGS_DB" "system|deviceLevelList=v:1,c:3,g:3" "service.sh syncs settings system/deviceLevelList=v:1,c:3,g:3 for Control Center"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_ANIMATIONS=verified_active" "Verifier confirms FEAT_ANIMATIONS verified_active with computility level 6"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_AOD_UNLOCK=verified_active" "Verifier confirms FEAT_AOD_UNLOCK verified_active via is_only_support_keycode_goto=false"
+
+# Verify uninstall cleanly restores original system/deviceLevelList=v:1,c:2,g:2
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  sh "$SB_MOD/uninstall.sh"
+assert_file_contains "$SB_SETTINGS_DB" "system|deviceLevelList=v:1,c:2,g:2" "uninstall.sh restores original system/deviceLevelList cleanly"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 20: Flagship Audio & Speaker Enhancement + Flagship Exclusive Porting Suite ===\n'
+setup_sandbox "t20_flagship_audio_and_porting_suite"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+# Launcher & SurfaceFlinger blur + HyperOS 3 Advanced Textures v4 contract (prevents -1 Screen & Folder black-blink)
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.sf.disable_blurs=false" "Blur contract sets persist.sys.sf.disable_blurs=false"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.launcher_blur_supported=true" "Blur contract sets persist.sys.launcher_blur_supported=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_setting=1" "Blur contract sets persist.sys.background_blur_setting=1"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "HyperOS 3 Flagship sets native Advanced Textures release=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=true" "HyperOS 3 Flagship sets support_window_mishadow=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_smoothcorner=true" "HyperOS 3 Flagship sets support_window_smoothcorner=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "HyperOS 3 Flagship sets add_blurnoise_supported=true"
+# Audio & Speaker props
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Flagship Audio sets ro.vendor.audio.spk.stereo=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Flagship Audio sets ro.vendor.audio.spk.clean=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.dolby.dax.support=true" "Flagship Audio sets ro.vendor.audio.dolby.dax.support=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.scenario=true" "Flagship Audio sets ro.vendor.audio.sfx.scenario=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.hifi=true" "Flagship Audio sets ro.vendor.audio.hifi=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.vendor.audio.hifi.int_codec=true" "Flagship Audio sets persist.vendor.audio.hifi.int_codec=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.audio.spatializer_enabled=true" "Flagship Audio sets ro.audio.spatializer_enabled=true"
+# Audio XML tags
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Flagship Audio XML enables support_dolby"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hifi">true</bool>' "Flagship Audio XML enables support_hifi"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_assist">true</bool>' "Flagship Audio XML enables support_sound_assist"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_24bit_record">true</bool>' "Flagship Audio XML enables support_24bit_record"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_stereo_record">true</bool>' "Flagship Audio XML enables support_stereo_record"
+# Flagship Porting Suite props
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Flagship Suite sets ro.miui.ui.font.animation=enable"
+assert_file_contains "$SB_PROPS_LOG" "ro.multiwin.fulldecor_support=true" "Flagship Suite sets ro.multiwin.fulldecor_support=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.product.camera.livephoto.support=3" "Flagship Suite sets ro.product.camera.livephoto.support=3"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.power_mode_support=true" "Flagship Suite sets persist.sys.power_mode_support=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.launch_response_optimization.enable=true" "Flagship Suite sets persist.sys.launch_response_optimization.enable=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.translate.state.supportAiSubtitles=true" "Flagship Suite sets supportAiSubtitles=true"
+# Flagship Porting Suite XML tags
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_AI_display">true</bool>' "Flagship Suite XML enables support_AI_display"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_super_resolution">true</bool>' "Flagship Suite XML enables support_super_resolution"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hdr_enhance">true</bool>' "Flagship Suite XML enables support_hdr_enhance"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_support_video_tool_box">true</bool>' "Flagship Suite XML enables is_support_video_tool_box"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Flagship Suite XML enables support_wild_boost"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_game_gunsight">true</bool>' "Flagship Suite XML enables support_game_gunsight"
+
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_FLAGSHIP_AUDIO=verified_active" "Verifier marks FEAT_FLAGSHIP_AUDIO=verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_FLAGSHIP_SUITE=verified_active" "Verifier marks FEAT_FLAGSHIP_SUITE=verified_active"
+
+# WebUI status & set whitelist
+_t20_status=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" status)
+printf '%s\n' "$_t20_status" > "$SB/t20_status.out"
+assert_file_contains "$SB/t20_status.out" "eff_feat_flagship_audio=1" "WebUI status reports eff_feat_flagship_audio=1"
+assert_file_contains "$SB/t20_status.out" "eff_feat_flagship_suite=1" "WebUI status reports eff_feat_flagship_suite=1"
+assert_file_contains "$SB/t20_status.out" "verify_feat_flagship_audio=verified_active" "WebUI status reports verify_feat_flagship_audio=verified_active"
+assert_file_contains "$SB/t20_status.out" "verify_feat_flagship_suite=verified_active" "WebUI status reports verify_feat_flagship_suite=verified_active"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_FLAGSHIP_AUDIO 0 >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_FLAGSHIP_AUDIO=0" "WebUI set accepts FEAT_FLAGSHIP_AUDIO=0"
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_FLAGSHIP_SUITE 0 >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_FLAGSHIP_SUITE=0" "WebUI set accepts FEAT_FLAGSHIP_SUITE=0"
+
+# Lite tier: Audio ON by default, Porting Suite & Advanced Textures v4 OFF by default
+setup_sandbox "t20b_lite_audio_on_suite_off"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "5500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "Lite tier skips Advanced Textures v4 release=4"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Lite tier keeps Flagship Audio & Speaker ON by default"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Lite tier keeps heavy Flagship Porting Suite OFF by default"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Lite tier XML enables Audio support_dolby"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Lite tier XML skips Flagship Porting Suite tags"
+
+# Native Flagship Passthrough (motion_only): skips both Audio & Porting Suite overrides
+setup_sandbox "t20c_native_flagship_skips_audio_suite"
+write_mock_getprop "OS3.0" "" "36" "1" "houji" "Xiaomi 15 Ultra"
+write_mock_meminfo "15600000"
+printf 'ro.miui.device_level=3\nro.surface_flinger.supports_background_blur=1\n' > "$SB_PROPS_DB"
+cat > "$SB_XML_DIR1/houji.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">true</bool>
+    <integer name="device_level">3</integer>
+    <bool name="support_aod">true</bool>
+</features>
+EOF
+printf 'CS_TIER_MODE=auto\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Native Flagship motion_only skips Flagship Audio prop overrides"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Native Flagship motion_only skips Flagship Suite prop overrides"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

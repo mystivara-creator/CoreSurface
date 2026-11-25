@@ -2,23 +2,18 @@
 
 // Always invoke webui_ctl.sh with its absolute module path (id=coresurface).
 const CTL_SCRIPT = '/system/bin/sh /data/adb/modules/coresurface/lib/webui_ctl.sh';
-
-const FEATURE_KEYS = [
-  'FEAT_BLUR',
-  'FEAT_ANIMATIONS',
-  'FEAT_XML_PATCHER',
-  'FEAT_MULTITASK',
-  'FEAT_DISPLAY_HZ',
-  'FEAT_HYPERAI',
-  'FEAT_AOD_UNLOCK'
-];
+const LIVE_KEYS = new Set(['FEAT_MOTION_PROFILE', 'FEAT_SURGICAL_GUARD']);
 
 let execCounter = 0;
+let uiBusy = false;
 
-/**
- * Execute a shell command via KernelSU-Next 2-argument async callback API.
- * Avoids ShellUtils.fastCmd truncation to only the last stdout line.
- */
+function setBusy(busy) {
+  uiBusy = busy;
+  for (const el of document.querySelectorAll('button')) {
+    el.disabled = busy;
+  }
+}
+
 function ksuExec(command) {
   if (!window.ksu || typeof window.ksu.exec !== 'function') {
     return Promise.reject(new Error('Buka WebUI ini melalui KernelSU-Next Manager'));
@@ -55,41 +50,24 @@ function ksuExec(command) {
   });
 }
 
-function parseStatusOutput(raw) {
+function parseStatus(raw) {
   const kv = {};
-  const props = [];
-  const overridden = [];
   const logs = [];
-  let section = 'kv';
+  let inLog = false;
 
   for (const line of raw.split(/\r?\n/)) {
-    if (line === 'props_start') { section = 'props'; continue; }
-    if (line === 'props_end') { section = 'kv'; continue; }
-    if (line === 'overridden_start') { section = 'overridden'; continue; }
-    if (line === 'overridden_end') { section = 'kv'; continue; }
-    if (line === 'log_start') { section = 'log'; continue; }
-    if (line === 'log_end') { section = 'kv'; continue; }
-
-    if (section === 'props') {
-      if (line.trim()) props.push(line.trim());
-      continue;
-    }
-    if (section === 'overridden') {
-      if (line.trim()) overridden.push(line.trim());
-      continue;
-    }
-    if (section === 'log') {
+    if (line === 'log_start') { inLog = true; continue; }
+    if (line === 'log_end') { inLog = false; continue; }
+    if (inLog) {
       logs.push(line);
       continue;
     }
-
     const idx = line.indexOf('=');
     if (idx > 0) {
       kv[line.slice(0, idx)] = line.slice(idx + 1);
     }
   }
-
-  return { kv, props, overridden, logs };
+  return { kv, logs };
 }
 
 function makeKvRow(label, value) {
@@ -104,184 +82,54 @@ function makeKvRow(label, value) {
   return row;
 }
 
-function renderWatchdogBadge(kv) {
-  const badge = document.getElementById('watchdog-badge');
-  const safeBanner = document.getElementById('safemode-banner');
-  const safeReason = document.getElementById('safemode-reason');
-  const status = kv.watchdog_status || 'unknown';
-  const isDisabled = kv.module_disabled === '1' || status === 'safe_mode_disabled';
+function formatMotion(p) {
+  if (p === 'silk') return 'iOS · ColorOS 17 Silk';
+  if (p === 'hyperos4') return 'HyperOS 4 Flagship';
+  if (p === 'off' || p === '0') return 'Stock ROM';
+  return p || '-';
+}
 
-  badge.className = 'badge';
-  safeBanner.classList.add('hidden');
+function renderVerifyPill(featKey, status, isPending) {
+  const el = document.getElementById('verify-' + featKey);
+  if (!el) return;
+  el.className = 'v-pill';
 
-  if (isDisabled) {
-    badge.classList.add('badge-danger');
-    badge.textContent = 'Watchdog: Safe-Mode Disabled';
-    safeBanner.classList.remove('hidden');
-    if (kv.watchdog_reason && kv.watchdog_reason !== 'none') {
-      safeReason.textContent = 'Alasan: ' + kv.watchdog_reason + '. Disarankan matikan fitur eksperimental sebelum mengaktifkan kembali.';
-    }
-  } else if (status === 'healthy') {
-    badge.classList.add('badge-ok');
-    badge.textContent = 'Watchdog: Healthy';
-  } else if (status === 'unsupported_rom') {
-    badge.classList.add('badge-warn');
-    badge.textContent = 'ROM Tidak Didukung (Idle)';
-  } else if (status === 'pending_reboot') {
-    badge.classList.add('badge-warn');
-    badge.textContent = 'Watchdog: Menunggu Reboot';
-  } else if (status === 'degraded') {
-    badge.classList.add('badge-danger');
-    badge.textContent = 'Watchdog: Degraded (Strike ' + (kv.boot_strikes || '?') + '/2)';
-  } else {
-    badge.classList.add('badge-neutral');
-    badge.textContent = 'Watchdog: ' + status;
+  if (isPending && !LIVE_KEYS.has(featKey)) {
+    el.classList.add('v-info');
+    el.textContent = 'Pending Reboot';
+    return;
+  }
+
+  switch (status) {
+    case 'verified_active':
+      el.classList.add('v-ok');
+      el.textContent = 'Aktif';
+      break;
+    case 'pending_lsposed':
+      el.classList.add('v-info');
+      el.textContent = 'Aktifkan di LSPosed';
+      break;
+    case 'ignored_by_rom':
+      el.classList.add('v-danger');
+      el.textContent = 'Ditolak ROM';
+      break;
+    case 'disabled':
+      el.classList.add('v-neutral');
+      el.textContent = 'OFF';
+      break;
+    default:
+      el.classList.add('v-neutral');
+      el.textContent = status || '-';
+      break;
   }
 }
 
 function setSegmentValue(key, val) {
   const group = document.querySelector('.seg-group[data-key="' + key + '"]');
   if (!group) return;
+  const normalized = (val === 'auto') ? '1' : val;
   for (const btn of group.querySelectorAll('button')) {
-    btn.classList.toggle('active', btn.dataset.val === val);
-  }
-}
-
-function renderVerifyPill(featKey, verifyStatus, isPending, effValue) {
-  const el = document.getElementById('verify-' + featKey);
-  if (!el) return;
-
-  el.className = 'v-pill';
-
-  if (isPending) {
-    el.classList.add('v-info');
-    el.textContent = 'Pending Reboot';
-    return;
-  }
-
-  switch (verifyStatus) {
-    case 'verified_active':
-      el.classList.add('v-ok');
-      el.textContent = 'Verified Active';
-      break;
-    case 'ignored_by_rom':
-      el.classList.add('v-danger');
-      el.textContent = 'Ignored by ROM';
-      break;
-    case 'skipped':
-      el.classList.add('v-warn');
-      el.textContent = 'Skipped';
-      break;
-    case 'disabled':
-      el.classList.add('v-neutral');
-      el.textContent = 'Disabled';
-      break;
-    default:
-      if (effValue === '1') {
-        el.classList.add('v-info');
-        el.textContent = 'Pending Verify';
-      } else {
-        el.classList.add('v-neutral');
-        el.textContent = 'Skipped';
-      }
-      break;
-  }
-}
-
-function renderXmlSummary(kv) {
-  const container = document.getElementById('xml-summary');
-  const badge = document.getElementById('xml-mount-badge');
-  const mountVerify = kv.verify_xml_mount || '';
-  const xmlStatus = kv.xml_status || 'skipped';
-
-  badge.className = 'pill';
-  if (mountVerify === 'active') {
-    badge.classList.add('on');
-    badge.textContent = 'Verified Mounted';
-  } else if (mountVerify === 'not_mounted') {
-    badge.classList.add('danger');
-    badge.textContent = 'Ignored by ROM';
-  } else if (xmlStatus === 'mounted') {
-    badge.classList.add('on');
-    badge.textContent = 'Mounted';
-  } else if (xmlStatus === 'disabled') {
-    badge.textContent = 'Disabled';
-  } else {
-    badge.classList.add('warn');
-    badge.textContent = 'Skipped';
-  }
-
-  container.replaceChildren(
-    makeKvRow('XML Asli Terdeteksi', kv.xml_source && kv.xml_source !== 'none' ? kv.xml_source : 'Tidak ditemukan'),
-    makeKvRow('Tag Ditambal', (kv.xml_patched_tags || '0') + ' tag'),
-    makeKvRow('Status Mount', xmlStatus + (kv.xml_reason && kv.xml_reason !== 'none' ? ' (' + kv.xml_reason + ')' : '')),
-    makeKvRow('Verifikasi /proc/mounts', mountVerify || 'Menunggu verifikasi')
-  );
-}
-
-function renderPropsList(props, kv) {
-  const list = document.getElementById('props-list');
-  const count = document.getElementById('props-count');
-  const verified = document.getElementById('props-verified');
-  count.textContent = String(props.length);
-  verified.textContent = (kv.verify_props_matched || '0') + '/' + (kv.verify_props_total || String(props.length));
-  list.replaceChildren();
-
-  if (props.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'muted';
-    empty.textContent = 'Belum ada properti yang diterapkan pada boot ini.';
-    list.appendChild(empty);
-    return;
-  }
-
-  for (const entry of props) {
-    const sep = entry.indexOf('|');
-    const feat = sep > 0 ? entry.slice(0, sep).replace(/^FEAT_/, '') : 'prop';
-    const pair = sep > 0 ? entry.slice(sep + 1) : entry;
-
-    const li = document.createElement('li');
-    const tag = document.createElement('span');
-    tag.className = 'prop-tier';
-    tag.textContent = feat;
-    const text = document.createElement('span');
-    text.textContent = pair;
-    li.appendChild(tag);
-    li.appendChild(text);
-    list.appendChild(li);
-  }
-}
-
-function renderOverriddenList(overridden) {
-  const section = document.getElementById('overridden-section');
-  const list = document.getElementById('overridden-list');
-  const count = document.getElementById('overridden-count');
-
-  count.textContent = String(overridden.length);
-  list.replaceChildren();
-
-  if (overridden.length === 0) {
-    section.classList.add('hidden');
-    return;
-  }
-
-  section.classList.remove('hidden');
-  for (const entry of overridden) {
-    const parts = entry.split('|');
-    const feat = (parts[0] || 'prop').replace(/^FEAT_/, '');
-    const key = parts[1] || '';
-    const expected = parts[2] || '';
-    const actual = parts[3] || '';
-
-    const li = document.createElement('li');
-    const tag = document.createElement('span');
-    tag.className = 'prop-tier prop-warn';
-    tag.textContent = feat;
-    const text = document.createElement('span');
-    text.textContent = key + ' (set=' + expected + ', actual=' + actual + ')';
-    li.appendChild(tag);
-    li.appendChild(text);
-    list.appendChild(li);
+    btn.classList.toggle('active', btn.dataset.val === normalized);
   }
 }
 
@@ -290,90 +138,273 @@ function setToast(msg) {
 }
 
 async function refreshStatus() {
-  const envList = document.getElementById('env-list');
+  const summary = document.getElementById('summary-list');
   try {
     const raw = await ksuExec(CTL_SCRIPT + ' status');
-    const { kv, props, overridden, logs } = parseStatusOutput(raw);
-
-    if (!kv.rom_family || !kv.ram_tier) {
-      throw new Error('Respons status tidak lengkap dari webui_ctl.sh');
+    const { kv, logs } = parseStatus(raw);
+    if (!kv.rom_family) {
+      throw new Error('Respons status tidak lengkap');
     }
 
-    renderWatchdogBadge(kv);
+    // Watchdog badge
+    const wdBadge = document.getElementById('watchdog-badge');
+    const safeBanner = document.getElementById('safemode-banner');
+    const safeReason = document.getElementById('safemode-reason');
+    const isDisabled = kv.module_disabled === '1' || kv.watchdog_status === 'safe_mode_disabled';
+    wdBadge.className = 'badge';
+    safeBanner.classList.add('hidden');
+    if (isDisabled) {
+      wdBadge.classList.add('badge-danger');
+      wdBadge.textContent = 'Watchdog: Safe-Mode';
+      if (safeReason && kv.watchdog_reason && kv.watchdog_reason !== 'none') {
+        safeReason.textContent = 'Alasan: ' + kv.watchdog_reason + ' (strikes: ' + (kv.boot_strikes || '0') + '/2).';
+      }
+      safeBanner.classList.remove('hidden');
+    } else if (kv.watchdog_status === 'healthy') {
+      wdBadge.classList.add('badge-ok');
+      wdBadge.textContent = 'Watchdog: Healthy';
+    } else {
+      wdBadge.classList.add('badge-warn');
+      wdBadge.textContent = 'Watchdog: ' + (kv.watchdog_status || 'unknown');
+    }
 
-    const cfBadge = document.getElementById('coreflow-badge');
-    cfBadge.classList.toggle('hidden', kv.coreflow_guard !== 'active');
+    // Metamodule RRO warning banner
+    const bugsList = (kv.os_bugs_csv || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const metaBanner = document.getElementById('metamodule-banner');
+    if (metaBanner) {
+      metaBanner.classList.toggle('hidden', !bugsList.includes('MISSING_META_OVERLAYFS'));
+    }
 
-    const pendingSet = new Set(
-      (kv.pending_keys || '').split(',').map((s) => s.trim()).filter(Boolean)
-    );
+    // Engine + Hz badges
+    const engBadge = document.getElementById('engine-badge');
+    const lodBadge = document.getElementById('engine-lod-badge');
+    const hzPill = document.getElementById('engine-hz-pill');
+    const active = kv.verify_engine_active === '1';
+    const installed = kv.verify_engine_installed === '1';
+    const hz = Number(kv.verify_engine_hz || 0);
+
+    engBadge.className = 'badge';
+    lodBadge.className = 'pill';
+    hzPill.className = 'pill';
+
+    if (active) {
+      engBadge.classList.add('badge-ok');
+      engBadge.textContent = 'Engine: Active';
+      lodBadge.classList.add('on');
+      lodBadge.textContent = 'Thermal: ' + (kv.verify_engine_lod || 'FULL');
+      hzPill.classList.add('on');
+      hzPill.textContent = hz > 0 ? (hz + ' Hz Sync') : 'Live IPC';
+    } else if (installed) {
+      engBadge.classList.add('badge-warn');
+      engBadge.textContent = 'Engine: Enable in LSPosed';
+      lodBadge.classList.add('warn');
+      lodBadge.textContent = 'LSPosed Off';
+      hzPill.textContent = 'Standalone Layer 1';
+    } else {
+      engBadge.classList.add('badge-neutral');
+      engBadge.textContent = 'Layer 1 Only';
+      lodBadge.textContent = 'No Engine APK';
+      hzPill.textContent = 'Standalone Layer 1';
+    }
+
+    // Compat badge
+    const compatBadge = document.getElementById('compat-badge');
+    const evalCount = Number(kv.verify_feat_evaluated || 0);
+    if (kv.compat_score_pct && evalCount > 0) {
+      const pct = Number(kv.compat_score_pct);
+      compatBadge.className = 'badge ' + (pct >= 85 ? 'badge-ok' : (pct >= 50 ? 'badge-warn' : 'badge-danger'));
+      compatBadge.textContent = 'Skor: ' + pct + '% (' + (kv.verify_feat_verified || '0') + '/' + evalCount + ')';
+    } else {
+      compatBadge.classList.add('hidden');
+    }
+
+    document.getElementById('coreflow-badge').classList.toggle('hidden', kv.coreflow_guard !== 'active');
+
+    const pendingSet = new Set((kv.pending_keys || '').split(',').map((s) => s.trim()).filter(Boolean));
     document.getElementById('reboot-banner').classList.toggle('hidden', pendingSet.size === 0);
 
-    const romLabel = kv.rom_family === 'unsupported'
-      ? 'Unsupported (Non-HyperOS/MIUI)'
-      : kv.rom_family.toUpperCase() + ' · ' + (kv.rom_version || 'Unknown');
+    // 4-Tier cards
+    const curTier = kv.cfg_tier_mode || 'auto';
+    for (const btn of document.querySelectorAll('.btn-tier')) {
+      btn.classList.toggle('active', btn.dataset.tier === curTier);
+    }
+    const autoHint = document.getElementById('auto-tier-hint');
+    if (autoHint && kv.detected_tier_label) {
+      autoHint.textContent = 'Terdeteksi: ' + kv.detected_tier_label;
+    }
+    const tierPill = document.getElementById('active-tier-pill');
+    tierPill.className = 'pill on';
+    tierPill.textContent = kv.eff_tier_label || kv.eff_tier || 'Auto';
 
-    envList.replaceChildren(
-      makeKvRow('ROM Terdeteksi', romLabel),
-      makeKvRow('Android SDK', kv.android_sdk || '-'),
-      makeKvRow('RAM Aktual & Tier', (kv.ram_mb || '0') + ' MB (' + (kv.ram_tier_label || '-') + ')'),
-      makeKvRow('Boot Strikes', (kv.boot_strikes || '0') + ' / 2'),
-      makeKvRow('CoreFlow-Engine', kv.coreflow_guard === 'active' ? 'Thermal Guard Active' : 'Tidak Terdeteksi')
+    // Controls
+    setSegmentValue('FEAT_MOTION_PROFILE', kv.cfg_feat_motion_profile || 'hyperos4');
+    setSegmentValue('FEAT_SURGICAL_GUARD', kv.cfg_feat_surgical_guard || '1');
+    setSegmentValue('FEAT_AOD_UNLOCK', kv.cfg_feat_aod_unlock || '1');
+    setSegmentValue('FEAT_FLAGSHIP_AUDIO', kv.eff_feat_flagship_audio === '1' ? '1' : '0');
+    setSegmentValue('FEAT_FLAGSHIP_SUITE', kv.eff_feat_flagship_suite === '1' ? '1' : '0');
+
+    renderVerifyPill('FEAT_MOTION_PROFILE', kv.verify_feat_motion_profile, false);
+    renderVerifyPill('FEAT_SURGICAL_GUARD', kv.verify_feat_surgical_guard, false);
+    renderVerifyPill('FEAT_AOD_UNLOCK', kv.verify_feat_aod_unlock, pendingSet.has('FEAT_AOD_UNLOCK'));
+    renderVerifyPill('FEAT_FLAGSHIP_AUDIO', kv.verify_feat_flagship_audio, pendingSet.has('FEAT_FLAGSHIP_AUDIO'));
+    renderVerifyPill('FEAT_FLAGSHIP_SUITE', kv.verify_feat_flagship_suite, pendingSet.has('FEAT_FLAGSHIP_SUITE'));
+
+    // Compact Summary
+    const romStr = (kv.rom_family || '').toUpperCase() + ' ' + (kv.rom_version || '') + ' · SDK ' + (kv.android_sdk || '-');
+    const blurMode = kv.eff_tier === 'motion_only'
+      ? 'Factory Flagship (Passthrough Utuh)'
+      : (kv.eff_feat_adv_textures === '1' ? 'Blur Penuh (HOS3 Safe)' : 'Blur Standar (No Adv. Textures)');
+    const colorMode = (kv.eff_feat_color_expert === '1' || kv.stock_has_expert_color === '1')
+      ? 'Custom Color ON'
+      : 'Stock Color';
+    const audioSuiteStr = 'Audio ' + (kv.eff_feat_flagship_audio === '1' ? 'Flagship ON' : 'Stock')
+      + ' · Porting Suite ' + (kv.eff_feat_flagship_suite === '1' ? 'ON' : 'OFF');
+    const stats = 'Folme: ' + (kv.verify_engine_folme_hooks || '0')
+      + ' · Gates: ' + (kv.verify_engine_native_gates || '0')
+      + ' · Springs: ' + (kv.verify_engine_springs || '0')
+      + ' · UI Curves: ' + (kv.verify_engine_curves || '0')
+      + ' · Recents Fix: ' + (kv.verify_engine_recents || '0')
+      + ' · AOD Gates: ' + (kv.verify_engine_aod_gates || '0');
+    const bugSummary = (kv.os_bugs_mitigated || '0') + '/' + (kv.os_bugs_detected || '0') + ' termitigasi'
+      + (kv.os_bugs_csv ? (' (' + kv.os_bugs_csv.split(',').slice(0, 3).join(', ') + ')') : '');
+
+    summary.replaceChildren(
+      makeKvRow('ROM & RAM', romStr + ' · ' + (kv.ram_mb || '0') + ' MB'),
+      makeKvRow('Mode Blur & Warna', blurMode + ' · ' + colorMode),
+      makeKvRow('Audio & Porting', audioSuiteStr),
+      makeKvRow('Profil Animasi', formatMotion(kv.verify_engine_motion && kv.verify_engine_motion !== 'N/A' ? kv.verify_engine_motion : kv.eff_feat_motion_profile)),
+      makeKvRow('OS Bug Logic', bugSummary),
+      makeKvRow('Statistik Live', active ? stats : 'Aktifkan CoreSurface Engine di LSPosed'),
+      makeKvRow('Base Layer 1', 'Props ' + (kv.verify_props_matched || '0') + '/' + (kv.verify_props_total || '0')
+        + ' · XML ' + (kv.verify_xml_mount || kv.xml_status || '-')
+        + ' · RRO ' + (kv.verify_rro_active || '0') + '/' + (kv.verify_rro_total || kv.rro_staged_count || '0'))
     );
 
-    renderXmlSummary(kv);
-
-    for (const key of FEATURE_KEYS) {
-      const lower = key.toLowerCase();
-      setSegmentValue(key, kv['cfg_' + lower] || (key === 'FEAT_HYPERAI' || key === 'FEAT_AOD_UNLOCK' ? '0' : 'auto'));
-      renderVerifyPill(key, kv['verify_' + lower] || '', pendingSet.has(key), kv['eff_' + lower] || '0');
-    }
-
-    renderOverriddenList(overridden);
-    renderPropsList(props, kv);
     document.getElementById('diag-log').textContent = logs.join('\n') || 'Belum ada entri log.';
   } catch (err) {
-    envList.replaceChildren(makeKvRow('Kesalahan', err.message));
+    summary.replaceChildren(makeKvRow('Kesalahan', err.message));
     setToast('Gagal membaca status: ' + err.message);
   }
 }
 
-async function updateConfig(key, value) {
-  setToast('Menyimpan ' + key + '=' + value + '…');
+async function runAction(toastBusy, fn) {
+  if (uiBusy) return;
+  setBusy(true);
+  setToast(toastBusy);
   try {
-    const res = await ksuExec(CTL_SCRIPT + ' set ' + key + ' ' + value);
-    document.getElementById('reboot-banner').classList.remove('hidden');
-    setToast(res);
-    await refreshStatus();
-  } catch (err) {
-    setToast('Gagal menyimpan: ' + err.message);
+    await fn();
+  } finally {
+    setBusy(false);
   }
 }
 
-async function resetSafeMode() {
-  setToast('Mereset Safe-Mode…');
-  try {
-    const res = await ksuExec(CTL_SCRIPT + ' reset-safemode');
-    document.getElementById('reboot-banner').classList.remove('hidden');
-    setToast(res);
-    await refreshStatus();
-  } catch (err) {
-    setToast('Gagal reset Safe-Mode: ' + err.message);
-  }
+async function selectTier(tier) {
+  await runAction('Menyimpan Mode Tier "' + tier + '"…', async () => {
+    try {
+      const res = await ksuExec(CTL_SCRIPT + ' tier ' + tier);
+      document.getElementById('reboot-banner').classList.remove('hidden');
+      setToast(res);
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal mengubah tier: ' + err.message);
+    }
+  });
+}
+
+async function updateConfig(key, value) {
+  const isLive = LIVE_KEYS.has(key);
+  await runAction((isLive ? 'Menerapkan LIVE ' : 'Menyimpan ') + key + '=' + value + '…', async () => {
+    try {
+      const res = await ksuExec(CTL_SCRIPT + ' set ' + key + ' ' + value);
+      if (!isLive) {
+        document.getElementById('reboot-banner').classList.remove('hidden');
+      }
+      setToast(res);
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal menyimpan: ' + err.message);
+    }
+  });
 }
 
 document.getElementById('btn-refresh').addEventListener('click', () => {
-  setToast('');
-  refreshStatus();
+  runAction('Memperbarui status…', async () => {
+    await refreshStatus();
+    setToast('');
+  });
 });
 
-document.getElementById('btn-reset-safemode').addEventListener('click', resetSafeMode);
+document.getElementById('btn-reset-safemode').addEventListener('click', () => {
+  runAction('Mereset Safe-Mode…', async () => {
+    try {
+      setToast(await ksuExec(CTL_SCRIPT + ' reset-safemode'));
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal reset: ' + err.message);
+    }
+  });
+});
+
+document.getElementById('btn-hot-sync').addEventListener('click', () => {
+  runAction('Menjalankan verifikasi ulang…', async () => {
+    try {
+      setToast(await ksuExec(CTL_SCRIPT + ' hot-sync'));
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal verifikasi: ' + err.message);
+    }
+  });
+});
+
+document.getElementById('btn-install-engine').addEventListener('click', () => {
+  runAction('Memasang CoreSurfaceEngine.apk…', async () => {
+    try {
+      setToast(await ksuExec(CTL_SCRIPT + ' install-engine'));
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal memasang APK: ' + err.message);
+    }
+  });
+});
+
+document.getElementById('btn-export-diag').addEventListener('click', () => {
+  runAction('Menyiapkan laporan diagnostik…', async () => {
+    try {
+      const report = await ksuExec(CTL_SCRIPT + ' diag-report');
+      const wrap = document.getElementById('diag-export-wrap');
+      const box = document.getElementById('diag-export-box');
+      box.value = report;
+      wrap.classList.remove('hidden');
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(report);
+          setToast('Laporan diagnostik disalin ke clipboard.');
+          return;
+        } catch (_clipErr) {
+          // Fallback to textarea
+        }
+      }
+      box.focus();
+      box.select();
+      setToast('Laporan siap disalin dari kotak teks di bawah.');
+    } catch (err) {
+      setToast('Gagal membuat laporan: ' + err.message);
+    }
+  });
+});
+
+for (const btn of document.querySelectorAll('.btn-tier')) {
+  btn.addEventListener('click', () => {
+    if (uiBusy || btn.classList.contains('active')) return;
+    selectTier(btn.dataset.tier);
+  });
+}
 
 for (const group of document.querySelectorAll('.seg-group')) {
   const key = group.dataset.key;
   for (const btn of group.querySelectorAll('button')) {
     btn.addEventListener('click', () => {
-      if (btn.classList.contains('active')) return;
+      if (uiBusy || btn.classList.contains('active')) return;
       updateConfig(key, btn.dataset.val);
     });
   }
