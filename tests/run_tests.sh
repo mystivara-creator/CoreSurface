@@ -82,7 +82,7 @@ setup_sandbox() {
   : > "$SB_SETTINGS_DB"
   : > "$SB_SETTINGS_LOG"
 
-  cp -R "$REPO_ROOT/lib" "$REPO_ROOT/defaults" "$REPO_ROOT/post-fs-data.sh" "$REPO_ROOT/service.sh" "$REPO_ROOT/uninstall.sh" "$SB_MOD/"
+  cp -R "$REPO_ROOT/lib" "$REPO_ROOT/defaults" "$REPO_ROOT/post-fs-data.sh" "$REPO_ROOT/service.sh" "$REPO_ROOT/action.sh" "$REPO_ROOT/uninstall.sh" "$SB_MOD/"
 
   # Fast no-op sleep mock
   cat > "$SB_BIN/sleep" <<'EOF'
@@ -1067,6 +1067,196 @@ assert_file_contains "$SB_STATE/os_bugs.state" "MISSING_META_OVERLAYFS" "Late De
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_CURVES=64" "Verifier aggregates universal UI SpringPhysicsCurve count from Settings"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=FolmePhysics,UiCurvePhysics" "Verifier records UiCurvePhysics universal ValueAnimator hook"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_CIRCUITS=0" "DeviceBugGuard reports 0 circuit breaker trips"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 16: Immutable Stock Snapshot (No Flagship Self-Misclassification) & Never-Downgrade ===\n'
+setup_sandbox "t16_stock_snapshot"
+write_mock_getprop "OS3.0" "" "36" "1" "nonflag" "POCO F7 Ultra"
+write_mock_meminfo "11800000"
+write_sample_xml "$SB_XML_DIR1/nonflag.xml"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+assert_file_contains "$SB_STATE/stock_caps.prop" "STOCK_DEVICE_LEVEL=1" "Early boot snapshots true factory STOCK_DEVICE_LEVEL=1"
+assert_file_contains "$SB_STATE/stock_caps.prop" "STOCK_HAS_BLUR=0" "Early boot snapshots true factory STOCK_HAS_BLUR=0"
+assert_file_contains "$SB_STATE/state.prop" "EFF_TIER=flagship" "12GB non-native device resolves flagship tier at post-fs-data"
+
+# Simulate bind-mount now exposing CoreSurface's patched XML (device_level=3 + blur=true) at original XML path
+cp "$SB_STATE/work/device_features.xml" "$SB_XML_DIR1/nonflag.xml"
+
+# Late boot service.sh and WebUI MUST reuse stock_caps.prop and NOT misclassify as motion_only!
+run_service
+assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "service.sh keeps flagship blur setting (never misclassified as motion_only)"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "service.sh verifies FEAT_BLUR active instead of skipping"
+
+_st16=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  sh "$SB_MOD/lib/webui_ctl.sh" status)
+printf '%s\n' "$_st16" > "$SB/status16.out"
+assert_file_contains "$SB/status16.out" "detected_tier=flagship" "WebUI preserves true detected_tier=flagship after XML bind-mount"
+assert_file_contains "$SB/status16.out" "eff_tier=flagship" "WebUI preserves true eff_tier=flagship after XML bind-mount"
+
+# Never-Downgrade on persist.sys.deviceLevelList when user selects low tier on stock c:3,g:3
+setup_sandbox "t16_nd_levellist"
+write_mock_getprop "OS3.0" "" "36" "1" "middev" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+printf 'persist.sys.deviceLevelList=v:1,c:3,g:3\n' > "$SB_PROPS_DB"
+printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.deviceLevelList=v:1,c:3,g:3" "Never-Downgrade preserves stock c:3,g:3 even in low tier"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 17: Android 16 su 2000 Semicolon-Safe IPC & Stale-Boot BOOT_ID Guard ===\n'
+setup_sandbox "t17_binder_and_bootid"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora" "Redmi Note 15 Pro+ 5G"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+# Mock settings that rejects direct UID 0 calls (Android 16 Binder) and only succeeds under SU2000_ACTIVE=1
+cat > "$SB_BIN/settings" <<EOF
+#!/bin/sh
+if [ "\${SU2000_ACTIVE:-0}" != "1" ]; then
+  printf 'Failure calling service settings: Failed transaction (2147483646)\n' >&2
+  exit 1
+fi
+printf '%s\n' "\$*" >> "$SB_SETTINGS_LOG"
+if [ "\${1:-}" = "--user" ]; then
+  shift 2
+fi
+cmd=\${1:-}
+ns=\${2:-}
+key=\${3:-}
+val=\${4:-}
+id="\${ns}|\${key}"
+case "\$cmd" in
+  get)
+    out=\$(awk -F '=' -v id="\$id" '\$1 == id { sub(/^[^=]*=/, ""); print; exit }' "$SB_SETTINGS_DB" 2>/dev/null || true)
+    if [ -z "\$out" ]; then printf 'null\n'; else printf '%s\n' "\$out"; fi
+    ;;
+  put)
+    tmp="$SB_SETTINGS_DB.tmp.\$\$"
+    awk -F '=' -v id="\$id" '\$1 != id { print \$0 }' "$SB_SETTINGS_DB" > "\$tmp" 2>/dev/null || : > "\$tmp"
+    printf '%s=%s\n' "\$id" "\$val" >> "\$tmp"
+    mv -f "\$tmp" "$SB_SETTINGS_DB"
+    ;;
+  delete)
+    tmp="$SB_SETTINGS_DB.tmp.\$\$"
+    awk -F '=' -v id="\$id" '\$1 != id { print \$0 }' "$SB_SETTINGS_DB" > "\$tmp" 2>/dev/null || : > "\$tmp"
+    mv -f "\$tmp" "$SB_SETTINGS_DB"
+    ;;
+esac
+exit 0
+EOF
+chmod +x "$SB_BIN/settings"
+
+cat > "$SB_BIN/su" <<'EOF'
+#!/bin/sh
+# Simulate `su 2000 -c "<cmd>"` executing via real /bin/sh so unquoted semicolons would split!
+if [ "$1" = "2000" ] && [ "$2" = "-c" ]; then
+  SU2000_ACTIVE=1 sh -c "$3"
+  exit $?
+fi
+exit 1
+EOF
+chmod +x "$SB_BIN/su"
+
+run_post_fs_data
+
+# Stale-boot telemetry with an OLD boot_id MUST be rejected by verifier.sh
+printf 'boot-uuid-current-2222\n' > "$SB/boot_id"
+cat > "$SB/stale_sysui.prop" <<'EOF'
+ENGINE_ACTIVE=1
+BOOT_ID=boot-uuid-previous-1111
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=silk
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=FolmePhysics,NativeFlagshipTier
+EOF
+
+CORESURFACE_BOOT_ID_FILE="$SB/boot_id" \
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/stale_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+CORESURFACE_ENGINE_SETTINGS_TELEM="$SB/missing_settings.prop" \
+  run_service
+
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=hyperos4;native=1;guard=1;thermallod=1;aod=1" "su 2000 -c preserves full semicolon-delimited coresurface_engine_v1 without shell splitting"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=0" "Verifier rejects stale telemetry from previous BOOT_ID"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=pending_lsposed" "Stale telemetry does not fake verified_active"
+
+# Matching current BOOT_ID is accepted
+cat > "$SB/fresh_sysui.prop" <<'EOF'
+ENGINE_ACTIVE=1
+BOOT_ID=boot-uuid-current-2222
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=hyperos4
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=FolmePhysics,NativeFlagshipTier,ToastGuard
+BUGS_MITIGATED=HOS3_MiBlurRuntime
+EOF
+
+CORESURFACE_BOOT_ID_FILE="$SB/boot_id" \
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/fresh_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+CORESURFACE_ENGINE_SETTINGS_TELEM="$SB/missing_settings.prop" \
+  run_service
+
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=1" "Verifier accepts live telemetry matching current BOOT_ID"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_BUGS=HOS3_MiBlurRuntime" "Verifier surfaces runtime BUGS_MITIGATED telemetry"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 18: Safe-Mode Engine Kill-Switch, action.sh & Clean Uninstall ===\n'
+setup_sandbox "t18_safemode_action_uninstall"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora" "Redmi Note 15 Pro+ 5G"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+
+# Trigger Safe-Mode (strike 2): post-fs-data applies 0 props, then service.sh disarms lingering Engine IPC
+printf 'debug.coresurface.cfg=motion=silk;native=1;guard=1;thermallod=1;aod=1\n' > "$SB_PROPS_DB"
+printf '2\n' > "$SB_STATE/boot_strikes"
+run_post_fs_data
+assert_eq "$(wc -l < "$SB_PROPS_LOG" | tr -d ' ')" "0" "Safe-Mode post-fs-data executes strictly 0 resetprop calls"
+run_service
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;guard=0;thermallod=0;aod=0" "Safe-Mode service.sh disarms lingering Layer 2 Engine IPC"
+
+# Test action.sh runs cleanly and produces diagnostic report
+_act_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/action.sh")
+printf '%s\n' "$_act_out" > "$SB/action.out"
+assert_file_contains "$SB/action.out" "CoreSurface v1.0.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
+assert_file_contains "$SB/action.out" "=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===" "action.sh runs diagnostic report cleanly"
+
+# Test uninstall.sh disarms active debug.coresurface.cfg and uninstalls CoreSurfaceEngine APK
+printf 'debug.coresurface.cfg=motion=hyperos4;native=1;guard=1;thermallod=1;aod=1\n' > "$SB_PROPS_DB"
+SB_PM_UNINST_LOG="$SB/pm_uninst.log"
+: > "$SB_PM_UNINST_LOG"
+cat > "$SB_BIN/pm" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$SB_PM_UNINST_LOG"
+exit 0
+EOF
+chmod +x "$SB_BIN/pm"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  sh "$SB_MOD/uninstall.sh"
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;guard=0;thermallod=0;aod=0" "uninstall.sh disarms live Engine IPC"
+assert_file_contains "$SB_PM_UNINST_LOG" "uninstall org.mystivara.coresurface.engine" "uninstall.sh cleanly uninstalls CoreSurfaceEngine APK"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

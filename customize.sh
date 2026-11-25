@@ -35,22 +35,64 @@ _cs_cfg_write_key() {
   mv -f "$_cs_cw_tmp" "$_cs_cw_file"
 }
 
+# Probe timeout syntax once (Toybox/GNU uses `timeout <sec>`, older BusyBox uses `timeout -t <sec>`)
+_cs_timeout_run() {
+  _cs_tr_sec=$1
+  shift
+  if timeout 1 true >/dev/null 2>&1; then
+    timeout "$_cs_tr_sec" "$@"
+  else
+    timeout -t "$_cs_tr_sec" "$@"
+  fi
+}
+
 # Non-hanging Volume Up / Volume Down reader (returns: 0 + prints UP|DOWN, 1=timeout, 2=non-interactive)
+# Kills the background getevent immediately upon key capture so the pipe never stalls until timeout!
 _cs_read_vol_key() {
   _cs_vk_timeout=${1:-10}
   [ "${CORESURFACE_NONINTERACTIVE:-0}" = "1" ] && return 2
   command -v getevent >/dev/null 2>&1 || return 2
   command -v timeout >/dev/null 2>&1 || return 2
 
+  _cs_vk_base="${_cs_state_dir:-/tmp}/.vk.$$"
+  _cs_vk_res="${_cs_vk_base}.res"
+  _cs_vk_pid="${_cs_vk_base}.pid"
+  rm -f "$_cs_vk_res" "$_cs_vk_pid" 2>/dev/null || true
+
   # shellcheck disable=SC2016
-  _cs_vk_out=$(timeout "$_cs_vk_timeout" sh -c '
-    getevent -lq 2>/dev/null | while IFS= read -r line; do
+  _cs_timeout_run "$_cs_vk_timeout" sh -c '
+    res=$1
+    pidf=$2
+    (
+      getevent -lq 2>/dev/null &
+      gpid=$!
+      printf "%s\n" "$gpid" > "$pidf"
+      wait "$gpid" 2>/dev/null
+    ) | while IFS= read -r line; do
       case "$line" in
-        *KEY_VOLUMEUP*DOWN*)   printf "UP\n"; exit 0 ;;
-        *KEY_VOLUMEDOWN*DOWN*) printf "DOWN\n"; exit 0 ;;
+        *KEY_VOLUMEUP*DOWN*|*KEY_VOLUMEUP*00000001*)
+          printf "UP\n" > "$res"
+          gpid=$(cat "$pidf" 2>/dev/null || true)
+          if [ -n "$gpid" ]; then kill "$gpid" 2>/dev/null || true; fi
+          exit 0
+          ;;
+        *KEY_VOLUMEDOWN*DOWN*|*KEY_VOLUMEDOWN*00000001*)
+          printf "DOWN\n" > "$res"
+          gpid=$(cat "$pidf" 2>/dev/null || true)
+          if [ -n "$gpid" ]; then kill "$gpid" 2>/dev/null || true; fi
+          exit 0
+          ;;
       esac
     done
-  ' 2>/dev/null || true)
+  ' sh "$_cs_vk_res" "$_cs_vk_pid" >/dev/null 2>&1 || true
+
+  _cs_vk_out=""
+  [ -r "$_cs_vk_res" ] && _cs_vk_out=$(head -n 1 "$_cs_vk_res" 2>/dev/null | tr -d '\r')
+  _cs_vk_leftover=$(cat "$_cs_vk_pid" 2>/dev/null || true)
+  if [ -n "$_cs_vk_leftover" ]; then
+    kill "$_cs_vk_leftover" 2>/dev/null || true
+  fi
+  rm -f "$_cs_vk_res" "$_cs_vk_pid" 2>/dev/null || true
 
   case "$_cs_vk_out" in
     UP)   printf 'UP\n'; return 0 ;;
@@ -247,6 +289,12 @@ if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ] && 
   if [ "$_cs_rom_supported" = "1" ]; then
     cs_rro_stage "$_cs_modpath" || true
     _cs_ui_print "- Staged ${CS_RRO_COUNT:-0} clean-room RRO overlay(s) for next boot"
+    # On KernelSU / KernelSU-Next without a metamodule, warn user that RRO needs meta-overlayfs
+    if [ "${KSU:-false}" = "true" ] && [ "${CS_RRO_COUNT:-0}" -gt 0 ]; then
+      if [ ! -e /data/adb/metamodule ] && [ ! -d /data/adb/modules/meta-overlayfs ]; then
+        _cs_ui_print "! Note (KernelSU-Next): Install 'meta-overlayfs' metamodule so RRO overlays mount cleanly"
+      fi
+    fi
   else
     cs_rro_clear "$_cs_modpath" || true
   fi
@@ -256,17 +304,27 @@ fi
 if [ -r "$_cs_modpath/engine/CoreSurfaceEngine.apk" ]; then
   cp "$_cs_modpath/engine/CoreSurfaceEngine.apk" "$_cs_state_dir/CoreSurfaceEngine.apk" 2>/dev/null || true
   chmod 0644 "$_cs_state_dir/CoreSurfaceEngine.apk" 2>/dev/null || true
-  _cs_ui_print "- Staged CoreSurfaceEngine.apk (~33 KB, optional LSPosed Motion & Recents/AOD Engine)"
+  _cs_ui_print "- Staged CoreSurfaceEngine.apk (~38 KB, optional LSPosed Motion & Recents/AOD Engine)"
 fi
 
-# Reset boot strikes cleanly on fresh install or upgrade
+# Reset boot strikes & clear stale Safe-Mode cleanly on fresh install or upgrade
 printf '0\n' > "$_cs_state_dir/boot_strikes" 2>/dev/null || true
+rm -f "$_cs_modpath/disable" 2>/dev/null || true
+if command -v cs_state_set >/dev/null 2>&1; then
+  _cs_prev_wd=$(cs_state_get "WATCHDOG_STATUS" 2>/dev/null || true)
+  if [ "$_cs_prev_wd" = "safe_mode_disabled" ]; then
+    cs_state_set "WATCHDOG_STATUS" "pending_reboot" || true
+    cs_state_set "WATCHDOG_REASON" "reinstalled_clean" || true
+  fi
+fi
 
 _cs_set_exec "$_cs_modpath/post-fs-data.sh"
 _cs_set_exec "$_cs_modpath/service.sh"
+_cs_set_exec "$_cs_modpath/action.sh"
 _cs_set_exec "$_cs_modpath/uninstall.sh"
 _cs_set_exec "$_cs_modpath/lib/detect.sh"
 _cs_set_exec "$_cs_modpath/lib/watchdog.sh"
+_cs_set_exec "$_cs_modpath/lib/engine_ctl.sh"
 _cs_set_exec "$_cs_modpath/lib/props.sh"
 _cs_set_exec "$_cs_modpath/lib/xml_patcher.sh"
 _cs_set_exec "$_cs_modpath/lib/rro.sh"
@@ -277,4 +335,4 @@ _cs_set_exec "$_cs_modpath/lib/webui_ctl.sh"
 
 _cs_ui_print "- Watchdog armed (auto safe-mode disable on 2 consecutive failed boots)"
 _cs_ui_print "- 100% Original HyperOS UI | Custom Color Expert ON | Zero Gimmick"
-_cs_ui_print "- Optional: Enable 'CoreSurface Engine' in LSPosed (SystemUI, MiuiHome, MiuiAod) for 60/120 Hz Folme & Recents/AOD fixes"
+_cs_ui_print "- Optional: Enable 'CoreSurface Engine' in LSPosed (SystemUI, MiuiHome, MiuiAod, Settings) for 60/120 Hz Folme & Recents/AOD fixes"

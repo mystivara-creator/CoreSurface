@@ -5,6 +5,14 @@ const CTL_SCRIPT = '/system/bin/sh /data/adb/modules/coresurface/lib/webui_ctl.s
 const LIVE_KEYS = new Set(['FEAT_MOTION_PROFILE', 'FEAT_SURGICAL_GUARD']);
 
 let execCounter = 0;
+let uiBusy = false;
+
+function setBusy(busy) {
+  uiBusy = busy;
+  for (const el of document.querySelectorAll('button')) {
+    el.disabled = busy;
+  }
+}
 
 function ksuExec(command) {
   if (!window.ksu || typeof window.ksu.exec !== 'function') {
@@ -141,12 +149,16 @@ async function refreshStatus() {
     // Watchdog badge
     const wdBadge = document.getElementById('watchdog-badge');
     const safeBanner = document.getElementById('safemode-banner');
+    const safeReason = document.getElementById('safemode-reason');
     const isDisabled = kv.module_disabled === '1' || kv.watchdog_status === 'safe_mode_disabled';
     wdBadge.className = 'badge';
     safeBanner.classList.add('hidden');
     if (isDisabled) {
       wdBadge.classList.add('badge-danger');
       wdBadge.textContent = 'Watchdog: Safe-Mode';
+      if (safeReason && kv.watchdog_reason && kv.watchdog_reason !== 'none') {
+        safeReason.textContent = 'Alasan: ' + kv.watchdog_reason + ' (strikes: ' + (kv.boot_strikes || '0') + '/2).';
+      }
       safeBanner.classList.remove('hidden');
     } else if (kv.watchdog_status === 'healthy') {
       wdBadge.classList.add('badge-ok');
@@ -154,6 +166,13 @@ async function refreshStatus() {
     } else {
       wdBadge.classList.add('badge-warn');
       wdBadge.textContent = 'Watchdog: ' + (kv.watchdog_status || 'unknown');
+    }
+
+    // Metamodule RRO warning banner
+    const bugsList = (kv.os_bugs_csv || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const metaBanner = document.getElementById('metamodule-banner');
+    if (metaBanner) {
+      metaBanner.classList.toggle('hidden', !bugsList.includes('MISSING_META_OVERLAYFS'));
     }
 
     // Engine + Hz badges
@@ -231,6 +250,9 @@ async function refreshStatus() {
     const blurMode = kv.eff_tier === 'motion_only'
       ? 'Factory Flagship (Passthrough Utuh)'
       : (kv.eff_feat_adv_textures === '1' ? 'Blur Penuh (HOS3 Safe)' : 'Blur Standar (No Adv. Textures)');
+    const colorMode = (kv.eff_feat_color_expert === '1' || kv.stock_has_expert_color === '1')
+      ? 'Custom Color ON'
+      : 'Stock Color';
     const stats = 'Folme: ' + (kv.verify_engine_folme_hooks || '0')
       + ' · Gates: ' + (kv.verify_engine_native_gates || '0')
       + ' · Springs: ' + (kv.verify_engine_springs || '0')
@@ -242,7 +264,7 @@ async function refreshStatus() {
 
     summary.replaceChildren(
       makeKvRow('ROM & RAM', romStr + ' · ' + (kv.ram_mb || '0') + ' MB'),
-      makeKvRow('Mode Blur & Warna', blurMode + ' · Custom Color ON'),
+      makeKvRow('Mode Blur & Warna', blurMode + ' · ' + colorMode),
       makeKvRow('Profil Animasi', formatMotion(kv.verify_engine_motion && kv.verify_engine_motion !== 'N/A' ? kv.verify_engine_motion : kv.eff_feat_motion_profile)),
       makeKvRow('OS Bug Logic', bugSummary),
       makeKvRow('Statistik Live', active ? stats : 'Aktifkan CoreSurface Engine di LSPosed'),
@@ -258,96 +280,115 @@ async function refreshStatus() {
   }
 }
 
-async function selectTier(tier) {
-  setToast('Menyimpan Mode Tier "' + tier + '"…');
+async function runAction(toastBusy, fn) {
+  if (uiBusy) return;
+  setBusy(true);
+  setToast(toastBusy);
   try {
-    const res = await ksuExec(CTL_SCRIPT + ' tier ' + tier);
-    document.getElementById('reboot-banner').classList.remove('hidden');
-    setToast(res);
-    await refreshStatus();
-  } catch (err) {
-    setToast('Gagal mengubah tier: ' + err.message);
+    await fn();
+  } finally {
+    setBusy(false);
   }
+}
+
+async function selectTier(tier) {
+  await runAction('Menyimpan Mode Tier "' + tier + '"…', async () => {
+    try {
+      const res = await ksuExec(CTL_SCRIPT + ' tier ' + tier);
+      document.getElementById('reboot-banner').classList.remove('hidden');
+      setToast(res);
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal mengubah tier: ' + err.message);
+    }
+  });
 }
 
 async function updateConfig(key, value) {
   const isLive = LIVE_KEYS.has(key);
-  setToast((isLive ? 'Menerapkan LIVE ' : 'Menyimpan ') + key + '=' + value + '…');
-  try {
-    const res = await ksuExec(CTL_SCRIPT + ' set ' + key + ' ' + value);
-    if (!isLive) {
-      document.getElementById('reboot-banner').classList.remove('hidden');
+  await runAction((isLive ? 'Menerapkan LIVE ' : 'Menyimpan ') + key + '=' + value + '…', async () => {
+    try {
+      const res = await ksuExec(CTL_SCRIPT + ' set ' + key + ' ' + value);
+      if (!isLive) {
+        document.getElementById('reboot-banner').classList.remove('hidden');
+      }
+      setToast(res);
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal menyimpan: ' + err.message);
     }
-    setToast(res);
-    await refreshStatus();
-  } catch (err) {
-    setToast('Gagal menyimpan: ' + err.message);
-  }
+  });
 }
 
 document.getElementById('btn-refresh').addEventListener('click', () => {
-  setToast('');
-  refreshStatus();
-});
-
-document.getElementById('btn-reset-safemode').addEventListener('click', async () => {
-  setToast('Mereset Safe-Mode…');
-  try {
-    setToast(await ksuExec(CTL_SCRIPT + ' reset-safemode'));
+  runAction('Memperbarui status…', async () => {
     await refreshStatus();
-  } catch (err) {
-    setToast('Gagal reset: ' + err.message);
-  }
+    setToast('');
+  });
 });
 
-document.getElementById('btn-hot-sync').addEventListener('click', async () => {
-  setToast('Menjalankan verifikasi ulang…');
-  try {
-    setToast(await ksuExec(CTL_SCRIPT + ' hot-sync'));
-    await refreshStatus();
-  } catch (err) {
-    setToast('Gagal verifikasi: ' + err.message);
-  }
-});
-
-document.getElementById('btn-install-engine').addEventListener('click', async () => {
-  setToast('Memasang CoreSurfaceEngine.apk…');
-  try {
-    setToast(await ksuExec(CTL_SCRIPT + ' install-engine'));
-    await refreshStatus();
-  } catch (err) {
-    setToast('Gagal memasang APK: ' + err.message);
-  }
-});
-
-document.getElementById('btn-export-diag').addEventListener('click', async () => {
-  setToast('Menyiapkan laporan diagnostik…');
-  try {
-    const report = await ksuExec(CTL_SCRIPT + ' diag-report');
-    const wrap = document.getElementById('diag-export-wrap');
-    const box = document.getElementById('diag-export-box');
-    box.value = report;
-    wrap.classList.remove('hidden');
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-      try {
-        await navigator.clipboard.writeText(report);
-        setToast('Laporan diagnostik disalin ke clipboard.');
-        return;
-      } catch (_clipErr) {
-        // Fallback to textarea
-      }
+document.getElementById('btn-reset-safemode').addEventListener('click', () => {
+  runAction('Mereset Safe-Mode…', async () => {
+    try {
+      setToast(await ksuExec(CTL_SCRIPT + ' reset-safemode'));
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal reset: ' + err.message);
     }
-    box.focus();
-    box.select();
-    setToast('Laporan siap disalin dari kotak teks di bawah.');
-  } catch (err) {
-    setToast('Gagal membuat laporan: ' + err.message);
-  }
+  });
+});
+
+document.getElementById('btn-hot-sync').addEventListener('click', () => {
+  runAction('Menjalankan verifikasi ulang…', async () => {
+    try {
+      setToast(await ksuExec(CTL_SCRIPT + ' hot-sync'));
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal verifikasi: ' + err.message);
+    }
+  });
+});
+
+document.getElementById('btn-install-engine').addEventListener('click', () => {
+  runAction('Memasang CoreSurfaceEngine.apk…', async () => {
+    try {
+      setToast(await ksuExec(CTL_SCRIPT + ' install-engine'));
+      await refreshStatus();
+    } catch (err) {
+      setToast('Gagal memasang APK: ' + err.message);
+    }
+  });
+});
+
+document.getElementById('btn-export-diag').addEventListener('click', () => {
+  runAction('Menyiapkan laporan diagnostik…', async () => {
+    try {
+      const report = await ksuExec(CTL_SCRIPT + ' diag-report');
+      const wrap = document.getElementById('diag-export-wrap');
+      const box = document.getElementById('diag-export-box');
+      box.value = report;
+      wrap.classList.remove('hidden');
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(report);
+          setToast('Laporan diagnostik disalin ke clipboard.');
+          return;
+        } catch (_clipErr) {
+          // Fallback to textarea
+        }
+      }
+      box.focus();
+      box.select();
+      setToast('Laporan siap disalin dari kotak teks di bawah.');
+    } catch (err) {
+      setToast('Gagal membuat laporan: ' + err.message);
+    }
+  });
 });
 
 for (const btn of document.querySelectorAll('.btn-tier')) {
   btn.addEventListener('click', () => {
-    if (btn.classList.contains('active')) return;
+    if (uiBusy || btn.classList.contains('active')) return;
     selectTier(btn.dataset.tier);
   });
 }
@@ -356,7 +397,7 @@ for (const group of document.querySelectorAll('.seg-group')) {
   const key = group.dataset.key;
   for (const btn of group.querySelectorAll('button')) {
     btn.addEventListener('click', () => {
-      if (btn.classList.contains('active')) return;
+      if (uiBusy || btn.classList.contains('active')) return;
       updateConfig(key, btn.dataset.val);
     });
   }

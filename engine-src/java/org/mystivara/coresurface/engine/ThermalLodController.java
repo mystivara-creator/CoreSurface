@@ -30,6 +30,7 @@ public final class ThermalLodController {
     public ThermalLodController(EngineConfig config, TelemetryReporter telemetry) {
         this.config = config;
         this.telemetry = telemetry;
+        this.config.addListener(() -> telemetry.setThermalState(getTierName(), thermalStatus));
     }
 
     public void addListener(Runnable listener) {

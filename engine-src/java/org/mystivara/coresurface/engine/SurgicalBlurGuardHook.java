@@ -10,6 +10,7 @@ import android.view.WindowManager;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -27,6 +28,7 @@ import de.robv.android.xposed.XposedHelpers;
  * - installHomeRecentsGuard() surgically steers MiuiHome's Recents back to Xiaomi's stable
  *   standard wallpaper blur WITHOUT breaking Folder blur or Control Center blur.
  * - installWindowToastGuard() strips broken Toast window blur & MIUI View blur setters.
+ * - Every hook callback is protected by DeviceBugGuard circuit breakers.
  */
 public final class SurgicalBlurGuardHook {
     private static final int RECENTS_NO = 0;
@@ -40,6 +42,7 @@ public final class SurgicalBlurGuardHook {
     };
 
     private final EngineConfig config;
+    private final DeviceBugGuard bugGuard;
     private final TelemetryReporter telemetry;
     private final ConcurrentHashMap<Class<?>, Integer> recentsClassCache = new ConcurrentHashMap<>();
 
@@ -48,8 +51,9 @@ public final class SurgicalBlurGuardHook {
     private Method mSetMiBackgroundBlurRadius;
     private Method mSetMiViewBlurMode;
 
-    public SurgicalBlurGuardHook(EngineConfig config, TelemetryReporter telemetry) {
+    public SurgicalBlurGuardHook(EngineConfig config, DeviceBugGuard bugGuard, TelemetryReporter telemetry) {
         this.config = config;
+        this.bugGuard = bugGuard;
         this.telemetry = telemetry;
     }
 
@@ -63,23 +67,30 @@ public final class SurgicalBlurGuardHook {
             XC_MethodHook windowHook = new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (!config.isSurgicalGuard()) {
+                    if (bugGuard.isHookTripped("ToastGuard")) {
                         return;
                     }
-                    if (param.args == null || param.args.length < 2) {
-                        return;
-                    }
-                    if (!(param.args[0] instanceof View) || !(param.args[1] instanceof ViewGroup.LayoutParams)) {
-                        return;
-                    }
-                    View view = (View) param.args[0];
-                    ViewGroup.LayoutParams rawLp = (ViewGroup.LayoutParams) param.args[1];
-                    if (!(rawLp instanceof WindowManager.LayoutParams)) {
-                        return;
-                    }
-                    WindowManager.LayoutParams lp = (WindowManager.LayoutParams) rawLp;
-                    if (isToastWindow(view, lp)) {
-                        sanitizeToastWindow(view, lp);
+                    try {
+                        if (!config.isSurgicalGuard()) {
+                            return;
+                        }
+                        if (param.args == null || param.args.length < 2) {
+                            return;
+                        }
+                        if (!(param.args[0] instanceof View) || !(param.args[1] instanceof ViewGroup.LayoutParams)) {
+                            return;
+                        }
+                        View view = (View) param.args[0];
+                        ViewGroup.LayoutParams rawLp = (ViewGroup.LayoutParams) param.args[1];
+                        if (!(rawLp instanceof WindowManager.LayoutParams)) {
+                            return;
+                        }
+                        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) rawLp;
+                        if (isToastWindow(view, lp)) {
+                            sanitizeToastWindow(view, lp);
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("ToastGuard");
                     }
                 }
             };
@@ -129,7 +140,7 @@ public final class SurgicalBlurGuardHook {
         }
 
         // 2. Intercept MIUI View background blur setters ONLY on Recents/Overview/NavStub views
-        //    (explicitly excludes Folder views so folder blur stays 100% intact)
+        //    (explicitly excludes Folder & Control Center views so their blur stays 100% intact)
         hooked += hookViewMiBlurForRecents("setMiBackgroundBlurMode");
         hooked += hookViewMiBlurForRecents("setMiViewBlurMode");
 
@@ -140,27 +151,34 @@ public final class SurgicalBlurGuardHook {
                 XC_MethodHook recentsWinHook = new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        if (!config.isSurgicalGuard() || param.args == null || param.args.length < 2) {
+                        if (bugGuard.isHookTripped("RecentsWinGuard")) {
                             return;
                         }
-                        if (!(param.args[0] instanceof View) || !(param.args[1] instanceof WindowManager.LayoutParams)) {
-                            return;
-                        }
-                        View view = (View) param.args[0];
-                        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) param.args[1];
-                        if (isRecentsWindow(view, lp)) {
-                            boolean stripped = false;
-                            if ((lp.flags & WindowManager.LayoutParams.FLAG_BLUR_BEHIND) != 0) {
-                                lp.flags &= ~WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-                                stripped = true;
+                        try {
+                            if (!config.isSurgicalGuard() || param.args == null || param.args.length < 2) {
+                                return;
                             }
-                            if (Build.VERSION.SDK_INT >= 31 && lp.getBlurBehindRadius() > 0) {
-                                lp.setBlurBehindRadius(0);
-                                stripped = true;
+                            if (!(param.args[0] instanceof View) || !(param.args[1] instanceof WindowManager.LayoutParams)) {
+                                return;
                             }
-                            if (stripped) {
-                                telemetry.incRecentsGuarded();
+                            View view = (View) param.args[0];
+                            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) param.args[1];
+                            if (isRecentsWindow(view, lp)) {
+                                boolean stripped = false;
+                                if ((lp.flags & WindowManager.LayoutParams.FLAG_BLUR_BEHIND) != 0) {
+                                    lp.flags &= ~WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+                                    stripped = true;
+                                }
+                                if (Build.VERSION.SDK_INT >= 31 && lp.getBlurBehindRadius() > 0) {
+                                    lp.setBlurBehindRadius(0);
+                                    stripped = true;
+                                }
+                                if (stripped) {
+                                    telemetry.incRecentsGuarded();
+                                }
                             }
+                        } catch (Throwable ignored) {
+                            bugGuard.recordHookFault("RecentsWinGuard");
                         }
                     }
                 };
@@ -180,9 +198,16 @@ public final class SurgicalBlurGuardHook {
             XposedBridge.hookMethod(m, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (config.isSurgicalGuard()) {
-                        param.setResult(Boolean.FALSE);
-                        telemetry.incRecentsGuarded();
+                    if (bugGuard.isHookTripped("RecentsCompleteBlur")) {
+                        return;
+                    }
+                    try {
+                        if (config.isSurgicalGuard()) {
+                            param.setResult(Boolean.FALSE);
+                            telemetry.incRecentsGuarded();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("RecentsCompleteBlur");
                     }
                 }
             });
@@ -197,14 +222,21 @@ public final class SurgicalBlurGuardHook {
             XposedBridge.hookMethod(m, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    if (!config.isSurgicalGuard()) {
+                    if (bugGuard.isHookTripped("RecentsBlurType")) {
                         return;
                     }
-                    Object res = param.getResult();
-                    if (res instanceof Integer && ((Integer) res) >= 2) {
-                        // Type 1 = standard reliable wallpaper blur; >=2 = broken HOS3 complete/advanced window blur
-                        param.setResult(1);
-                        telemetry.incRecentsGuarded();
+                    try {
+                        if (!config.isSurgicalGuard()) {
+                            return;
+                        }
+                        Object res = param.getResult();
+                        if (res instanceof Integer && ((Integer) res) >= 2) {
+                            // Type 1 = standard reliable wallpaper blur; >=2 = broken HOS3 complete/advanced window blur
+                            param.setResult(1);
+                            telemetry.incRecentsGuarded();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("RecentsBlurType");
                     }
                 }
             });
@@ -220,18 +252,25 @@ public final class SurgicalBlurGuardHook {
             XposedBridge.hookMethod(m, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (!config.isSurgicalGuard() || !(param.thisObject instanceof View)
-                            || param.args == null || param.args.length < 1) {
+                    if (bugGuard.isHookTripped("RecentsMiBlur")) {
                         return;
                     }
-                    Object arg = param.args[0];
-                    if (!(arg instanceof Integer) || ((Integer) arg) == 0) {
-                        return;
-                    }
-                    View v = (View) param.thisObject;
-                    if (isRecentsClass(v.getClass())) {
-                        param.args[0] = 0;
-                        telemetry.incRecentsGuarded();
+                    try {
+                        if (!config.isSurgicalGuard() || !(param.thisObject instanceof View)
+                                || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        Object arg = param.args[0];
+                        if (!(arg instanceof Integer) || ((Integer) arg) == 0) {
+                            return;
+                        }
+                        View v = (View) param.thisObject;
+                        if (isRecentsClass(v.getClass())) {
+                            param.args[0] = 0;
+                            telemetry.incRecentsGuarded();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("RecentsMiBlur");
                     }
                 }
             });
@@ -246,9 +285,13 @@ public final class SurgicalBlurGuardHook {
         if (cached != null) {
             return cached == RECENTS_YES;
         }
-        String cls = clazz.getName().toLowerCase();
-        // Explicitly never touch Folder blur views
-        boolean match = !cls.contains("folder")
+        String cls = clazz.getName().toLowerCase(Locale.ROOT);
+        // Explicitly never touch Folder, Control Center, QS, or Notification blur views
+        boolean excluded = cls.contains("folder")
+                || cls.contains("controlcenter")
+                || cls.contains("notification")
+                || cls.contains(".qs.");
+        boolean match = !excluded
                 && (cls.contains("recents")
                 || cls.contains("taskstack")
                 || cls.contains("overview")
@@ -280,7 +323,7 @@ public final class SurgicalBlurGuardHook {
     }
 
     private static boolean isCompleteBlurQuery(String methodName) {
-        String lower = methodName.toLowerCase();
+        String lower = methodName.toLowerCase(Locale.ROOT);
         return lower.contains("completeblur")
                 || lower.contains("usecompleteblur")
                 || lower.contains("passwindowblur")
@@ -294,7 +337,7 @@ public final class SurgicalBlurGuardHook {
         }
         CharSequence title = lp.getTitle();
         if (title != null) {
-            String t = title.toString().toLowerCase();
+            String t = title.toString().toLowerCase(Locale.ROOT);
             return t.contains("recents") || t.contains("overview");
         }
         return false;
@@ -307,12 +350,12 @@ public final class SurgicalBlurGuardHook {
         }
         CharSequence title = lp.getTitle();
         if (title != null) {
-            String t = title.toString().toLowerCase();
+            String t = title.toString().toLowerCase(Locale.ROOT);
             if (t.contains("toast") || t.contains("transientnotification")) {
                 return true;
             }
         }
-        String cls = view.getClass().getName().toLowerCase();
+        String cls = view.getClass().getName().toLowerCase(Locale.ROOT);
         return cls.contains("toast");
     }
 

@@ -10,13 +10,10 @@ import de.robv.android.xposed.XposedHelpers;
 /**
  * Native HyperOS / MIUI Flagship DeviceLevel & Animation Gate Unlocker.
  *
- * Instead of fighting HyperOS's own Folme animator by mutating View.scaleX/translationX
- * externally (which caused Launcher & Control Center jitter), this hook cleanly unlocks
- * Xiaomi's NATIVE flagship animation and blur code paths already compiled inside
- * com.android.systemui, com.miui.home, and com.miui.aod.
- *
- * Zero-gimmick guarantee: dynamically probes classes via reflection and reports the
- * exact count of native HyperOS gate methods actually bound on this ROM.
+ * Cleanly unlocks Xiaomi's NATIVE flagship animation and blur code paths already
+ * compiled inside com.android.systemui, com.miui.home, and com.miui.aod with
+ * strict Never-Downgrade protection (never lowers an existing higher int level)
+ * and DeviceBugGuard fault circuit-breakers.
  */
 public final class DeviceLevelUnlockHook {
     // Standard HyperOS / MIUIX high-end device tier constant (0=LOW, 1=MIDDLE, 2=HIGH)
@@ -36,10 +33,12 @@ public final class DeviceLevelUnlockHook {
     };
 
     private final EngineConfig config;
+    private final DeviceBugGuard bugGuard;
     private final TelemetryReporter telemetry;
 
-    public DeviceLevelUnlockHook(EngineConfig config, TelemetryReporter telemetry) {
+    public DeviceLevelUnlockHook(EngineConfig config, DeviceBugGuard bugGuard, TelemetryReporter telemetry) {
         this.config = config;
+        this.bugGuard = bugGuard;
         this.telemetry = telemetry;
     }
 
@@ -101,7 +100,7 @@ public final class DeviceLevelUnlockHook {
                 }
             } else if (ret == int.class) {
                 if (isDeviceTierIntMethod(name)) {
-                    if (hookReturnConstant(m, LEVEL_HIGH)) {
+                    if (hookMinDeviceTier(m, LEVEL_HIGH)) {
                         hooked++;
                     }
                 }
@@ -115,8 +114,46 @@ public final class DeviceLevelUnlockHook {
             XposedBridge.hookMethod(method, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (config.isNativeTierEnabled()) {
-                        param.setResult(constantValue);
+                    if (bugGuard.isHookTripped("NativeTierBool")) {
+                        return;
+                    }
+                    try {
+                        if (config.isNativeTierEnabled()) {
+                            param.setResult(constantValue);
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("NativeTierBool");
+                    }
+                }
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Never-Downgrade int tier gate: upgrades levels below minLevel (e.g. LOW/MIDDLE -> HIGH)
+     * while preserving any higher factory tier (>= minLevel) untouched.
+     */
+    private boolean hookMinDeviceTier(Method method, final int minLevel) {
+        try {
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("NativeTierInt")) {
+                        return;
+                    }
+                    try {
+                        if (!config.isNativeTierEnabled()) {
+                            return;
+                        }
+                        Object res = param.getResult();
+                        if (res instanceof Integer && ((Integer) res) < minLevel) {
+                            param.setResult(minLevel);
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("NativeTierInt");
                     }
                 }
             });

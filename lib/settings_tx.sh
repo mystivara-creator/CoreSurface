@@ -17,6 +17,10 @@ cs_settings_is_error_output() {
   esac
 }
 
+cs_sh_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
 # Read a setting: try `--user 0`, then `su 2000 -c` (Android 16 Binder), then bare `settings`.
 # Sets: CS_SETTINGS_READ_VAL, returns 0 on success, 1 on Binder/service error.
 cs_settings_get() {
@@ -33,7 +37,9 @@ cs_settings_get() {
   fi
 
   if command -v su >/dev/null 2>&1; then
-    _cs_sg_out=$(su 2000 -c "settings --user 0 get ${_cs_sg_ns} ${_cs_sg_key}" 2>&1)
+    _cs_q_ns=$(cs_sh_quote "$_cs_sg_ns")
+    _cs_q_key=$(cs_sh_quote "$_cs_sg_key")
+    _cs_sg_out=$(su 2000 -c "settings --user 0 get ${_cs_q_ns} ${_cs_q_key}" 2>&1)
     _cs_sg_rc=$?
     _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
     if [ "$_cs_sg_rc" -eq 0 ] && [ -n "$_cs_sg_line" ] && ! cs_settings_is_error_output "$_cs_sg_line"; then
@@ -65,7 +71,10 @@ cs_settings_put() {
   fi
 
   if command -v su >/dev/null 2>&1; then
-    _cs_sp_out=$(su 2000 -c "settings --user 0 put ${_cs_sp_ns} ${_cs_sp_key} ${_cs_sp_val}" 2>&1)
+    _cs_q_ns=$(cs_sh_quote "$_cs_sp_ns")
+    _cs_q_key=$(cs_sh_quote "$_cs_sp_key")
+    _cs_q_val=$(cs_sh_quote "$_cs_sp_val")
+    _cs_sp_out=$(su 2000 -c "settings --user 0 put ${_cs_q_ns} ${_cs_q_key} ${_cs_q_val}" 2>&1)
     _cs_sp_rc=$?
     if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
       return 0
@@ -92,7 +101,9 @@ cs_settings_delete() {
   fi
 
   if command -v su >/dev/null 2>&1; then
-    _cs_sd_out=$(su 2000 -c "settings --user 0 delete ${_cs_sd_ns} ${_cs_sd_key}" 2>&1)
+    _cs_q_ns=$(cs_sh_quote "$_cs_sd_ns")
+    _cs_q_key=$(cs_sh_quote "$_cs_sd_key")
+    _cs_sd_out=$(su 2000 -c "settings --user 0 delete ${_cs_q_ns} ${_cs_q_key}" 2>&1)
     _cs_sd_rc=$?
     if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
       return 0

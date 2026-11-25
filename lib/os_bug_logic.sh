@@ -52,8 +52,8 @@ cs_os_bug_scan() {
   fi
 
   # 4. Soft-reboot stale XML bind-mount detection (checked during early boot before mount)
-  if [ "$_cs_stage" = "early" ] && [ -r "$_cs_mounts" ]; then
-    if grep -q '/device_features/.*\.xml ' "$_cs_mounts" 2>/dev/null; then
+  if [ "$_cs_stage" = "early" ]; then
+    if [ "${CS_STALE_XML_DETECTED:-0}" = "1" ] || { [ -r "$_cs_mounts" ] && grep -q '/device_features/.*\.xml ' "$_cs_mounts" 2>/dev/null; }; then
       CS_OS_BUGS_DETECTED=$((CS_OS_BUGS_DETECTED + 1))
       CS_OS_BUGS_MITIGATED=$((CS_OS_BUGS_MITIGATED + 1))
       CS_OS_BUGS_CSV=$(cs_bug_append_csv "$CS_OS_BUGS_CSV" "SOFT_REBOOT_STALE_XML")
@@ -72,7 +72,7 @@ cs_os_bug_scan() {
   # 6. Vendor blur/low-RAM throttle (blurs_are_expensive=1 or low_ram=true)
   _cs_sf_exp=$(cs_getprop "ro.sf.blurs_are_expensive")
   _cs_low_ram=$(cs_getprop "ro.config.low_ram")
-  if [ "$_cs_sf_exp" = "1" ] || [ "$_cs_low_ram" = "true" ]; then
+  if [ "$_cs_sf_exp" = "1" ] || [ "$_cs_low_ram" = "true" ] || [ "${CS_STOCK_BLURS_EXPENSIVE:-0}" = "1" ] || [ "${CS_STOCK_LOW_RAM:-0}" = "1" ]; then
     CS_OS_BUGS_DETECTED=$((CS_OS_BUGS_DETECTED + 1))
     if [ "${EFF_FEAT_BLUR:-0}" = "1" ] || [ "${EFF_FEAT_MULTITASK:-0}" = "1" ]; then
       CS_OS_BUGS_MITIGATED=$((CS_OS_BUGS_MITIGATED + 1))

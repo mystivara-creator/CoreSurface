@@ -134,6 +134,12 @@ h1 {
   color: #d6eaff;
 }
 
+.banner-warn {
+  background: var(--warn-bg);
+  border-color: rgba(245, 185, 66, 0.4);
+  color: #fde4a6;
+}
+
 .banner-danger {
   background: var(--danger-bg);
   border-color: rgba(255, 107, 122, 0.4);
@@ -421,6 +427,13 @@ code {
 .btn-tier span {
   font-size: 11px;
   color: var(--muted);
+}
+
+.btn:disabled,
+.btn-tier:disabled,
+.btn-icon:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .btn-tier.active {

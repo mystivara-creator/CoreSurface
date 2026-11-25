@@ -1,11 +1,8 @@
 package org.mystivara.coresurface.engine;
 
-import android.app.Application;
-import android.content.Context;
-import android.view.View;
-
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Locale;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -16,7 +13,8 @@ import de.robv.android.xposed.XposedHelpers;
  *
  * Safely removes Xiaomi's software 10-second AOD cap on non-LTPO AMOLED panels by
  * hooking MiuiAod utility capability gates (without ever touching HyperOS 3's unstable
- * mFullAodHideEase private field).
+ * mFullAodHideEase private field) with DeviceBugGuard fault circuit breakers and
+ * self-unhooking ProcessBootstrap.
  */
 public final class LivingFlowAodHook {
     private static final String[] AOD_UTIL_CLASSES = new String[] {
@@ -29,18 +27,17 @@ public final class LivingFlowAodHook {
     };
 
     private final EngineConfig config;
-    private final ThermalLodController lodController;
+    private final ProcessBootstrap bootstrap;
     private final DeviceBugGuard bugGuard;
     private final FolmePhysicsHook folmeHook;
     private final DeviceLevelUnlockHook deviceLevelHook;
     private final TelemetryReporter telemetry;
-    private volatile boolean contextBootstrapped = false;
 
-    public LivingFlowAodHook(EngineConfig config, ThermalLodController lodController,
+    public LivingFlowAodHook(EngineConfig config, ProcessBootstrap bootstrap,
                              DeviceBugGuard bugGuard, FolmePhysicsHook folmeHook,
                              DeviceLevelUnlockHook deviceLevelHook, TelemetryReporter telemetry) {
         this.config = config;
-        this.lodController = lodController;
+        this.bootstrap = bootstrap;
         this.bugGuard = bugGuard;
         this.folmeHook = folmeHook;
         this.deviceLevelHook = deviceLevelHook;
@@ -48,7 +45,7 @@ public final class LivingFlowAodHook {
     }
 
     public void install(ClassLoader cl) {
-        deviceLevelHook.install(cl);
+        int nativeGates = deviceLevelHook.install(cl);
         folmeHook.install(cl);
 
         int aodGates = installNonLtpoAodGates(cl);
@@ -56,33 +53,11 @@ public final class LivingFlowAodHook {
             telemetry.addAodGatesHooked(aodGates);
             telemetry.recordHookBound("AodNonLtpoUnlock");
         }
-
-        try {
-            XposedBridge.hookAllMethods(Application.class, "onCreate", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (contextBootstrapped || !(param.thisObject instanceof Context)) {
-                        return;
-                    }
-                    bootstrapIfNeeded((Context) param.thisObject);
-                }
-            });
-        } catch (Throwable ignored) {
-        }
-
-        try {
-            XposedBridge.hookAllMethods(View.class, "onAttachedToWindow", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (contextBootstrapped || !(param.thisObject instanceof View)) {
-                        return;
-                    }
-                    bootstrapIfNeeded(((View) param.thisObject).getContext());
-                }
-            });
+        if (nativeGates > 0 || aodGates > 0) {
             telemetry.recordHookBound("AodFlagshipTier");
-        } catch (Throwable ignored) {
         }
+
+        bootstrap.install();
     }
 
     private int installNonLtpoAodGates(ClassLoader cl) {
@@ -113,7 +88,7 @@ public final class LivingFlowAodHook {
                 if (m.getParameterTypes().length > 1) {
                     continue;
                 }
-                String lower = m.getName().toLowerCase();
+                String lower = m.getName().toLowerCase(Locale.ROOT);
                 if (isAlwaysOnSupportMethod(lower)) {
                     if (hookBoolResult(m, true)) {
                         hooked++;
@@ -133,8 +108,15 @@ public final class LivingFlowAodHook {
             XposedBridge.hookMethod(method, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (config.isAodUnlockEnabled()) {
-                        param.setResult(desired);
+                    if (bugGuard.isHookTripped("AodNonLtpoGate")) {
+                        return;
+                    }
+                    try {
+                        if (config.isAodUnlockEnabled()) {
+                            param.setResult(desired);
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("AodNonLtpoGate");
                     }
                 }
             });
@@ -160,24 +142,5 @@ public final class LivingFlowAodHook {
                 || lower.contains("support10smode")
                 || lower.contains("need10slimit")
                 || lower.contains("isonly10s");
-    }
-
-    private void bootstrapIfNeeded(Context ctx) {
-        if (contextBootstrapped || ctx == null) {
-            return;
-        }
-        contextBootstrapped = true;
-        Context appCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
-        config.attachContext(appCtx);
-        telemetry.attachContext(appCtx);
-        lodController.attachContext(appCtx);
-        bugGuard.attachContext(appCtx);
-        folmeHook.attachContext(appCtx);
-        telemetry.setMotionProfile(config.getMotionProfile());
-        telemetry.setLastConfig(config.getRawConfig());
-        config.addListener(() -> {
-            telemetry.setMotionProfile(config.getMotionProfile());
-            telemetry.setLastConfig(config.getRawConfig());
-        });
     }
 }

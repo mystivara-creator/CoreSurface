@@ -29,6 +29,14 @@ cs_verify_settings_get() {
   _cs_vsg_key=$2
   CS_VSG_VAL=""
 
+  if command -v cs_settings_get >/dev/null 2>&1; then
+    if cs_settings_get "$_cs_vsg_ns" "$_cs_vsg_key"; then
+      CS_VSG_VAL="$CS_SETTINGS_READ_VAL"
+      return 0
+    fi
+    return 1
+  fi
+
   _cs_vsg_out=$(settings --user 0 get "$_cs_vsg_ns" "$_cs_vsg_key" 2>&1)
   _cs_vsg_rc=$?
   _cs_vsg_line=$(printf '%s\n' "$_cs_vsg_out" | head -n 1 | tr -d '\r')
@@ -38,7 +46,7 @@ cs_verify_settings_get() {
   fi
 
   if command -v su >/dev/null 2>&1; then
-    _cs_vsg_out=$(su 2000 -c "settings --user 0 get ${_cs_vsg_ns} ${_cs_vsg_key}" 2>&1)
+    _cs_vsg_out=$(su 2000 -c "settings --user 0 get '${_cs_vsg_ns}' '${_cs_vsg_key}'" 2>&1)
     _cs_vsg_rc=$?
     _cs_vsg_line=$(printf '%s\n' "$_cs_vsg_out" | head -n 1 | tr -d '\r')
     if [ "$_cs_vsg_rc" -eq 0 ] && [ -n "$_cs_vsg_line" ] && ! cs_verify_is_settings_err "$_cs_vsg_line"; then
@@ -97,6 +105,7 @@ cs_verify_engine() {
   CS_V_ENGINE_HZ="0"
   CS_V_ENGINE_LOD="N/A"
   CS_V_ENGINE_HOOKS=""
+  CS_V_ENGINE_BUGS=""
   CS_V_ENGINE_NATIVE_GATES=0
   CS_V_ENGINE_FOLME_HOOKS=0
   CS_V_ENGINE_AOD_GATES=0
@@ -109,6 +118,10 @@ cs_verify_engine() {
   # 1. Check whether CoreSurfaceEngine APK is installed
   if [ -n "${CORESURFACE_ENGINE_INSTALLED:-}" ]; then
     CS_V_ENGINE_INSTALLED="$CORESURFACE_ENGINE_INSTALLED"
+  elif command -v cs_pm_is_installed >/dev/null 2>&1; then
+    if cs_pm_is_installed; then
+      CS_V_ENGINE_INSTALLED="1"
+    fi
   elif command -v pm >/dev/null 2>&1; then
     _cs_pm_out=$(pm path org.mystivara.coresurface.engine 2>&1 || true)
     if [ -z "$_cs_pm_out" ] || cs_verify_is_settings_err "$_cs_pm_out"; then
@@ -119,6 +132,13 @@ cs_verify_engine() {
     case "$_cs_pm_out" in
       package:*) CS_V_ENGINE_INSTALLED="1" ;;
     esac
+  fi
+
+  # Current kernel boot_id (rejects stale telemetry from a previous boot if LSPosed was later disabled)
+  _cs_cur_boot_id=""
+  _cs_boot_id_file=${CORESURFACE_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}
+  if [ -r "$_cs_boot_id_file" ]; then
+    _cs_cur_boot_id=$(head -n 1 "$_cs_boot_id_file" 2>/dev/null | tr -d ' \t\r\n')
   fi
 
   # 2. Aggregate genuine live telemetry written by hooked processes (supports both user_de & user cache)
@@ -163,6 +183,12 @@ cs_verify_engine() {
     _cs_act=$(cs_telem_get "$_cs_tf" "ENGINE_ACTIVE")
     [ "$_cs_act" = "1" ] || continue
 
+    # Reject stale telemetry written during an earlier boot
+    _cs_tf_boot=$(cs_telem_get "$_cs_tf" "BOOT_ID")
+    if [ -n "$_cs_cur_boot_id" ] && [ -n "$_cs_tf_boot" ] && [ "$_cs_tf_boot" != "$_cs_cur_boot_id" ]; then
+      continue
+    fi
+
     CS_V_ENGINE_ACTIVE="1"
     _cs_mode=$(cs_telem_get "$_cs_tf" "ENGINE_MODE")
     if [ -n "$_cs_mode" ] && [ "$CS_V_ENGINE_MODE" = "NONE" ]; then
@@ -188,6 +214,12 @@ cs_verify_engine() {
     if [ -n "$_cs_hk" ]; then
       cs_append_unique_csv "$CS_V_ENGINE_HOOKS" "$_cs_hk"
       CS_V_ENGINE_HOOKS="$CS_AU_OUT"
+    fi
+
+    _cs_bm=$(cs_telem_get "$_cs_tf" "BUGS_MITIGATED")
+    if [ -n "$_cs_bm" ]; then
+      cs_append_unique_csv "$CS_V_ENGINE_BUGS" "$_cs_bm"
+      CS_V_ENGINE_BUGS="$CS_AU_OUT"
     fi
 
     _cs_ng=$(cs_telem_get "$_cs_tf" "NATIVE_GATES")
@@ -571,6 +603,7 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_ENGINE_HZ" "$CS_V_ENGINE_HZ"
   cs_verify_set "VERIFY_ENGINE_LOD" "$CS_V_ENGINE_LOD"
   cs_verify_set "VERIFY_ENGINE_HOOKS" "$CS_V_ENGINE_HOOKS"
+  cs_verify_set "VERIFY_ENGINE_BUGS" "$CS_V_ENGINE_BUGS"
   cs_verify_set "VERIFY_ENGINE_NATIVE_GATES" "$CS_V_ENGINE_NATIVE_GATES"
   cs_verify_set "VERIFY_ENGINE_FOLME_HOOKS" "$CS_V_ENGINE_FOLME_HOOKS"
   cs_verify_set "VERIFY_ENGINE_AOD_GATES" "$CS_V_ENGINE_AOD_GATES"

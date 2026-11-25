@@ -18,6 +18,19 @@ cs_log() {
   printf '[%s] %s\n' "$_cs_ts" "$1" >> "$CS_LOG_FILE" 2>/dev/null || true
 }
 
+cs_log_trim() {
+  [ -r "$CS_LOG_FILE" ] || return 0
+  _cs_lsz=$(wc -c < "$CS_LOG_FILE" 2>/dev/null | tr -d ' \t\r\n')
+  if [ -n "$_cs_lsz" ] && [ "$_cs_lsz" -gt 65536 ] 2>/dev/null; then
+    _cs_ltmp="${CS_LOG_FILE}.tmp.$$"
+    if tail -n 200 "$CS_LOG_FILE" > "$_cs_ltmp" 2>/dev/null; then
+      mv -f "$_cs_ltmp" "$CS_LOG_FILE" 2>/dev/null || rm -f "$_cs_ltmp" 2>/dev/null || true
+    else
+      rm -f "$_cs_ltmp" 2>/dev/null || true
+    fi
+  fi
+}
+
 cs_atomic_write() {
   _cs_aw_target=$1
   _cs_aw_content=$2

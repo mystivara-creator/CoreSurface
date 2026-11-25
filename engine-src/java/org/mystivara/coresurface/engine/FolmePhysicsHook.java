@@ -14,6 +14,7 @@ import android.view.animation.PathInterpolator;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -454,20 +455,26 @@ public final class FolmePhysicsHook {
     }
 
     private boolean isUpgradeableInterpolator(TimeInterpolator interp) {
+        // PathInterpolator instances share one Class<?>, so inspect their curve shape directly
+        // to upgrade ease-out/fast-out-slow-in transitions while sparing exit (ease-in), linear,
+        // and custom non-monotonic/overshoot paths.
+        if (interp instanceof PathInterpolator) {
+            return isEaseOutPathCurve(interp);
+        }
         Class<?> clazz = interp.getClass();
         Integer cached = interpClassCache.get(clazz);
         if (cached != null) {
             return cached == INTERP_UPGRADE;
         }
         int decision = INTERP_SKIP;
-        if (interp instanceof PathInterpolator
-                || interp instanceof DecelerateInterpolator
+        if (interp instanceof DecelerateInterpolator
                 || interp instanceof AccelerateDecelerateInterpolator) {
             decision = INTERP_UPGRADE;
         } else {
-            String name = clazz.getName().toLowerCase();
+            String name = clazz.getName().toLowerCase(Locale.ROOT);
             if (!name.contains("linear") && !name.contains("bounce") && !name.contains("cycle")
                     && !name.contains("overshoot") && !name.contains("anticipate")
+                    && !name.contains("easein")
                     && (name.contains("fastoutslowin")
                     || name.contains("easeout")
                     || name.contains("decelerate")
@@ -483,6 +490,26 @@ public final class FolmePhysicsHook {
         return decision == INTERP_UPGRADE;
     }
 
+    private static boolean isEaseOutPathCurve(TimeInterpolator interp) {
+        try {
+            float y25 = interp.getInterpolation(0.25f);
+            float y50 = interp.getInterpolation(0.50f);
+            float y75 = interp.getInterpolation(0.75f);
+            // Must be strictly monotonic within [0, 1]
+            if (y25 < 0.0f || y75 > 1.0f || !(y25 < y50 && y50 < y75)) {
+                return false;
+            }
+            // Skip linear PathInterpolator(0,0,1,1)
+            if (Math.abs(y25 - 0.25f) < 0.02f && Math.abs(y50 - 0.50f) < 0.02f && Math.abs(y75 - 0.75f) < 0.02f) {
+                return false;
+            }
+            // Upgrade ease-out / decelerate / fast-out-slow-in; spare accelerate-only exit curves (y50 < 0.45)
+            return y50 >= 0.45f;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     private void applyPhysicsDampingResponse(float[] out, float stockDamp, float stockResp, SpringPhysicsCurve curve) {
         // Blend stock MIUI Folme spring toward analytical (zeta, T) while preserving relative speed
         float targetDamp = curve.getDampingRatio();
@@ -493,7 +520,8 @@ public final class FolmePhysicsHook {
         }
         // Physical ratio scaling anchored to template response T
         float ratio = clamp(targetResp / 0.30f, 0.95f, 1.28f);
-        float maxResp = currentRefreshHz > 75.0f ? 0.62f : 0.50f;
+        float hzFactor = clamp((currentRefreshHz - 60.0f) / 60.0f, 0.0f, 1.0f);
+        float maxResp = 0.50f + 0.12f * hzFactor;
         float outResp = clamp(stockResp * ratio, 0.17f, maxResp);
         out[0] = outDamp;
         out[1] = outResp;

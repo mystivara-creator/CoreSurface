@@ -16,8 +16,9 @@ import android.animation.TimeInterpolator;
  *   Critically damped (zeta >= 1):
  *     x(t) = 1 - exp(-omega_n * t) * (1 + omega_n * t)
  *
- * Pre-samples a 128-entry LUT on parameter change so 120 FPS evaluation costs ~3ns with ZERO
- * per-frame transcendental math or heap allocations.
+ * Continuously adapts across 60 / 90 / 120 / 144 Hz panels and pre-samples a strictly bounded
+ * monotonic [0, 1] 128-entry LUT so 120 FPS evaluation costs ~3ns with ZERO per-frame allocations
+ * and ZERO ArgbEvaluator / alpha / clip-rect overshoot artifacts.
  */
 public final class SpringPhysicsCurve implements TimeInterpolator {
     private static final int LUT_SIZE = 128;
@@ -36,35 +37,31 @@ public final class SpringPhysicsCurve implements TimeInterpolator {
     }
 
     public static SpringPhysicsCurve forProfile(String profile, float refreshHz, float thermalScale) {
-        boolean highHz = refreshHz > 75.0f;
+        // Continuous refresh-rate interpolation: 0.0 at 60 Hz -> 0.5 at 90 Hz -> 1.0 at 120 Hz+
+        float hzFactor = clamp((refreshHz - 60.0f) / 60.0f, 0.0f, 1.0f);
         float w = clamp(thermalScale, 0.30f, 1.0f);
 
         float zeta;
         float response;
         float horizon;
         if (EngineConfig.MOTION_SILK.equals(profile)) {
-            // iOS / ColorOS 17 Silk Fluid: fast initial impulse + ultra-smooth asymptotic glide
-            if (highHz) {
-                zeta = lerp(0.93f, 0.88f, w);
-                response = lerp(0.30f, 0.38f, w);
-                horizon = 1.65f;
-            } else {
-                // 60 Hz Silk: controlled damping so 16.67ms frames land cleanly without tail stutter
-                zeta = lerp(0.95f, 0.92f, w);
-                response = lerp(0.26f, 0.31f, w);
-                horizon = 1.50f;
-            }
+            // iOS / ColorOS 17 Silk Fluid: fast physical impulse + ultra-smooth asymptotic glide
+            float zeta60 = lerp(0.95f, 0.92f, w);
+            float zeta120 = lerp(0.93f, 0.88f, w);
+            float resp60 = lerp(0.26f, 0.31f, w);
+            float resp120 = lerp(0.30f, 0.38f, w);
+            zeta = lerp(zeta60, zeta120, hzFactor);
+            response = lerp(resp60, resp120, hzFactor);
+            horizon = lerp(1.50f, 1.65f, hzFactor);
         } else {
             // HyperOS 4 Flagship: crisp, airy, near-critical damping with zero bounce
-            if (highHz) {
-                zeta = lerp(0.96f, 0.93f, w);
-                response = lerp(0.27f, 0.32f, w);
-                horizon = 1.55f;
-            } else {
-                zeta = lerp(0.98f, 0.96f, w);
-                response = lerp(0.24f, 0.27f, w);
-                horizon = 1.45f;
-            }
+            float zeta60 = lerp(0.98f, 0.96f, w);
+            float zeta120 = lerp(0.96f, 0.93f, w);
+            float resp60 = lerp(0.24f, 0.27f, w);
+            float resp120 = lerp(0.27f, 0.32f, w);
+            zeta = lerp(zeta60, zeta120, hzFactor);
+            response = lerp(resp60, resp120, hzFactor);
+            horizon = lerp(1.45f, 1.55f, hzFactor);
         }
         return new SpringPhysicsCurve(zeta, response, horizon);
     }
@@ -108,16 +105,19 @@ public final class SpringPhysicsCurve implements TimeInterpolator {
         }
         table[0] = 0.0f;
         table[LUT_SIZE] = 1.0f;
+        float prev = 0.0f;
         for (int i = 1; i < LUT_SIZE; i++) {
             double t = (tSettle * i) / LUT_SIZE;
             double v = evalRaw(zeta, omegaN, t) / endVal;
-            // Clamp tiny numerical overshoot on near-critical curves for clean UI bounds
-            if (v < 0.0) {
-                v = 0.0;
-            } else if (v > 1.02) {
-                v = 1.02;
+            // Strictly bound TimeInterpolator LUT to monotonic [0.0, 1.0] to prevent
+            // ArgbEvaluator color-wrap or alpha/clip-rect overshoot glitches in any UI app.
+            if (v < prev) {
+                v = prev;
+            } else if (v > 1.0) {
+                v = 1.0;
             }
             table[i] = (float) v;
+            prev = table[i];
         }
         return table;
     }

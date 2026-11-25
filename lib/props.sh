@@ -24,6 +24,12 @@ cs_find_resetprop() {
     return 0
   fi
 
+  if [ -x /data/adb/ap/bin/resetprop ]; then
+    CS_RESETPROP_MODE="direct"
+    CS_RESETPROP_BIN="/data/adb/ap/bin/resetprop"
+    return 0
+  fi
+
   if [ -x /data/adb/magisk/magisk ]; then
     CS_RESETPROP_MODE="magisk"
     CS_RESETPROP_BIN="/data/adb/magisk/magisk"
@@ -134,16 +140,42 @@ cs_set_prop() {
   return 0
 }
 
+cs_resolve_never_downgrade_level_list() {
+  _cs_nd_want_c=$1
+  _cs_nd_want_g=$2
+  _cs_nd_v=1
+  _cs_nd_c=$_cs_nd_want_c
+  _cs_nd_g=$_cs_nd_want_g
+
+  if [ -n "${CS_STOCK_DEVICE_LEVEL_LIST:-}" ]; then
+    _cs_sc=$(printf '%s' "$CS_STOCK_DEVICE_LEVEL_LIST" | sed -n 's/.*c:\([0-9][0-9]*\).*/\1/p')
+    _cs_sg=$(printf '%s' "$CS_STOCK_DEVICE_LEVEL_LIST" | sed -n 's/.*g:\([0-9][0-9]*\).*/\1/p')
+    _cs_sv=$(printf '%s' "$CS_STOCK_DEVICE_LEVEL_LIST" | sed -n 's/.*v:\([0-9][0-9]*\).*/\1/p')
+    if [ -n "$_cs_sv" ] && [ "$_cs_sv" -gt "$_cs_nd_v" ] 2>/dev/null; then
+      _cs_nd_v=$_cs_sv
+    fi
+    if [ -n "$_cs_sc" ] && [ "$_cs_sc" -gt "$_cs_nd_c" ] 2>/dev/null; then
+      _cs_nd_c=$_cs_sc
+    fi
+    if [ -n "$_cs_sg" ] && [ "$_cs_sg" -gt "$_cs_nd_g" ] 2>/dev/null; then
+      _cs_nd_g=$_cs_sg
+    fi
+  fi
+  printf 'v:%s,c:%s,g:%s' "$_cs_nd_v" "$_cs_nd_c" "$_cs_nd_g"
+}
+
 cs_apply_feat_animations() {
   [ "$EFF_FEAT_ANIMATIONS" = "1" ] || return 0
 
   # Verified HyperOS/MIUI animation & split Control Center flags scaled by resolved tier
-  # Never-Downgrade: never lower ro.miui.device_level below stock factory level
+  # Never-Downgrade: never lower ro.miui.device_level or deviceLevelList below stock factory level
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
   case "${CS_EFF_TIER:-low}" in
     flagship)
-      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "3"
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:3,g:3"
+      if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -le 3 ]; then
+        cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "3"
+      fi
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 3 3)"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
@@ -153,7 +185,7 @@ cs_apply_feat_animations() {
       if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
         cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
       fi
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:2,g:3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 2 3)"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       ;;
@@ -161,7 +193,7 @@ cs_apply_feat_animations() {
       if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
         cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
       fi
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:2,g:2"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 2 2)"
       ;;
   esac
 }
@@ -212,21 +244,31 @@ cs_apply_feat_display_hz() {
   cs_set_prop "FEAT_DISPLAY_HZ" "ro.vendor.fps.switch.default" "true"
 }
 
-cs_sync_engine_live_prop() {
+cs_write_engine_cfg_prop() {
+  _cs_we_val=$1
   cs_find_resetprop || return 0
+  if [ "$CS_RESETPROP_MODE" = "magisk" ]; then
+    "$CS_RESETPROP_BIN" resetprop -n "debug.coresurface.cfg" "$_cs_we_val" 2>/dev/null || true
+  else
+    "$CS_RESETPROP_BIN" -n "debug.coresurface.cfg" "$_cs_we_val" 2>/dev/null || true
+  fi
+  return 0
+}
+
+cs_sync_engine_live_prop() {
   _cs_live_cfg=$(printf 'motion=%s;native=%s;guard=%s;thermallod=%s;aod=%s' \
     "${EFF_FEAT_MOTION_PROFILE:-off}" \
     "${EFF_FEAT_NATIVE_TIER:-0}" \
     "${EFF_FEAT_SURGICAL_GUARD:-0}" \
     "${EFF_FEAT_THERMAL_LOD:-1}" \
     "${EFF_FEAT_AOD_UNLOCK:-1}")
+  cs_write_engine_cfg_prop "$_cs_live_cfg"
+}
 
-  if [ "$CS_RESETPROP_MODE" = "magisk" ]; then
-    "$CS_RESETPROP_BIN" resetprop -n "debug.coresurface.cfg" "$_cs_live_cfg" 2>/dev/null || true
-  else
-    "$CS_RESETPROP_BIN" -n "debug.coresurface.cfg" "$_cs_live_cfg" 2>/dev/null || true
-  fi
-  return 0
+cs_sync_engine_killswitch() {
+  _cs_ks_cur=$(getprop "debug.coresurface.cfg" 2>/dev/null || true)
+  [ -n "$_cs_ks_cur" ] || return 0
+  cs_write_engine_cfg_prop "motion=off;native=0;guard=0;thermallod=0;aod=0"
 }
 
 cs_apply_all_props() {

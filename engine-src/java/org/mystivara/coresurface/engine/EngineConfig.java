@@ -36,7 +36,7 @@ public final class EngineConfig {
     private volatile Method sysPropGetMethod;
     private volatile boolean sysPropResolved = false;
     private volatile ContentResolver contentResolver;
-    private volatile long lastRefreshMs = 0L;
+    private volatile long lastRefreshMs = -REFRESH_INTERVAL_MS;
 
     public void attachContext(Context context) {
         if (context == null) {

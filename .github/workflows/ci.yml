@@ -25,6 +25,7 @@ jobs:
             customize.sh \
             post-fs-data.sh \
             service.sh \
+            action.sh \
             uninstall.sh \
             lib/*.sh \
             scripts/*.sh \

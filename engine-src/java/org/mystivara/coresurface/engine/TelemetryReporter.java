@@ -4,19 +4,24 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Zero-gimmick live runtime telemetry writer (background daemon thread, zero UI I/O).
- * Uses two-tier flush throttling: 500ms for state changes and 5000ms for high-frequency
- * counters (springs/curves tuned) to keep scrolling/swiping 100% free of disk churn.
+ * Uses atomic two-tier flush throttling (500ms fast escalation for state changes, 5000ms
+ * lazy flush for high-frequency counters) and stamps kernel BOOT_ID so verifier.sh never
+ * mistakes stale cache files from a prior boot for an active LSPosed hook.
  */
 public final class TelemetryReporter {
     public static final String TELEMETRY_FILENAME = "coresurface_telemetry.prop";
@@ -24,6 +29,7 @@ public final class TelemetryReporter {
     private static final long LAZY_FLUSH_MS = 5000L;
 
     private final String processName;
+    private final String bootId;
     private volatile File cacheDir;
     private volatile String motionProfile = EngineConfig.MOTION_HYPEROS4;
     private volatile int displayHz = 60;
@@ -49,10 +55,14 @@ public final class TelemetryReporter {
         t.setPriority(Thread.MIN_PRIORITY);
         return t;
     });
-    private volatile boolean flushScheduled = false;
+
+    private final AtomicBoolean flushScheduled = new AtomicBoolean(false);
+    private final AtomicBoolean fastScheduled = new AtomicBoolean(false);
+    private final Runnable flushTask = () -> ioExecutor.execute(this::flushNow);
 
     public TelemetryReporter(String processName) {
         this.processName = processName;
+        this.bootId = readBootId();
     }
 
     public void attachContext(Context context) {
@@ -64,7 +74,7 @@ public final class TelemetryReporter {
             File dir = target.getCacheDir();
             if (dir != null) {
                 cacheDir = dir;
-                scheduleFlush(FAST_FLUSH_MS);
+                scheduleFlush(true);
             }
         } catch (Throwable ignored) {
         }
@@ -73,100 +83,111 @@ public final class TelemetryReporter {
     public synchronized void recordHookBound(String hookName) {
         if (hookName != null && !hookName.isEmpty()) {
             boundHooks.add(hookName);
-            scheduleFlush(FAST_FLUSH_MS);
+            scheduleFlush(true);
         }
     }
 
     public synchronized void recordOsBugMitigated(String bugId) {
         if (bugId != null && !bugId.isEmpty()) {
             mitigatedBugs.add(bugId);
-            scheduleFlush(FAST_FLUSH_MS);
+            scheduleFlush(true);
         }
     }
 
     public void setMotionProfile(String profile) {
         this.motionProfile = profile != null ? profile : EngineConfig.MOTION_OFF;
-        scheduleFlush(FAST_FLUSH_MS);
+        scheduleFlush(true);
     }
 
     public void setDisplayHz(int hz) {
         if (hz > 0 && hz != this.displayHz) {
             this.displayHz = hz;
-            scheduleFlush(FAST_FLUSH_MS);
+            scheduleFlush(true);
         }
     }
 
     public void setThermalState(String lodTier, int thermalStatus) {
         this.lodTier = lodTier != null ? lodTier : "FULL";
         this.thermalStatus = thermalStatus;
-        scheduleFlush(FAST_FLUSH_MS);
+        scheduleFlush(true);
     }
 
     public void setLastConfig(String cfg) {
         this.lastConfig = cfg != null ? cfg : "default";
-        scheduleFlush(FAST_FLUSH_MS);
+        scheduleFlush(true);
     }
 
     public void addNativeGatesHooked(int delta) {
         if (delta > 0) {
             nativeGatesHooked.addAndGet(delta);
-            scheduleFlush(FAST_FLUSH_MS);
+            scheduleFlush(true);
         }
     }
 
     public void addFolmeHooksBound(int delta) {
         if (delta > 0) {
             folmeHooksBound.addAndGet(delta);
-            scheduleFlush(FAST_FLUSH_MS);
+            scheduleFlush(true);
         }
     }
 
     public void addAodGatesHooked(int delta) {
         if (delta > 0) {
             aodGatesHooked.addAndGet(delta);
-            scheduleFlush(FAST_FLUSH_MS);
+            scheduleFlush(true);
         }
     }
 
     public void incSpringsTuned() {
         springsTuned.incrementAndGet();
-        scheduleFlush(LAZY_FLUSH_MS);
+        scheduleFlush(false);
     }
 
     public void incCurvesApplied() {
         curvesApplied.incrementAndGet();
-        scheduleFlush(LAZY_FLUSH_MS);
+        scheduleFlush(false);
     }
 
     public void incToastsGuarded() {
         toastsGuarded.incrementAndGet();
-        scheduleFlush(LAZY_FLUSH_MS);
+        scheduleFlush(false);
     }
 
     public void incRecentsGuarded() {
         recentsGuarded.incrementAndGet();
-        scheduleFlush(LAZY_FLUSH_MS);
+        scheduleFlush(false);
     }
 
     public void incCircuitTrips() {
         circuitTrips.incrementAndGet();
-        scheduleFlush(FAST_FLUSH_MS);
+        scheduleFlush(true);
     }
 
     public void scheduleFlush() {
-        scheduleFlush(FAST_FLUSH_MS);
+        scheduleFlush(true);
     }
 
-    private void scheduleFlush(long delayMs) {
-        if (cacheDir == null || flushScheduled) {
+    private void scheduleFlush(boolean fast) {
+        if (cacheDir == null) {
             return;
         }
-        flushScheduled = true;
-        mainHandler.postDelayed(() -> ioExecutor.execute(this::flushNow), delayMs);
+        if (fast) {
+            // Escalate a pending 5s lazy flush to 500ms when state changes
+            if (fastScheduled.compareAndSet(false, true)) {
+                flushScheduled.set(true);
+                mainHandler.removeCallbacks(flushTask);
+                mainHandler.postDelayed(flushTask, FAST_FLUSH_MS);
+            }
+            return;
+        }
+        if (flushScheduled.compareAndSet(false, true)) {
+            mainHandler.postDelayed(flushTask, LAZY_FLUSH_MS);
+        }
     }
 
     public void flushNow() {
-        flushScheduled = false;
+        flushScheduled.set(false);
+        fastScheduled.set(false);
         File dir = cacheDir;
         if (dir == null) {
             return;
@@ -189,9 +210,12 @@ public final class TelemetryReporter {
                 }
             }
 
-            StringBuilder sb = new StringBuilder(360);
+            StringBuilder sb = new StringBuilder(420);
             sb.append("ENGINE_ACTIVE=1\n");
             sb.append("ENGINE_VERSION=1.0.0\n");
+            if (!bootId.isEmpty()) {
+                sb.append("BOOT_ID=").append(bootId).append('\n');
+            }
             sb.append("PROCESS=").append(processName).append('\n');
             sb.append("ENGINE_MODE=NATIVE_MOTION\n");
             sb.append("MOTION_PROFILE=").append(motionProfile).append('\n');
@@ -213,18 +237,29 @@ public final class TelemetryReporter {
 
             File tmp = new File(dir, TELEMETRY_FILENAME + ".tmp");
             File dst = new File(dir, TELEMETRY_FILENAME);
+            byte[] payload = sb.toString().getBytes(StandardCharsets.UTF_8);
             try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                fos.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+                fos.write(payload);
                 fos.flush();
             }
             if (!tmp.renameTo(dst)) {
                 try (FileOutputStream fos = new FileOutputStream(dst)) {
-                    fos.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+                    fos.write(payload);
                 }
                 //noinspection ResultOfMethodCallIgnored
                 tmp.delete();
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static String readBootId() {
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream("/proc/sys/kernel/random/boot_id"), StandardCharsets.UTF_8))) {
+            String line = br.readLine();
+            return line != null ? line.trim() : "";
+        } catch (Throwable ignored) {
+            return "";
         }
     }
 }

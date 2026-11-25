@@ -1,0 +1,29 @@
+#!/sbin/sh
+# Standard Magisk / Recovery module installer bootstrap for CoreSurface.
+# KernelSU / KernelSU-Next / APatch run customize.sh directly; Magisk & Recovery
+# execute this update-binary which delegates cleanly to Magisk's install_module.
+
+umask 022
+
+ui_print() { printf '%s\n' "$1"; }
+
+require_new_magisk() {
+  ui_print "*******************************"
+  ui_print " Please install Magisk v20.4+! "
+  ui_print "*******************************"
+  exit 1
+}
+
+OUTFD=$2
+ZIPFILE=$3
+export OUTFD ZIPFILE
+
+mount /data 2>/dev/null || true
+
+[ -f /data/adb/magisk/util_functions.sh ] || require_new_magisk
+# shellcheck disable=SC1091
+. /data/adb/magisk/util_functions.sh
+[ "${MAGISK_VER_CODE:-0}" -lt 20400 ] && require_new_magisk
+
+install_module
+exit 0

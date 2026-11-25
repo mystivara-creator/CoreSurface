@@ -163,6 +163,7 @@ cs_xml_patch_file() {
         if (pos > 0 && cpos > pos) {
           val_start = pos + length(target)
           cur = substr(line, val_start, cpos - val_start)
+          gsub(/^[ \t]+|[ \t]+$/, "", cur)
           indent = ""
           if (match(line, /^[ \t]*/)) {
             indent = substr(line, 1, RLENGTH)
@@ -206,6 +207,27 @@ cs_xml_restore_selinux_context() {
   fi
 }
 
+# Unmount any stale CoreSurface/soft-reboot bind-mount on a device_features XML.
+# Must be called BEFORE reading the stock XML so soft-reboots never patch our own patched XML!
+cs_xml_unmount_if_mounted() {
+  _cs_um_target=${1:-}
+  _cs_mounts=${CORESURFACE_PROC_MOUNTS:-/proc/mounts}
+  [ -r "$_cs_mounts" ] || return 0
+
+  if [ -n "$_cs_um_target" ]; then
+    if awk -v target="$_cs_um_target" '$2 == target { found=1; exit } END { exit(found ? 0 : 1) }' "$_cs_mounts" 2>/dev/null; then
+      umount -l "$_cs_um_target" 2>/dev/null || umount "$_cs_um_target" 2>/dev/null || true
+    fi
+    return 0
+  fi
+
+  # No target specified: unmount any mounted device_features/*.xml cleanly
+  _cs_mounted_xmls=$(awk '$2 ~ /\/device_features\/.*\.xml$/ { print $2 }' "$_cs_mounts" 2>/dev/null || true)
+  for _cs_mx in $_cs_mounted_xmls; do
+    umount -l "$_cs_mx" 2>/dev/null || umount "$_cs_mx" 2>/dev/null || true
+  done
+}
+
 # Run full fail-closed XML discovery, patching, validation, SELinux restore, and bind-mount.
 # Always returns 0 so XML patch failures never disrupt boot.
 cs_xml_apply() {
@@ -213,6 +235,7 @@ cs_xml_apply() {
   : > "$CS_XML_PATCH_LIST"
 
   if [ "$EFF_FEAT_XML_PATCHER" != "1" ]; then
+    cs_xml_unmount_if_mounted || true
     cs_state_set "XML_STATUS" "disabled"
     cs_state_set "XML_REASON" "disabled_by_config"
     cs_state_set "XML_SOURCE" "none"
@@ -228,6 +251,10 @@ cs_xml_apply() {
     cs_log "XML Patcher: no valid device_features XML discovered; skipping cleanly."
     return 0
   fi
+
+  # On soft reboot, unmount any stale bind-mount BEFORE reading the source XML
+  # so we always patch the true factory XML rather than a previous boot's output.
+  cs_xml_unmount_if_mounted "$CS_XML_DISCOVERED"
 
   mkdir -p "$CS_XML_WORK_DIR" 2>/dev/null || {
     cs_state_set "XML_STATUS" "skipped"
@@ -263,14 +290,16 @@ cs_xml_apply() {
     return 0
   fi
 
-  # Fail-closed XML structural check before bind-mount
-  if ! cs_xml_is_valid_features_xml "$_cs_tmp_xml"; then
+  # Fail-closed XML structural & non-truncation check before bind-mount
+  _cs_src_lines=$(wc -l < "$CS_XML_DISCOVERED" 2>/dev/null | tr -d ' \t\r\n')
+  _cs_dst_lines=$(wc -l < "$_cs_tmp_xml" 2>/dev/null | tr -d ' \t\r\n')
+  if ! cs_xml_is_valid_features_xml "$_cs_tmp_xml" || [ "${_cs_dst_lines:-0}" -lt "${_cs_src_lines:-1}" ]; then
     rm -f "$_cs_spec" "$_cs_tmp_xml"
     cs_state_set "XML_STATUS" "skipped"
     cs_state_set "XML_REASON" "xml_validation_failed"
     cs_state_set "XML_SOURCE" "$CS_XML_DISCOVERED"
     cs_state_set "XML_PATCHED_TAGS" "0"
-    cs_log "XML Patcher: patched XML failed validation (empty or missing </features>); fail-closed skip."
+    cs_log "XML Patcher: patched XML failed structural/line-count validation; fail-closed skip."
     return 0
   fi
 
@@ -280,12 +309,6 @@ cs_xml_apply() {
   cs_xml_restore_selinux_context "$CS_XML_DISCOVERED" "$CS_XML_WORK_FILE"
   cp "$_cs_spec" "$CS_XML_PATCH_LIST" 2>/dev/null || true
   rm -f "$_cs_spec"
-
-  # On soft reboot, the target XML may already be bind-mounted; unmount cleanly first
-  _cs_mounts=${CORESURFACE_PROC_MOUNTS:-/proc/mounts}
-  if [ -r "$_cs_mounts" ] && awk -v target="$CS_XML_DISCOVERED" '$2 == target { found=1; exit } END { exit(found ? 0 : 1) }' "$_cs_mounts" 2>/dev/null; then
-    umount -l "$CS_XML_DISCOVERED" 2>/dev/null || umount "$CS_XML_DISCOVERED" 2>/dev/null || true
-  fi
 
   # Perform bind-mount onto original path
   if mount --bind "$CS_XML_WORK_FILE" "$CS_XML_DISCOVERED" 2>/dev/null; then

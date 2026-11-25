@@ -57,19 +57,59 @@ cs_detect_rom() {
 # Inspect stock unmodified device_features XML & ro.miui.device_level (read-only)
 # so CoreSurface can detect genuine Native Flagships (already unlocked from factory)
 # and never downgrade stock factory capabilities.
-# Sets: CS_STOCK_DEVICE_LEVEL, CS_STOCK_HAS_BLUR, CS_STOCK_HAS_EXPERT_COLOR
+# Snapshots immutable factory values in $CS_STATE_DIR/stock_caps.prop keyed by
+# build fingerprint + device + ROM version so late-boot (service.sh / webui_ctl.sh)
+# and soft-reboots NEVER mistake CoreSurface's own flagship overrides for stock!
+# Sets: CS_STOCK_DEVICE_LEVEL, CS_STOCK_HAS_BLUR, CS_STOCK_HAS_EXPERT_COLOR,
+#       CS_STOCK_BLURS_EXPENSIVE, CS_STOCK_LOW_RAM, CS_STOCK_DEVICE_LEVEL_LIST
 cs_probe_stock_capabilities() {
   CS_STOCK_DEVICE_LEVEL="0"
   CS_STOCK_HAS_BLUR="0"
   CS_STOCK_HAS_EXPERT_COLOR="0"
-  export CS_STOCK_DEVICE_LEVEL CS_STOCK_HAS_BLUR CS_STOCK_HAS_EXPERT_COLOR
+  CS_STOCK_BLURS_EXPENSIVE="0"
+  CS_STOCK_LOW_RAM="0"
+  CS_STOCK_DEVICE_LEVEL_LIST=""
+  export CS_STOCK_DEVICE_LEVEL CS_STOCK_HAS_BLUR CS_STOCK_HAS_EXPERT_COLOR \
+    CS_STOCK_BLURS_EXPENSIVE CS_STOCK_LOW_RAM CS_STOCK_DEVICE_LEVEL_LIST
+
+  _cs_sdir=${CS_STATE_DIR:-${CORESURFACE_STATE_DIR:-/data/adb/coresurface}}
+  _cs_snap_file="${_cs_sdir}/stock_caps.prop"
+  _cs_fp=$(cs_getprop "ro.build.fingerprint")
+  _cs_dev=$(cs_getprop "ro.product.device")
+  _cs_snap_id="${_cs_fp}|${_cs_dev}|${CS_ROM_VERSION:-}"
+
+  # Reuse immutable stock snapshot if it matches current ROM fingerprint/device/version
+  if [ "${CS_FORCE_FRESH_STOCK_PROBE:-0}" != "1" ] && [ -r "$_cs_snap_file" ]; then
+    _cs_saved_id=$(awk -F '=' '$1 == "SNAP_ID" { sub(/^[^=]*=/, ""); print; exit }' "$_cs_snap_file" 2>/dev/null | tr -d '\r')
+    if [ "$_cs_saved_id" = "$_cs_snap_id" ]; then
+      while IFS='=' read -r _cs_sk _cs_sv || [ -n "$_cs_sk" ]; do
+        _cs_sk=$(printf '%s' "$_cs_sk" | tr -d '\r')
+        _cs_sv=$(printf '%s' "$_cs_sv" | tr -d '\r')
+        case "$_cs_sk" in
+          STOCK_DEVICE_LEVEL) cs_is_uint "$_cs_sv" && CS_STOCK_DEVICE_LEVEL="$_cs_sv" ;;
+          STOCK_HAS_BLUR) [ "$_cs_sv" = "1" ] && CS_STOCK_HAS_BLUR="1" ;;
+          STOCK_HAS_EXPERT_COLOR) [ "$_cs_sv" = "1" ] && CS_STOCK_HAS_EXPERT_COLOR="1" ;;
+          STOCK_BLURS_EXPENSIVE) [ "$_cs_sv" = "1" ] && CS_STOCK_BLURS_EXPENSIVE="1" ;;
+          STOCK_LOW_RAM) [ "$_cs_sv" = "1" ] && CS_STOCK_LOW_RAM="1" ;;
+          STOCK_DEVICE_LEVEL_LIST) CS_STOCK_DEVICE_LEVEL_LIST="$_cs_sv" ;;
+        esac
+      done < "$_cs_snap_file"
+      return 0
+    fi
+  fi
 
   _cs_sp_lvl=$(cs_getprop "ro.miui.device_level")
   if cs_is_uint "$_cs_sp_lvl"; then
     CS_STOCK_DEVICE_LEVEL="$_cs_sp_lvl"
   fi
+  if [ "$(cs_getprop "ro.sf.blurs_are_expensive")" = "1" ]; then
+    CS_STOCK_BLURS_EXPENSIVE="1"
+  fi
+  if [ "$(cs_getprop "ro.config.low_ram")" = "true" ]; then
+    CS_STOCK_LOW_RAM="1"
+  fi
+  CS_STOCK_DEVICE_LEVEL_LIST=$(cs_getprop "persist.sys.deviceLevelList")
 
-  _cs_dev=$(cs_getprop "ro.product.device")
   _cs_dirs=${CORESURFACE_XML_SEARCH_DIRS:-/mi_ext/product/etc/device_features:/product/etc/device_features:/system/etc/device_features:/vendor/etc/device_features}
   _cs_stock_xml=""
 
@@ -87,15 +127,33 @@ cs_probe_stock_capabilities() {
   fi
 
   if [ -n "$_cs_stock_xml" ]; then
-    _cs_xlvl=$(sed -n 's/.*<integer name="device_level">\([0-9][0-9]*\)<\/integer>.*/\1/p' "$_cs_stock_xml" 2>/dev/null | head -n 1 || true)
+    _cs_xlvl=$(sed -n 's/.*<integer name="device_level">[[:space:]]*\([0-9][0-9]*\)[[:space:]]*<\/integer>.*/\1/p' "$_cs_stock_xml" 2>/dev/null | head -n 1 || true)
     if cs_is_uint "$_cs_xlvl" && [ "$_cs_xlvl" -gt "$CS_STOCK_DEVICE_LEVEL" ]; then
       CS_STOCK_DEVICE_LEVEL="$_cs_xlvl"
     fi
-    if grep -F -q '<bool name="support_background_blur">true</bool>' "$_cs_stock_xml" 2>/dev/null; then
+    if grep -q '<bool name="support_background_blur">[[:space:]]*true[[:space:]]*</bool>' "$_cs_stock_xml" 2>/dev/null; then
       CS_STOCK_HAS_BLUR="1"
     fi
-    if grep -F -q '<bool name="support_display_expert_mode">true</bool>' "$_cs_stock_xml" 2>/dev/null; then
+    if grep -q '<bool name="support_display_expert_mode">[[:space:]]*true[[:space:]]*</bool>' "$_cs_stock_xml" 2>/dev/null; then
       CS_STOCK_HAS_EXPERT_COLOR="1"
+    fi
+  fi
+
+  # Persist immutable factory snapshot when explicitly allowed (early boot / install)
+  if [ "${CS_ALLOW_STOCK_SNAPSHOT_WRITE:-0}" = "1" ] && [ -d "$_cs_sdir" ]; then
+    _cs_snap_tmp="${_cs_snap_file}.tmp.$$"
+    if {
+      printf 'SNAP_ID=%s\n' "$_cs_snap_id"
+      printf 'STOCK_DEVICE_LEVEL=%s\n' "$CS_STOCK_DEVICE_LEVEL"
+      printf 'STOCK_HAS_BLUR=%s\n' "$CS_STOCK_HAS_BLUR"
+      printf 'STOCK_HAS_EXPERT_COLOR=%s\n' "$CS_STOCK_HAS_EXPERT_COLOR"
+      printf 'STOCK_BLURS_EXPENSIVE=%s\n' "$CS_STOCK_BLURS_EXPENSIVE"
+      printf 'STOCK_LOW_RAM=%s\n' "$CS_STOCK_LOW_RAM"
+      printf 'STOCK_DEVICE_LEVEL_LIST=%s\n' "$CS_STOCK_DEVICE_LEVEL_LIST"
+    } > "$_cs_snap_tmp" 2>/dev/null; then
+      mv -f "$_cs_snap_tmp" "$_cs_snap_file" 2>/dev/null || rm -f "$_cs_snap_tmp" 2>/dev/null || true
+    else
+      rm -f "$_cs_snap_tmp" 2>/dev/null || true
     fi
   fi
 }

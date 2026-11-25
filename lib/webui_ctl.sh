@@ -11,6 +11,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(dirname -- "$SCRIPT_DIR")}
 . "$MODDIR/lib/detect.sh"
 # shellcheck source=lib/watchdog.sh
 . "$MODDIR/lib/watchdog.sh"
+# shellcheck source=lib/engine_ctl.sh
+. "$MODDIR/lib/engine_ctl.sh"
 # shellcheck source=lib/rro.sh
 . "$MODDIR/lib/rro.sh"
 # shellcheck source=lib/props.sh
@@ -24,6 +26,34 @@ MODDIR=${CORESURFACE_MODDIR:-$(dirname -- "$SCRIPT_DIR")}
 
 CS_CONFIG_FILE="$CS_STATE_DIR/config.prop"
 CS_COREFLOW_DIR=${CORESURFACE_COREFLOW_DIR:-/data/adb/modules/cfae_framework}
+CS_LOCK_DIR="$CS_STATE_DIR/.ctl.lock"
+
+cs_ctl_unlock() {
+  rm -rf "$CS_LOCK_DIR" 2>/dev/null || true
+}
+
+cs_ctl_lock() {
+  cs_watchdog_init_dir || return 1
+  _cs_lk_tries=0
+  while ! mkdir "$CS_LOCK_DIR" 2>/dev/null; do
+    if [ -r "$CS_LOCK_DIR/pid" ]; then
+      _cs_lk_pid=$(tr -d ' \t\r\n' < "$CS_LOCK_DIR/pid" 2>/dev/null || true)
+      if [ -n "$_cs_lk_pid" ] && ! kill -0 "$_cs_lk_pid" 2>/dev/null; then
+        rm -rf "$CS_LOCK_DIR" 2>/dev/null || true
+        continue
+      fi
+    fi
+    _cs_lk_tries=$((_cs_lk_tries + 1))
+    if [ "$_cs_lk_tries" -ge 20 ]; then
+      rm -rf "$CS_LOCK_DIR" 2>/dev/null || true
+      mkdir "$CS_LOCK_DIR" 2>/dev/null || true
+      break
+    fi
+    sleep 1 2>/dev/null || true
+  done
+  printf '%s\n' "$$" > "$CS_LOCK_DIR/pid" 2>/dev/null || true
+  trap 'cs_ctl_unlock' EXIT INT TERM
+}
 
 cs_ensure_config() {
   cs_watchdog_init_dir || return 1
@@ -147,6 +177,7 @@ cs_cmd_status() {
   printf 'eff_feat_blur=%s\n' "$EFF_FEAT_BLUR"
   printf 'eff_feat_adv_textures=%s\n' "$EFF_FEAT_ADV_TEXTURES"
   printf 'eff_feat_color_expert=%s\n' "$EFF_FEAT_COLOR_EXPERT"
+  printf 'stock_has_expert_color=%s\n' "${CS_STOCK_HAS_EXPERT_COLOR:-0}"
   printf 'eff_feat_aod_unlock=%s\n' "$EFF_FEAT_AOD_UNLOCK"
 
   printf 'xml_status=%s\n' "${_cs_xml_status:-skipped}"
@@ -162,6 +193,7 @@ cs_cmd_status() {
   printf 'verify_engine_hz=%s\n' "$(cs_verify_get VERIFY_ENGINE_HZ)"
   printf 'verify_engine_lod=%s\n' "$(cs_verify_get VERIFY_ENGINE_LOD)"
   printf 'verify_engine_hooks=%s\n' "$(cs_verify_get VERIFY_ENGINE_HOOKS)"
+  printf 'verify_engine_bugs=%s\n' "$(cs_verify_get VERIFY_ENGINE_BUGS)"
   printf 'verify_engine_native_gates=%s\n' "$(cs_verify_get VERIFY_ENGINE_NATIVE_GATES)"
   printf 'verify_engine_folme_hooks=%s\n' "$(cs_verify_get VERIFY_ENGINE_FOLME_HOOKS)"
   printf 'verify_engine_aod_gates=%s\n' "$(cs_verify_get VERIFY_ENGINE_AOD_GATES)"
@@ -323,51 +355,6 @@ cs_cmd_hot_sync() {
   printf 'Hot-Apply & verifikasi ulang selesai tanpa reboot.\n'
 }
 
-cs_webui_try_pm_install() {
-  _cs_w_apk=$1
-  _cs_w_sz=$(wc -c < "$_cs_w_apk" 2>/dev/null | tr -d ' \t\r\n')
-  CS_W_PM_OUT=""
-
-  if [ -n "$_cs_w_sz" ] && [ "$_cs_w_sz" -gt 0 ] 2>/dev/null; then
-    CS_W_PM_OUT=$(pm install -r -S "$_cs_w_sz" < "$_cs_w_apk" 2>&1 || true)
-    case "$CS_W_PM_OUT" in
-      *Success*) return 0 ;;
-      *INSTALL_FAILED_UPDATE_INCOMPATIBLE*) return 2 ;;
-    esac
-  fi
-
-  _cs_tmp_apk="/data/local/tmp/coresurface_engine_install.apk"
-  if cp "$_cs_w_apk" "$_cs_tmp_apk" 2>/dev/null; then
-    chmod 0644 "$_cs_tmp_apk" 2>/dev/null || true
-    CS_W_PM_OUT=$(pm install -r "$_cs_tmp_apk" 2>&1 || true)
-    case "$CS_W_PM_OUT" in
-      *Success*)
-        rm -f "$_cs_tmp_apk" 2>/dev/null || true
-        return 0
-        ;;
-      *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
-        rm -f "$_cs_tmp_apk" 2>/dev/null || true
-        return 2
-        ;;
-    esac
-    if command -v su >/dev/null 2>&1; then
-      CS_W_PM_OUT=$(su 2000 -c "pm install -r ${_cs_tmp_apk}" 2>&1 || true)
-      case "$CS_W_PM_OUT" in
-        *Success*)
-          rm -f "$_cs_tmp_apk" 2>/dev/null || true
-          return 0
-          ;;
-        *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
-          rm -f "$_cs_tmp_apk" 2>/dev/null || true
-          return 2
-          ;;
-      esac
-    fi
-    rm -f "$_cs_tmp_apk" 2>/dev/null || true
-  fi
-  return 1
-}
-
 cs_cmd_install_engine() {
   _cs_apk="$CS_STATE_DIR/CoreSurfaceEngine.apk"
   [ -r "$_cs_apk" ] || _cs_apk="$MODDIR/engine/CoreSurfaceEngine.apk"
@@ -380,25 +367,15 @@ cs_cmd_install_engine() {
     return 1
   fi
 
-  cs_webui_try_pm_install "$_cs_apk"
-  _cs_rc=$?
-  if [ "$_cs_rc" -eq 2 ]; then
-    pm uninstall org.mystivara.coresurface.engine >/dev/null 2>&1 || true
-    if command -v su >/dev/null 2>&1; then
-      su 2000 -c "pm uninstall org.mystivara.coresurface.engine" >/dev/null 2>&1 || true
-    fi
-    cs_webui_try_pm_install "$_cs_apk"
-    _cs_rc=$?
-  fi
-
-  if [ "$_cs_rc" -eq 0 ]; then
+  if cs_pm_install_apk "$_cs_apk"; then
+    cs_engine_write_stamp "$_cs_apk"
     cs_verifier_run || true
     cs_log "WebUI installed/updated CoreSurfaceEngine.apk."
     printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod, Settings).\n'
     return 0
   fi
 
-  printf 'Gagal memasang APK (%s). Pasang manual dari %s\n' "$CS_W_PM_OUT" "$_cs_apk" >&2
+  printf 'Gagal memasang APK (%s). Pasang manual dari %s\n' "${CS_PM_LAST_OUT:-unknown}" "$_cs_apk" >&2
   return 1
 }
 
@@ -428,10 +405,11 @@ cs_cmd_diag_report() {
     "$(cs_verify_get VERIFY_ENGINE_AOD_GATES)" "$(cs_verify_get VERIFY_ENGINE_SPRINGS)" \
     "$(cs_verify_get VERIFY_ENGINE_CURVES)" "$(cs_verify_get VERIFY_ENGINE_TOASTS)" \
     "$(cs_verify_get VERIFY_ENGINE_RECENTS)" "$(cs_verify_get VERIFY_ENGINE_CIRCUITS)"
-  printf 'OS Bug Logic: detected=%s mitigated=%s list=%s\n' \
+  printf 'OS Bug Logic: detected=%s mitigated=%s list=%s runtime=%s\n' \
     "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_DETECTED)" \
     "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_MITIGATED)" \
-    "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_CSV)"
+    "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_CSV)" \
+    "$(cs_verify_get VERIFY_ENGINE_BUGS)"
   printf 'XML Patcher: status=%s mount=%s tags=%s source=%s\n' \
     "$(cs_state_get XML_STATUS)" "$(cs_verify_get VERIFY_XML_MOUNT)" \
     "$(cs_state_get XML_PATCHED_TAGS)" "$(cs_state_get XML_SOURCE)"
@@ -458,13 +436,13 @@ cs_cmd_reset_safemode() {
 
 case "${1:-}" in
   status)         cs_cmd_status ;;
-  tier)           cs_cmd_tier "${2:-}" ;;
-  set)            cs_cmd_set "${2:-}" "${3:-}" ;;
-  preset)         cs_cmd_preset "${2:-}" ;;
-  hot-sync)       cs_cmd_hot_sync ;;
-  install-engine) cs_cmd_install_engine ;;
+  tier)           cs_ctl_lock && cs_cmd_tier "${2:-}" ;;
+  set)            cs_ctl_lock && cs_cmd_set "${2:-}" "${3:-}" ;;
+  preset)         cs_ctl_lock && cs_cmd_preset "${2:-}" ;;
+  hot-sync)       cs_ctl_lock && cs_cmd_hot_sync ;;
+  install-engine) cs_ctl_lock && cs_cmd_install_engine ;;
   diag-report)    cs_cmd_diag_report ;;
-  reset-safemode) cs_cmd_reset_safemode ;;
+  reset-safemode) cs_ctl_lock && cs_cmd_reset_safemode ;;
   *)
     printf 'Usage: %s {status|tier <auto|low|balanced_pro|flagship>|set <KEY> <VALUE>|preset <...>|hot-sync|install-engine|diag-report|reset-safemode}\n' "$0" >&2
     exit 1

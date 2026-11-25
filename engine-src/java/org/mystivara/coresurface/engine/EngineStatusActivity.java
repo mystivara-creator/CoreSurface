@@ -46,8 +46,8 @@ public final class EngineStatusActivity extends Activity {
         status.setTextColor(active ? Color.parseColor("#34D399") : Color.parseColor("#FBBF24"));
         status.setTextSize(15.0f);
         status.setText(active
-                ? "STATUS: ACTIVE IN LSPOSED (Native 120 Hz Folme & Flagship Tier)"
-                : "STATUS: ENABLE MODULE IN LSPOSED MANAGER\nScope: System UI, System Launcher (MiuiHome), Always-on Display");
+                ? "STATUS: ACTIVE IN LSPOSED (60/90/120 Hz Folme + Universal UI Curves)"
+                : "STATUS: ENABLE MODULE IN LSPOSED MANAGER\nScope: System UI, System Launcher (MiuiHome), Always-on Display, Settings");
         root.addView(status);
 
         TextView details = new TextView(this);
@@ -55,7 +55,11 @@ public final class EngineStatusActivity extends Activity {
         details.setTextSize(13.5f);
         details.setText(
                 "Android SDK: " + Build.VERSION.SDK_INT + " · Mode: Pure Flagship Motion (100% Original UI)\n"
-                + "Motion Profile: " + cfg.getMotionProfile() + "\n\n"
+                + "Motion Profile: " + cfg.getMotionProfile() + "\n"
+                + "Native Tier: " + (cfg.isNativeTierEnabled() ? "ON" : "OFF")
+                + " · Surgical Guard: " + (cfg.isSurgicalGuard() ? "ON" : "OFF") + "\n"
+                + "Thermal Safety: " + (cfg.isThermalLod() ? "ON" : "OFF")
+                + " · Non-LTPO AOD: " + (cfg.isAodUnlockEnabled() ? "ON" : "OFF") + "\n\n"
                 + "Live IPC Config (debug.coresurface.cfg):\n" + liveCfg + "\n\n"
                 + "All controls hot-reload without Binder errors and without reboot from "
                 + "KernelSU-Next -> Modules -> CoreSurface -> Open WebUI."

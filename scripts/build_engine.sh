@@ -132,27 +132,37 @@ else
   cp "$WORK_DIR/unsigned.apk" "$ALIGNED_APK"
 fi
 
-# 7. Sign APK with ephemeral clean-room keystore (v1 + v2 + v3)
-KEYSTORE="$WORK_DIR/coresurface-engine.jks"
-keytool -genkeypair \
-  -v \
-  -keystore "$KEYSTORE" \
-  -alias coresurface_engine \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 \
-  -storepass coresurface \
-  -keypass coresurface \
-  -dname "CN=CoreSurfaceEngine, OU=LuminousLivingFlow, O=Mystivara, L=Unknown, S=Unknown, C=ID" >/dev/null 2>&1
+# 7. Sign APK with persistent release keystore if provided, or ephemeral clean-room keystore (v1 + v2 + v3)
+if [ -n "${CORESURFACE_KEYSTORE:-}" ] && [ -r "$CORESURFACE_KEYSTORE" ]; then
+  KEYSTORE="$CORESURFACE_KEYSTORE"
+  KEY_ALIAS=${CORESURFACE_KEY_ALIAS:-coresurface_engine}
+  KS_PASS=${CORESURFACE_KEYSTORE_PASS:-coresurface}
+  KEY_PASS=${CORESURFACE_KEY_PASS:-$KS_PASS}
+else
+  KEYSTORE="$WORK_DIR/coresurface-engine.jks"
+  KEY_ALIAS="coresurface_engine"
+  KS_PASS="coresurface"
+  KEY_PASS="coresurface"
+  keytool -genkeypair \
+    -v \
+    -keystore "$KEYSTORE" \
+    -alias "$KEY_ALIAS" \
+    -keyalg RSA \
+    -keysize 2048 \
+    -validity 10000 \
+    -storepass "$KS_PASS" \
+    -keypass "$KEY_PASS" \
+    -dname "CN=CoreSurfaceEngine, OU=LuminousLivingFlow, O=Mystivara, L=Unknown, S=Unknown, C=ID" >/dev/null 2>&1
+fi
 
 FINAL_APK="$OUT_DIR/$APK_NAME"
 rm -f "$FINAL_APK" "${FINAL_APK}.idsig"
 
 "$APKSIGNER_BIN" sign \
   --ks "$KEYSTORE" \
-  --ks-key-alias coresurface_engine \
-  --ks-pass pass:coresurface \
-  --key-pass pass:coresurface \
+  --ks-key-alias "$KEY_ALIAS" \
+  --ks-pass "pass:${KS_PASS}" \
+  --key-pass "pass:${KEY_PASS}" \
   --v1-signing-enabled true \
   --v2-signing-enabled true \
   --v3-signing-enabled true \

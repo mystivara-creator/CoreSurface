@@ -12,7 +12,7 @@ WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT INT TERM
 
 find_framework_jar() {
-  for _sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" /usr/local/lib/android/sdk /usr/lib/android-sdk; do
+  for _sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" /opt/android-sdk /usr/local/lib/android/sdk /usr/lib/android-sdk; do
     if [ -z "$_sdk" ] || [ ! -d "$_sdk/platforms" ]; then
       continue
     fi
@@ -33,7 +33,7 @@ find_framework_jar() {
 
 find_sdk_tool() {
   _tool=$1
-  for _sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" /usr/local/lib/android/sdk /usr/lib/android-sdk; do
+  for _sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" /opt/android-sdk /usr/local/lib/android/sdk /usr/lib/android-sdk; do
     if [ -z "$_sdk" ] || [ ! -d "$_sdk/build-tools" ]; then
       continue
     fi
@@ -72,18 +72,28 @@ if [ -z "$APKSIGNER_BIN" ]; then
   exit 1
 fi
 
-# Generate an ephemeral signing keystore for reproducible clean-room RRO signing
-KEYSTORE="$WORK_DIR/coresurface-rro.jks"
-keytool -genkeypair \
-  -v \
-  -keystore "$KEYSTORE" \
-  -alias coresurface \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 \
-  -storepass coresurface \
-  -keypass coresurface \
-  -dname "CN=CoreSurface, OU=CleanRoomRRO, O=Mystivara, L=Unknown, S=Unknown, C=ID" >/dev/null 2>&1
+# Use persistent release keystore if provided via env; otherwise generate an ephemeral clean-room keystore
+if [ -n "${CORESURFACE_KEYSTORE:-}" ] && [ -r "$CORESURFACE_KEYSTORE" ]; then
+  KEYSTORE="$CORESURFACE_KEYSTORE"
+  KEY_ALIAS=${CORESURFACE_KEY_ALIAS:-coresurface}
+  KS_PASS=${CORESURFACE_KEYSTORE_PASS:-coresurface}
+  KEY_PASS=${CORESURFACE_KEY_PASS:-$KS_PASS}
+else
+  KEYSTORE="$WORK_DIR/coresurface-rro.jks"
+  KEY_ALIAS="coresurface"
+  KS_PASS="coresurface"
+  KEY_PASS="coresurface"
+  keytool -genkeypair \
+    -v \
+    -keystore "$KEYSTORE" \
+    -alias "$KEY_ALIAS" \
+    -keyalg RSA \
+    -keysize 2048 \
+    -validity 10000 \
+    -storepass "$KS_PASS" \
+    -keypass "$KEY_PASS" \
+    -dname "CN=CoreSurface, OU=CleanRoomRRO, O=Mystivara, L=Unknown, S=Unknown, C=ID" >/dev/null 2>&1
+fi
 
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_DIR"/CoreSurface*.apk
@@ -125,9 +135,9 @@ build_one_overlay() {
 
   "$APKSIGNER_BIN" sign \
     --ks "$KEYSTORE" \
-    --ks-key-alias coresurface \
-    --ks-pass pass:coresurface \
-    --key-pass pass:coresurface \
+    --ks-key-alias "$KEY_ALIAS" \
+    --ks-pass "pass:${KS_PASS}" \
+    --key-pass "pass:${KEY_PASS}" \
     --v1-signing-enabled true \
     --v2-signing-enabled true \
     --out "$_final" \
