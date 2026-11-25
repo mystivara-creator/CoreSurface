@@ -68,6 +68,7 @@ jobs:
           else
             mkdir -p "$HOME/.coresurface-signing"
             echo "CORESURFACE_KEYSTORE=$HOME/.coresurface-signing/coresurface-engine.jks" >> "$GITHUB_ENV"
+            echo "CORESURFACE_KEY_ALIAS=coresurface_engine" >> "$GITHUB_ENV"
             echo "Using persistent cached CI signing keystore (preserves LSPosed state across updates)."
           fi
 
