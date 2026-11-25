@@ -23,6 +23,7 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
     private static final String SELF_PKG = "org.mystivara.coresurface.engine";
     private static final String PKG_SYSTEMUI = "com.android.systemui";
     private static final String PKG_HOME = "com.miui.home";
+    private static final String PKG_POCO_HOME = "com.mi.android.globallauncher";
     private static final String PKG_AOD = "com.miui.aod";
 
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
@@ -64,12 +65,12 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
                 new LivingFlowSystemUIHook(bootstrap, folmeHook, blurGuard, deviceLevelHook, shellEngine, sysUiChoreo)
                         .install(lpparam.classLoader);
                 XposedBridge.log("CoreSurfaceEngine: initialized True Physics (WMShell + Shade + Folme) in com.android.systemui");
-            } else if (PKG_HOME.equals(pkg)) {
+            } else if (PKG_HOME.equals(pkg) || PKG_POCO_HOME.equals(pkg)) {
                 CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(telemetry);
                 LauncherChoreographyHook launcherChoreo = new LauncherChoreographyHook(folmeHook, choreo, bugGuard, telemetry);
                 new LivingFlowHomeHook(bootstrap, bugGuard, folmeHook, blurGuard, deviceLevelHook, launcherChoreo, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized True Physics (RectF + Folder + RecentsGuard) in com.miui.home");
+                XposedBridge.log("CoreSurfaceEngine: initialized True Physics (RectF + Folder + RecentsGuard) in " + pkg);
             } else if (PKG_AOD.equals(pkg)) {
                 new LivingFlowAodHook(config, bootstrap, bugGuard, telemetry)
                         .install(lpparam.classLoader);

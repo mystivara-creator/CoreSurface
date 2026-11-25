@@ -178,6 +178,7 @@ cs_apply_feat_animations() {
   # Verified HyperOS/MIUI Control Center, Computility V1/V2 & HyperTransition flags
   # scaled by resolved tier with strict Never-Downgrade protection.
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
+  cs_set_prop "FEAT_ANIMATIONS" "persist.sys.launch_response_optimization.enable" "true"
   case "${CS_EFF_TIER:-low}" in
     flagship)
       _cs_cpu=$(cs_max_uint 6 "${CS_STOCK_CPU_LEVEL:-0}")
@@ -285,7 +286,14 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "ro.miui.has_real_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.miui.cc_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.miui_folder_blur" "1"
-  cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "1"
+  # Full-screen real-time GPU blur on frame 0 of app launch causes a noticeable 1-3 frame
+  # hesitation/stutter on mid-range GPUs (stock device_level < 3). Keep it 0 on mid-range
+  # GPUs for instant icon-tap takeoff, and 1 only on native flagship GPUs.
+  if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
+    cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "1"
+  else
+    cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "0"
+  fi
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
 
   # On non-flagship HyperOS 3 (stock device_level < 3), forcing launcher_blur_supported=true
@@ -391,7 +399,6 @@ cs_apply_feat_flagship_suite() {
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.camera.sound.forced" "0"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.power_mode_support" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.power_meter_enhanced" "true"
-  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.launch_response_optimization.enable" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.support_ai_wakeup_effect" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.vendor.night.charge" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.vendor.battery.ai.predict" "true"

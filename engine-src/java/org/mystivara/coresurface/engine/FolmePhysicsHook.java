@@ -32,6 +32,7 @@ public final class FolmePhysicsHook {
     private final DeviceBugGuard bugGuard;
     private final TelemetryReporter telemetry;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ThreadLocal<Integer> internalSpringWriteDepth = new ThreadLocal<>();
 
     private volatile boolean displayAttached = false;
     private volatile float currentRefreshHz = 60.0f;
@@ -48,6 +49,25 @@ public final class FolmePhysicsHook {
         this.telemetry = telemetry;
         this.lodController.addListener(this::rebuildSpecState);
         this.config.addListener(this::rebuildSpecState);
+    }
+
+    public void beginInternalSpringWrite() {
+        Integer cur = internalSpringWriteDepth.get();
+        internalSpringWriteDepth.set(cur == null ? 1 : cur + 1);
+    }
+
+    public void endInternalSpringWrite() {
+        Integer cur = internalSpringWriteDepth.get();
+        if (cur == null || cur <= 1) {
+            internalSpringWriteDepth.remove();
+        } else {
+            internalSpringWriteDepth.set(cur - 1);
+        }
+    }
+
+    private boolean isInternalSpringWrite() {
+        Integer cur = internalSpringWriteDepth.get();
+        return cur != null && cur > 0;
     }
 
     public void attachContext(Context context) {
@@ -318,7 +338,7 @@ public final class FolmePhysicsHook {
             XposedBridge.hookMethod(mDamp, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (bugGuard.isHookTripped("SpringDamp")) {
+                    if (isInternalSpringWrite() || bugGuard.isHookTripped("SpringDamp")) {
                         return;
                     }
                     try {
@@ -350,7 +370,7 @@ public final class FolmePhysicsHook {
             XposedBridge.hookMethod(mStiff, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (bugGuard.isHookTripped("SpringStiff")) {
+                    if (isInternalSpringWrite() || bugGuard.isHookTripped("SpringStiff")) {
                         return;
                     }
                     try {

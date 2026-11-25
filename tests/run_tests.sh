@@ -928,11 +928,19 @@ exit 1
 EOF
 chmod +x "$SB_BIN/pm"
 run_service
-assert_file_contains "$SB_PM_LOG" "install -r -S 32" "service.sh installs CoreSurfaceEngine.apk via SELinux-safe stdin stream (pm install -r -S)"
+assert_file_contains "$SB_PM_LOG" "install -r -d -S 32" "service.sh installs CoreSurfaceEngine.apk via SELinux-safe stdin stream (pm install -r -d -S)"
 assert_eq "$( [ -f "$SB_STATE/.engine_installed.sig" ] && printf 'yes' || printf 'no' )" "yes" "service.sh records idempotent .engine_installed.sig stamp"
 : > "$SB_PM_LOG"
 run_service
 assert_file_not_contains "$SB_PM_LOG" "install -r" "service.sh skips redundant pm install when APK signature unchanged"
+
+# Same-signature update: upgrades in-place via pm install -r -d with ZERO pm uninstall (preserves LSPosed enabled state & scopes)
+printf 'INPLACE_SAME_CERT_UPDATED_APK_123456' > "$SB_STATE/CoreSurfaceEngine.apk"
+: > "$SB_PM_LOG"
+run_service
+assert_file_contains "$SB_PM_LOG" "install -r -d -S 36" "Same-signature update upgrades in-place via pm install -r -d -S"
+assert_file_not_contains "$SB_PM_LOG" "uninstall" "Same-signature update NEVER calls pm uninstall (LSPosed state preserved)"
+assert_file_contains "$SB_STATE/coresurface.log" "upgraded CoreSurfaceEngine.apk in-place" "Log confirms in-place LSPosed-preserving upgrade"
 
 # 13e: Signature-mismatch upgrade (INSTALL_FAILED_UPDATE_INCOMPATIBLE) automatically uninstalls old cert & retries
 printf 'UPDATED_ENGINE_APK_BYTES_WITH_NEW_CERT_123456' > "$SB_STATE/CoreSurfaceEngine.apk"
@@ -1607,6 +1615,61 @@ EOF
   else
     fail "CoreSpringSolver host JVM physics verification failed ($(cat "$_jdir/compile.err" "$_jdir/run.out" 2>/dev/null || true))"
   fi
+fi
+
+# ---------------------------------------------------------------------------
+printf '=== Test 23: Zero-Hesitation App Launch Props, Persistent APK Signing & LSPosed Scope ===\n'
+setup_sandbox "t23_launch_and_signing"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=0" "Mid-range GPU disables Frame-0 app-launch blur stall (ro.launcher.blur.appLaunch=0)"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.launch_response_optimization.enable=true" "Launch response optimization enabled on Flagship tier"
+
+# Lite tier also gets launch_response_optimization & appLaunch=0
+setup_sandbox "t23b_lite_launch_opt"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "5500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=0" "Lite tier keeps ro.launcher.blur.appLaunch=0"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.launch_response_optimization.enable=true" "Lite tier also receives zero-cost launch response optimization"
+
+# Native flagship GPU (device_level=3) retains ro.launcher.blur.appLaunch=1
+setup_sandbox "t23c_flagship_gpu_applaunch"
+write_mock_getprop "OS3.0" "" "36" "1" "houji" "Xiaomi 15 Ultra"
+write_mock_meminfo "15600000"
+printf 'ro.miui.device_level=3\n' > "$SB_PROPS_DB"
+write_sample_xml "$SB_XML_DIR1/houji.xml"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=1" "Native flagship GPU (device_level=3) keeps ro.launcher.blur.appLaunch=1"
+
+# Persistent signing keystore reuse & dual LSPosed recommended scope metadata (when Android SDK present)
+if [ -d /opt/android-sdk/build-tools ] || [ -n "${ANDROID_HOME:-}" ] || [ -n "${ANDROID_SDK_ROOT:-}" ]; then
+  _ks_path="$SB/persistent_signing/coresurface-test.jks"
+  _out1="$SB/apk_build_1"
+  _out2="$SB/apk_build_2"
+  _b1=$(CORESURFACE_KEYSTORE="$_ks_path" CORESURFACE_ENGINE_OUT="$_out1" sh "$REPO_ROOT/scripts/build_engine.sh")
+  _b2=$(CORESURFACE_KEYSTORE="$_ks_path" CORESURFACE_ENGINE_OUT="$_out2" sh "$REPO_ROOT/scripts/build_engine.sh")
+  _cert1=$(printf '%s\n' "$_b1" | sed -n 's/.*cert=\([0-9a-f]*\).*/\1/p')
+  _cert2=$(printf '%s\n' "$_b2" | sed -n 's/.*cert=\([0-9a-f]*\).*/\1/p')
+  assert_eq "$( [ -n "$_cert1" ] && [ "$_cert1" = "$_cert2" ] && printf 'same' || printf 'diff' )" "same" "Persistent CORESURFACE_KEYSTORE produces identical cert SHA-256 across consecutive builds"
+
+  _zip_list=$(unzip -l "$_out2/CoreSurfaceEngine.apk")
+  printf '%s\n' "$_zip_list" > "$SB/apk_files.txt"
+  assert_file_contains "$SB/apk_files.txt" "assets/xposed_init" "Engine APK preserves legacy assets/xposed_init"
+  assert_file_contains "$SB/apk_files.txt" "META-INF/xposed/scope.list" "Engine APK includes META-INF/xposed/scope.list for modern LSPosed forks"
+  assert_file_not_contains "$SB/apk_files.txt" "META-INF/xposed/module.prop" "Engine APK omits module.prop so legacy IXposedHookLoadPackage stays active"
+  unzip -p "$_out2/CoreSurfaceEngine.apk" META-INF/xposed/scope.list > "$SB/scope.list"
+  assert_file_contains "$SB/scope.list" "com.android.systemui" "scope.list recommends com.android.systemui"
+  assert_file_contains "$SB/scope.list" "com.miui.home" "scope.list recommends com.miui.home"
+  assert_file_contains "$SB/scope.list" "com.mi.android.globallauncher" "scope.list recommends POCO Launcher (com.mi.android.globallauncher)"
+  assert_file_contains "$SB/scope.list" "com.miui.aod" "scope.list recommends com.miui.aod"
+  assert_file_contains "$SB/scope.list" "com.android.settings" "scope.list recommends com.android.settings"
 fi
 
 # ---------------------------------------------------------------------------

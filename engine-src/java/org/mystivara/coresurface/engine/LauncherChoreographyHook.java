@@ -182,15 +182,20 @@ public final class LauncherChoreographyHook {
         float posStiff = MotionProfileSpec.responseToStiffness(spec.appPosResponseSec);
         float scaleStiff = MotionProfileSpec.responseToStiffness(spec.appScaleResponseSec);
 
-        for (Field f : cached.posSpringFields) {
-            if (applyToSpringObject(rectAnim, f, spec.appPosDamping, posStiff)) {
-                tuned = true;
+        specHub.beginInternalSpringWrite();
+        try {
+            for (Field f : cached.posSpringFields) {
+                if (applyToSpringObject(rectAnim, f, spec.appPosDamping, posStiff)) {
+                    tuned = true;
+                }
             }
-        }
-        for (Field f : cached.scaleSpringFields) {
-            if (applyToSpringObject(rectAnim, f, spec.appScaleDamping, scaleStiff)) {
-                tuned = true;
+            for (Field f : cached.scaleSpringFields) {
+                if (applyToSpringObject(rectAnim, f, spec.appScaleDamping, scaleStiff)) {
+                    tuned = true;
+                }
             }
+        } finally {
+            specHub.endInternalSpringWrite();
         }
         return tuned;
     }

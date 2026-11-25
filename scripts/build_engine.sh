@@ -117,11 +117,23 @@ if [ ! -f "$DEX_DIR/classes.dex" ]; then
   exit 1
 fi
 
-# 5. Inject classes.dex into linked APK
+# 5. Inject classes.dex + META-INF/xposed/scope.list (dual legacy + modern scope metadata;
+#    intentionally omits META-INF/xposed/module.prop so legacy assets/xposed_init remains active)
 cp "$BASE_APK" "$WORK_DIR/unsigned.apk"
+META_STAGE="$WORK_DIR/meta-stage"
+mkdir -p "$META_STAGE/META-INF/xposed"
+sed -n 's/.*<item>\([^<]*\)<\/item>.*/\1/p' "$SRC_DIR/res/values/arrays.xml" > "$META_STAGE/META-INF/xposed/scope.list"
+if [ ! -s "$META_STAGE/META-INF/xposed/scope.list" ]; then
+  printf 'ERROR: Failed to extract scope list from %s\n' "$SRC_DIR/res/values/arrays.xml" >&2
+  exit 1
+fi
 (
   cd "$DEX_DIR"
   zip -q -u "$WORK_DIR/unsigned.apk" classes.dex
+)
+(
+  cd "$META_STAGE"
+  zip -q -u "$WORK_DIR/unsigned.apk" META-INF/xposed/scope.list
 )
 
 # 6. Align APK
@@ -132,17 +144,31 @@ else
   cp "$WORK_DIR/unsigned.apk" "$ALIGNED_APK"
 fi
 
-# 7. Sign APK with persistent release keystore if provided, or ephemeral clean-room keystore (v1 + v2 + v3)
-if [ -n "${CORESURFACE_KEYSTORE:-}" ] && [ -r "$CORESURFACE_KEYSTORE" ]; then
+# 7. Sign APK with persistent keystore (preserves LSPosed enabled state & scopes across updates)
+#    Priority:
+#      1. CORESURFACE_KEYSTORE (reused if readable, or initialized once at that path)
+#      2. Writable user cache (${XDG_CACHE_HOME:-$HOME/.cache}/coresurface/engine-signing.jks)
+#      3. Ephemeral clean-room fallback in $WORK_DIR
+KEY_ALIAS=${CORESURFACE_KEY_ALIAS:-coresurface_engine}
+KS_PASS=${CORESURFACE_KEYSTORE_PASS:-coresurface}
+KEY_PASS=${CORESURFACE_KEY_PASS:-$KS_PASS}
+KEYSTORE=""
+
+if [ -n "${CORESURFACE_KEYSTORE:-}" ]; then
   KEYSTORE="$CORESURFACE_KEYSTORE"
-  KEY_ALIAS=${CORESURFACE_KEY_ALIAS:-coresurface_engine}
-  KS_PASS=${CORESURFACE_KEYSTORE_PASS:-coresurface}
-  KEY_PASS=${CORESURFACE_KEY_PASS:-$KS_PASS}
-else
+elif [ -n "${XDG_CACHE_HOME:-}" ] || [ -n "${HOME:-}" ]; then
+  _cache_base=${XDG_CACHE_HOME:-"${HOME}/.cache"}
+  if mkdir -p "${_cache_base}/coresurface" 2>/dev/null; then
+    KEYSTORE="${_cache_base}/coresurface/engine-signing.jks"
+  fi
+fi
+
+if [ -z "$KEYSTORE" ]; then
   KEYSTORE="$WORK_DIR/coresurface-engine.jks"
-  KEY_ALIAS="coresurface_engine"
-  KS_PASS="coresurface"
-  KEY_PASS="coresurface"
+fi
+
+if [ ! -r "$KEYSTORE" ]; then
+  mkdir -p "$(dirname -- "$KEYSTORE")"
   keytool -genkeypair \
     -v \
     -keystore "$KEYSTORE" \
@@ -153,6 +179,7 @@ else
     -storepass "$KS_PASS" \
     -keypass "$KEY_PASS" \
     -dname "CN=CoreSurfaceEngine, OU=LuminousLivingFlow, O=Mystivara, L=Unknown, S=Unknown, C=ID" >/dev/null 2>&1
+  chmod 0600 "$KEYSTORE" 2>/dev/null || true
 fi
 
 FINAL_APK="$OUT_DIR/$APK_NAME"
@@ -170,7 +197,8 @@ rm -f "$FINAL_APK" "${FINAL_APK}.idsig"
   "$ALIGNED_APK"
 
 "$APKSIGNER_BIN" verify "$FINAL_APK" >/dev/null
+_cert_sha=$("$APKSIGNER_BIN" verify --print-certs "$FINAL_APK" 2>/dev/null | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 || true)
 rm -f "${FINAL_APK}.idsig"
 
 _size=$(wc -c < "$FINAL_APK" | tr -d ' \t\r\n')
-printf 'Built & verified CoreSurface Engine APK: %s (%s bytes)\n' "$FINAL_APK" "$_size"
+printf 'Built & verified CoreSurface Engine APK: %s (%s bytes, cert=%s)\n' "$FINAL_APK" "$_size" "${_cert_sha:-unknown}"
