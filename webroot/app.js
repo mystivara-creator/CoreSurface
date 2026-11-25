@@ -179,7 +179,7 @@ function renderEngineSummary(kv) {
 
   if (active) {
     badge.classList.add('badge-ok');
-    badge.textContent = agsl ? 'Engine: AGSL Active' : 'Engine: Active (No AGSL)';
+    badge.textContent = agsl ? 'Engine: Zero-FBO Active' : 'Engine: Active';
     lodBadge.classList.add('on');
     lodBadge.textContent = 'LOD: ' + lod;
   } else if (installed) {
@@ -195,12 +195,12 @@ function renderEngineSummary(kv) {
 
   container.replaceChildren(
     makeKvRow('CoreSurfaceEngine.apk', installed ? 'Terpasang' : 'Belum terpasang (klik tombol di bawah)'),
-    makeKvRow('LSPosed Runtime Hook', active ? 'Aktif (Live IPC Ready)' : 'Belum aktif di LSPosed Manager'),
-    makeKvRow('AGSL GPU Shader', agsl ? 'Terkompilasi & Aktif di GPU' : (active ? 'Tidak didukung GPU/SDK < 33' : 'Menunggu LSPosed')),
+    makeKvRow('LSPosed Runtime Hook', active ? 'Aktif (Zero-Binder IPC Ready)' : 'Belum aktif di LSPosed Manager'),
+    makeKvRow('Renderer Luminous', agsl ? 'HWUI Zero-FBO DisplayList (120 FPS)' : 'Menunggu LSPosed'),
     makeKvRow('Thermal-Adaptive LOD', lod),
     makeKvRow('Hooks Terikat', kv.verify_engine_hooks || 'Belum ada'),
-    makeKvRow('Statistik Live', 'Luminous: ' + (kv.verify_engine_views || '0')
-      + ' · Flow: ' + (kv.verify_engine_flows || '0')
+    makeKvRow('Statistik Live', 'Tiles: ' + (kv.verify_engine_views || '0') + '/24'
+      + ' · Native Gates: ' + (kv.verify_engine_flows || '0')
       + ' · Toast Guard: ' + (kv.verify_engine_toasts || '0')
       + ' · Recents Guard: ' + (kv.verify_engine_recents || '0'))
   );

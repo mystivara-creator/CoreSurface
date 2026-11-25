@@ -2,7 +2,7 @@
 
 **CoreSurface** adalah suite *user-space* HyperOS/MIUI **Hybrid Zero-Gimmick** yang ditulis ulang sepenuhnya dari nol (*clean-room*), menggabungkan:
 1. **Layer 1 — CoreSurface KernelSU-Next / Magisk Base:** Pondasi properti terverifikasi non-persisten (`resetprop -n`), *Dynamic `device_features` XML Patcher* fail-closed, 5 *Clean-Room RRO Overlays*, Watchdog anti-bootloop, dan *Transactional Settings Rollback*.
-2. **Layer 2 — CoreSurface Luminous & LivingFlow Engine (`CoreSurfaceEngine.apk`, ~33 KB, LSPosed):** Mesin runtime Java + **AGSL GPU `RuntimeShader`** & **VSync Spring Physics** tanpa modifikasi APK sistem, dengan hot-reload instan via `Settings.Global` IPC (**tanpa reboot**) dan **Thermal-Adaptive Visual LOD**.
+2. **Layer 2 — CoreSurface Luminous & Flagship Engine (`CoreSurfaceEngine.apk`, ~30 KB, LSPosed):** Mesin runtime Java **HWUI Zero-FBO DisplayList** (0 FBO offscreen, 120 FPS mulus) + **Native HyperOS Flagship Tier Unlock** (membuka gerbang `DeviceLevel`/`DeviceConfig`/`CpuLevel` bawaan Xiaomi tanpa bentrok Folme), dengan hot-reload instan bebas Binder via `debug.coresurface.cfg` (**tanpa reboot**) dan **Thermal-Adaptive Visual LOD**.
 
 Dirancang sebagai *sister module* (pendamping terpisah) dari **CoreFlow-Engine** dengan prinsip **Zero Coupling** & **Zero Gimmick**.
 
@@ -10,23 +10,23 @@ Dirancang sebagai *sister module* (pendamping terpisah) dari **CoreFlow-Engine**
 
 ## Prinsip Arsitektur (Anti-Gimmick)
 
-- **Zero Gimmick Policy:** Seluruh properti plasebo yang tidak dibaca binary ROM (seperti flag palsu Island/AI/AOD) telah dihapus total. Setiap lencana `Verified Active` di WebUI membutuhkan bukti runtime nyata (`getprop`, `/proc/mounts`, `cmd overlay list`, atau telemetri proses live `AGSL_COMPILED=1` & `HOOKS_BOUND` dari `SystemUI`/`MiuiHome`/`MiuiAod`).
+- **Zero Gimmick Policy:** Seluruh properti plasebo yang tidak dibaca binary ROM (seperti flag palsu Island/AI/AOD) telah dihapus total. Setiap lencana `Verified Active` di WebUI membutuhkan bukti runtime nyata (`getprop`, `/proc/mounts`, `cmd overlay list`, atau telemetri proses live `RENDERER=HWUI_ZERO_FBO` & `NATIVE_GATES` dari `SystemUI`/`MiuiHome`/`MiuiAod`).
 - **Zero Coupling dengan CoreFlow-Engine:** 100% mandiri di *user-space*. CoreSurface **tidak pernah** menyentuh `uclamp`, `thermal_zone`, `sysfs` CPU/GPU/storage, atau parameter kernel/scheduler. *Thermal-Adaptive Visual LOD* memakai API resmi Android `PowerManager.OnThermalStatusChangedListener`.
 - **Zero-Hardcode Device List:** Tidak pernah menulis codename HP secara statis. Semua deteksi menggunakan runtime `ro.mi.os.version.name`, `ro.miui.ui.version.name`, `ro.build.version.sdk`, `ro.product.device`, dan `/proc/meminfo`.
-- **Non-Persistent & Clean Rollback:** Seluruh properti wajib menggunakan **`resetprop -n`** (memori saja, tidak pernah menghasilkan `system.prop` atau menulis `/data/property`), dan semua perubahan `settings` (termasuk IPC `coresurface_engine_v1`) dibackup otomatis untuk rollback bersih.
+- **Non-Persistent & Clean Rollback:** Seluruh properti wajib menggunakan **`resetprop -n`** (memori saja, tidak pernah menghasilkan `system.prop` atau menulis `/data/property`), dan semua perubahan `settings` dibackup otomatis untuk rollback bersih.
 - **Zero Binary Blobs di Git:** Seluruh RRO Overlays (`overlays-src/`) dan `CoreSurfaceEngine.apk` (`engine-src/`) dikompilasi dan ditandatangani langsung dari source saat packaging/CI.
 
 ---
 
-## Fitur Live Engine (LSPosed — Hot-Reload Instan Tanpa Reboot)
+## Fitur Live Engine (LSPosed — Hot-Reload Instan Tanpa Reboot via `debug.coresurface.cfg`)
 
-| Kunci Fitur | Cakupan Nyata (Zero Gimmick) | Default | Catatan |
+| Kunci Fitur | Cakupan Nyata (Zero Gimmick, 120 FPS) | Default | Catatan |
 | :--- | :--- | :---: | :--- |
-| `FEAT_LUMINOUS_GLASS` | **AGSL GPU Optical Glass Shader** (`RuntimeShader`): refraksi bevel optik + dispersi kromatik halus + specular rim pada tile Control Center, slider Volume/Brightness, Notifikasi, & Folder | `auto` (SDK ≥ 33 & RAM ≥ 6 GB) | Berjalan di HWUI/Skia GPU pipeline Android 13–16; tidak membutuhkan modifikasi APK sistem. |
-| `FEAT_LUMINOUS_TILT` | **Tilt & Touch Specular Rim Light:** kilau tepi kaca bereaksi terhadap kemiringan HP (`Sensor.TYPE_GRAVITY`) & titik sentuh jari | `auto` (RAM ≥ 8 GB) | **0% idle drain** — sensor otomatis berhenti saat panel tertutup. |
-| `FEAT_LIVING_FLOW` | **LivingFlow VSync Spring Physics:** fisika pegas interuptibel (60/90/120 Hz `Choreographer`) untuk swipe Control Center ↔ Notifikasi, sentuhan tile, & animasi radial Lockscreen → Home | `auto` (ON) | Menggunakan `View.dispatchTouchEvent` non-intrusif sehingga slider kecerahan/volume tidak pernah terganggu. |
+| `FEAT_LUMINOUS_GLASS` | **Luminous Optical Glass (HWUI Zero-FBO):** bevel kaca spekular terarah + kilau atas optik pada tile Control Center, Slider, Media Card, & Folder | `auto` (SDK ≥ 33 & RAM ≥ 6 GB) | 0 FBO offscreen, maks 24 tile ter-dedup (anti nested subview), 0 polling sensor → 120 FPS tanpa lag. |
+| `FEAT_LUMINOUS_TILT` | **Touch Specular Glass Ripple:** kilau cahaya radial mengikuti titik jari saat tile ditekan | `auto` (RAM ≥ 8 GB) | **0% idle drain** — hanya aktif saat disentuh, tidak memodifikasi click/drag slider. |
+| `FEAT_LIVING_FLOW` | **Native HyperOS Flagship Tier Unlock:** membuka gerbang `DeviceLevelUtils` / `DeviceConfig` / `CpuLevelUtils` / `GpuLevelUtils` / `DeviceUtils` bawaan Xiaomi | `auto` (ON) | Menjalankan animasi flagship bawaan HyperOS tanpa bentrok Folme. |
 | `FEAT_SURGICAL_GUARD` | **HyperOS 3 Surgical Toast & Recents Guard:** memblokir blur rusak pada jendela Toast pop-up & mengganti scrim hitam Recent Apps menjadi kaca transparan | `auto` (ON) | Memperbaiki bug Toast melebar & Recent Apps hitam HyperOS 3 secara bedah tanpa mematikan blur Control Center. |
-| `FEAT_THERMAL_LOD` | **Thermal-Adaptive Visual LOD** (*CoreSurface Exclusive*): otomatis menyesuaikan tingkat shader `FULL → BALANCED → ECO` mengikuti status termal Android | `auto` (ON) | Menjaga 120 FPS tetap mulus saat perangkat hangat/gaming. |
+| `FEAT_THERMAL_LOD` | **Thermal-Adaptive Visual LOD** (*CoreSurface Exclusive*): otomatis menyesuaikan detail glass overlay `FULL → BALANCED → ECO` mengikuti status termal Android | `auto` (ON) | Menjaga 120 FPS tetap mulus saat perangkat hangat/gaming. |
 
 ---
 

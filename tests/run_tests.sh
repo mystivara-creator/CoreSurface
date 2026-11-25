@@ -791,26 +791,28 @@ assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=0" "Verifier
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LUMINOUS_GLASS=pending_lsposed" "Zero-gimmick: marks Luminous Glass as pending_lsposed when unhooked"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LIVING_FLOW=pending_lsposed" "Zero-gimmick: marks LivingFlow as pending_lsposed when unhooked"
 
-# 13b: Live telemetry present from SystemUI + MiuiHome -> verified_active with real counters!
+# 13b: Live telemetry present from SystemUI + MiuiHome -> verified_active with deduped hooks & real counters!
 cat > "$SB/sysui_telem.prop" <<'EOF'
 ENGINE_ACTIVE=1
-AGSL_COMPILED=1
+RENDERER=HWUI_ZERO_FBO
+LUMINOUS_READY=1
 LOD_TIER=FULL
-HOOKS_BOUND=ToastGuard,LuminousGlass,ControlCenterFlow,KeyguardAodFlow,TactileSpring
-VIEWS_LUMINOUS=14
+HOOKS_BOUND=ToastGuard,NativeFlagshipTier,LuminousGlass,TouchSpecular
+NATIVE_GATES=14
+VIEWS_LUMINOUS=12
 TOASTS_GUARDED=3
 RECENTS_GUARDED=0
-FLOW_ANIMS=9
 EOF
 cat > "$SB/home_telem.prop" <<'EOF'
 ENGINE_ACTIVE=1
-AGSL_COMPILED=1
+RENDERER=HWUI_ZERO_FBO
+LUMINOUS_READY=1
 LOD_TIER=FULL
-HOOKS_BOUND=HomeLivingFlow,RecentsGuard,UnlockCascade
+HOOKS_BOUND=ToastGuard,NativeFlagshipTier,RecentsGuard
+NATIVE_GATES=11
 VIEWS_LUMINOUS=2
 TOASTS_GUARDED=0
 RECENTS_GUARDED=4
-FLOW_ANIMS=6
 EOF
 
 CORESURFACE_ENGINE_INSTALLED=1 \
@@ -819,22 +821,23 @@ CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" \
 CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
   run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=1" "Verifier confirms active Engine runtime from telemetry"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_AGSL=1" "Verifier confirms AGSL GPU shader compiled"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_RENDERER=HWUI_ZERO_FBO" "Verifier records honest HWUI_ZERO_FBO renderer"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_LOD=FULL" "Verifier reports live Thermal-Adaptive LOD tier"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_VIEWS=16" "Verifier aggregates luminous views across SystemUI + MiuiHome"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=ToastGuard,NativeFlagshipTier,LuminousGlass,TouchSpecular,RecentsGuard" "Verifier deduplicates repeated hook names across SystemUI + MiuiHome"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_VIEWS=14" "Verifier aggregates luminous views across SystemUI + MiuiHome"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_TOASTS=3" "Verifier reports guarded Toast count"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_RECENTS=4" "Verifier reports guarded Recents count"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_FLOWS=15" "Verifier aggregates LivingFlow animation count"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LUMINOUS_GLASS=verified_active" "Luminous Glass verified_active only with real AGSL telemetry"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LIVING_FLOW=verified_active" "LivingFlow verified_active only with bound flow hooks"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_FLOWS=25" "Verifier aggregates real native HyperOS flagship gates count"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LUMINOUS_GLASS=verified_active" "Luminous Glass verified_active only with real HWUI telemetry"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LIVING_FLOW=verified_active" "LivingFlow verified_active only with bound NativeFlagshipTier hooks"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_SURGICAL_GUARD=verified_active" "Surgical Guard verified_active only with bound Toast/Recents hooks"
 
-# 13c: Live Engine toggle via webui_ctl pushes Settings.Global IPC IMMEDIATELY with ZERO pending reboot!
+# 13c: Live Engine toggle via webui_ctl pushes zero-Binder debug.coresurface.cfg IMMEDIATELY with ZERO pending reboot!
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   CORESURFACE_ENGINE_INSTALLED=1 CORESURFACE_ENGINE_SYSUI_TELEM="$SB/sysui_telem.prop" \
   CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
   sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_LUMINOUS_TILT 0 >/dev/null
-assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=luminous=1;tilt=0;livingflow=1;guard=1;" "Live toggle updates Settings.Global IPC instantly"
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=luminous=1;touch=0;livingflow=1;guard=1;" "Live toggle updates zero-Binder debug.coresurface.cfg via resetprop -n instantly"
 assert_file_not_contains "$SB_STATE/state.prop" "FEAT_LUMINOUS_TILT" "Live Engine toggle does NOT add to PENDING_KEYS (zero reboot required)"
 
 # 13d: SELinux-safe pm install -r -S <size> streaming in service.sh (idempotent)

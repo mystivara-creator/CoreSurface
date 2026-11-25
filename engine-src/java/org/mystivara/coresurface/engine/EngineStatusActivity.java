@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -32,16 +31,12 @@ public final class EngineStatusActivity extends Activity {
         root.setPadding(pad, pad * 2, pad, pad);
 
         boolean active = isModuleActive();
-        String liveCfg = "";
-        try {
-            String raw = Settings.Global.getString(getContentResolver(), EngineConfig.SETTINGS_KEY);
-            liveCfg = raw != null ? raw : "(default — open CoreSurface WebUI to customize live)";
-        } catch (Throwable ignored) {
-            liveCfg = "(unavailable)";
-        }
+        EngineConfig cfg = new EngineConfig();
+        cfg.attachContext(this);
+        String liveCfg = cfg.getRawConfig();
 
         TextView title = new TextView(this);
-        title.setText("CoreSurface Luminous & LivingFlow Engine v1.0.0");
+        title.setText("CoreSurface Zero-FBO Luminous & Flagship Engine v1.0.0");
         title.setTextColor(Color.parseColor("#F1F5F9"));
         title.setTextSize(19.0f);
         root.addView(title);
@@ -51,7 +46,7 @@ public final class EngineStatusActivity extends Activity {
         status.setTextColor(active ? Color.parseColor("#34D399") : Color.parseColor("#FBBF24"));
         status.setTextSize(15.0f);
         status.setText(active
-                ? "STATUS: ACTIVE IN LSPOSED (Zero-Gimmick Runtime Ready)"
+                ? "STATUS: ACTIVE IN LSPOSED (Zero-FBO 120 FPS Runtime)"
                 : "STATUS: ENABLE MODULE IN LSPOSED MANAGER\nScope: System UI, System Launcher (MiuiHome), Always-on Display");
         root.addView(status);
 
@@ -59,12 +54,10 @@ public final class EngineStatusActivity extends Activity {
         details.setTextColor(Color.parseColor("#94A3B8"));
         details.setTextSize(13.5f);
         details.setText(
-                "Android SDK: " + Build.VERSION.SDK_INT + " (AGSL RuntimeShader "
-                + (Build.VERSION.SDK_INT >= 33 ? "Supported" : "Requires Android 13+") + ")\n\n"
-                + "Live IPC Config (Settings.Global):\n" + liveCfg + "\n\n"
-                + "All toggles (Luminous Glass, Tilt Specular Light, LivingFlow Spring Physics, "
-                + "Surgical Toast/Recents Guard, Thermal-Adaptive LOD) hot-reload instantly from "
-                + "KernelSU-Next -> Modules -> CoreSurface -> Open WebUI (no reboot needed)."
+                "Android SDK: " + Build.VERSION.SDK_INT + " · Renderer: HWUI Zero-FBO DisplayList\n\n"
+                + "Live IPC Config (debug.coresurface.cfg):\n" + liveCfg + "\n\n"
+                + "All controls hot-reload without Binder errors and without reboot from "
+                + "KernelSU-Next -> Modules -> CoreSurface -> Open WebUI."
         );
         root.addView(details);
 

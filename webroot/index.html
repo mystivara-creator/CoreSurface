@@ -74,20 +74,20 @@
     </section>
 
     <section class="card">
-      <h2>⚡ Live Luminous &amp; LivingFlow Controls (Tanpa Reboot)</h2>
-      <p class="hint">Perubahan di bagian ini dikirim instan via <code>Settings.Global</code> IPC ke GPU Shader &amp; Spring Engine (&lt; 10 ms) — tidak perlu reboot.</p>
+      <h2>⚡ Live Luminous &amp; Flagship Controls (Tanpa Reboot)</h2>
+      <p class="hint">Perubahan dikirim instan lewat properti memori non-persisten <code>debug.coresurface.cfg</code> (bebas error Binder Android 16) — aktif &lt; 1 detik tanpa reboot.</p>
 
       <div class="feat-list">
         <div class="feat-card" data-feat="FEAT_LUMINOUS_GLASS">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Luminous Optical Glass (AGSL GPU Shader)</h3>
+              <h3>Luminous Optical Glass (Zero-FBO 120 FPS)</h3>
               <div class="meta-pills">
-                <span class="load-pill load-med">GPU AGSL</span>
+                <span class="load-pill load-low">HWUI Zero-FBO</span>
                 <span id="verify-FEAT_LUMINOUS_GLASS" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Refraksi tepi kaca optik asli + dispersi kromatik halus + <em>specular rim</em> real-time di tile Control Center, Slider, Notifikasi, &amp; Folder (Android 13–16).</p>
+            <p class="feat-desc">Bevel kaca spekular &amp; kilau atas optik nyata pada tile Control Center, Slider, Media Card, &amp; Folder (maks 24 tile ter-dedup, 0 FBO, 0 sensor storm → 120 FPS mulus).</p>
           </div>
           <div class="seg-group" data-key="FEAT_LUMINOUS_GLASS" role="group" aria-label="Luminous Optical Glass">
             <button type="button" data-val="auto">Auto</button>
@@ -99,15 +99,15 @@
         <div class="feat-card" data-feat="FEAT_LUMINOUS_TILT">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Tilt &amp; Touch Specular Rim Light</h3>
+              <h3>Touch Specular Glass Ripple</h3>
               <div class="meta-pills">
-                <span class="load-pill load-low">Zero Idle Drain</span>
+                <span class="load-pill load-low">0% Idle Drain</span>
                 <span id="verify-FEAT_LUMINOUS_TILT" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Kilau cahaya tepi kaca bergeser mengikuti kemiringan HP (sensor gravity hanya aktif saat panel terbuka) dan titik sentuhan jari.</p>
+            <p class="feat-desc">Kilau cahaya radial mengikuti titik jari hanya saat tile ditekan (tanpa polling sensor latar belakang).</p>
           </div>
-          <div class="seg-group" data-key="FEAT_LUMINOUS_TILT" role="group" aria-label="Tilt Specular Rim Light">
+          <div class="seg-group" data-key="FEAT_LUMINOUS_TILT" role="group" aria-label="Touch Specular Ripple">
             <button type="button" data-val="auto">Auto</button>
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
@@ -117,15 +117,15 @@
         <div class="feat-card" data-feat="FEAT_LIVING_FLOW">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>LivingFlow VSync Spring Physics</h3>
+              <h3>Native HyperOS Flagship Tier Unlock</h3>
               <div class="meta-pills">
-                <span class="load-pill load-low">120Hz VSync</span>
+                <span class="load-pill load-low">Zero Conflict</span>
                 <span id="verify-FEAT_LIVING_FLOW" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Fisika pegas interuptibel untuk swipe Control Center ↔ Notifikasi, sentuhan elastis tile, &amp; animasi radial bertingkat Lockscreen → Home.</p>
+            <p class="feat-desc">Membuka gerbang <code>DeviceLevel</code> / <code>DeviceConfig</code> / <code>CpuLevel</code> bawaan Xiaomi di <code>SystemUI</code> &amp; <code>MiuiHome</code> agar animasi Lockscreen→Home &amp; Control Center flagship berjalan native tanpa bentrok Folme.</p>
           </div>
-          <div class="seg-group" data-key="FEAT_LIVING_FLOW" role="group" aria-label="LivingFlow Spring Physics">
+          <div class="seg-group" data-key="FEAT_LIVING_FLOW" role="group" aria-label="Native HyperOS Flagship Tier">
             <button type="button" data-val="auto">Auto</button>
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>

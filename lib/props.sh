@@ -208,6 +208,24 @@ cs_apply_feat_display_hz() {
   cs_set_prop "FEAT_DISPLAY_HZ" "ro.vendor.fps.switch.default" "true"
 }
 
+cs_sync_engine_live_prop() {
+  cs_find_resetprop || return 0
+  _cs_live_cfg=$(printf 'luminous=%s;touch=%s;livingflow=%s;guard=%s;aodflow=%s;thermallod=%s' \
+    "${EFF_FEAT_LUMINOUS_GLASS:-0}" \
+    "${EFF_FEAT_LUMINOUS_TILT:-0}" \
+    "${EFF_FEAT_LIVING_FLOW:-0}" \
+    "${EFF_FEAT_SURGICAL_GUARD:-0}" \
+    "${EFF_FEAT_AOD_UNLOCK:-0}" \
+    "${EFF_FEAT_THERMAL_LOD:-1}")
+
+  if [ "$CS_RESETPROP_MODE" = "magisk" ]; then
+    "$CS_RESETPROP_BIN" resetprop -n "debug.coresurface.cfg" "$_cs_live_cfg" 2>/dev/null || true
+  else
+    "$CS_RESETPROP_BIN" -n "debug.coresurface.cfg" "$_cs_live_cfg" 2>/dev/null || true
+  fi
+  return 0
+}
+
 cs_apply_all_props() {
   _cs_ap_moddir=${1:-}
   cs_watchdog_init_dir || return 1
@@ -225,6 +243,9 @@ cs_apply_all_props() {
 
   # Purge any leaked persist.* properties from earlier preview builds
   cs_purge_leaked_persist_props || true
+
+  # Push zero-Binder non-persistent live Engine config before SystemUI/MiuiHome start
+  cs_sync_engine_live_prop || true
 
   cs_apply_feat_animations
   cs_apply_feat_blur

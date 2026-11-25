@@ -289,6 +289,12 @@ cs_xml_apply() {
   cp "$_cs_spec" "$CS_XML_PATCH_LIST" 2>/dev/null || true
   rm -f "$_cs_spec"
 
+  # On soft reboot, the target XML may already be bind-mounted; unmount cleanly first
+  _cs_mounts=${CORESURFACE_PROC_MOUNTS:-/proc/mounts}
+  if [ -r "$_cs_mounts" ] && awk -v target="$CS_XML_DISCOVERED" '$2 == target { found=1; exit } END { exit(found ? 0 : 1) }' "$_cs_mounts" 2>/dev/null; then
+    umount -l "$CS_XML_DISCOVERED" 2>/dev/null || umount "$CS_XML_DISCOVERED" 2>/dev/null || true
+  fi
+
   # Perform bind-mount onto original path
   if mount --bind "$CS_XML_WORK_FILE" "$CS_XML_DISCOVERED" 2>/dev/null; then
     cs_state_set "XML_STATUS" "mounted"

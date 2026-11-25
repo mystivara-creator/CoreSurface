@@ -66,10 +66,34 @@ cs_telem_get() {
   fi
 }
 
+cs_append_unique_csv() {
+  _cs_au_cur=$1
+  _cs_au_add=$2
+  _cs_au_old_ifs=$IFS
+  IFS=','
+  for _cs_au_item in $_cs_au_add; do
+    IFS=$_cs_au_old_ifs
+    [ -n "$_cs_au_item" ] || continue
+    case ",$_cs_au_cur," in
+      *",$_cs_au_item,"*) ;;
+      *)
+        if [ -z "$_cs_au_cur" ]; then
+          _cs_au_cur="$_cs_au_item"
+        else
+          _cs_au_cur="${_cs_au_cur},${_cs_au_item}"
+        fi
+        ;;
+    esac
+  done
+  IFS=$_cs_au_old_ifs
+  CS_AU_OUT="$_cs_au_cur"
+}
+
 cs_verify_engine() {
   CS_V_ENGINE_INSTALLED="0"
   CS_V_ENGINE_ACTIVE="0"
   CS_V_ENGINE_AGSL="0"
+  CS_V_ENGINE_RENDERER="NONE"
   CS_V_ENGINE_LOD="N/A"
   CS_V_ENGINE_HOOKS=""
   CS_V_ENGINE_VIEWS=0
@@ -126,8 +150,13 @@ cs_verify_engine() {
     [ "$_cs_act" = "1" ] || continue
 
     CS_V_ENGINE_ACTIVE="1"
+    _cs_rend=$(cs_telem_get "$_cs_tf" "RENDERER")
+    if [ -n "$_cs_rend" ] && [ "$CS_V_ENGINE_RENDERER" = "NONE" ]; then
+      CS_V_ENGINE_RENDERER="$_cs_rend"
+    fi
+    _cs_lr=$(cs_telem_get "$_cs_tf" "LUMINOUS_READY")
     _cs_agsl=$(cs_telem_get "$_cs_tf" "AGSL_COMPILED")
-    if [ "$_cs_agsl" = "1" ]; then
+    if [ "$_cs_lr" = "1" ] || [ "$_cs_agsl" = "1" ]; then
       CS_V_ENGINE_AGSL="1"
     fi
 
@@ -138,21 +167,23 @@ cs_verify_engine() {
 
     _cs_hk=$(cs_telem_get "$_cs_tf" "HOOKS_BOUND")
     if [ -n "$_cs_hk" ]; then
-      if [ -z "$CS_V_ENGINE_HOOKS" ]; then
-        CS_V_ENGINE_HOOKS="$_cs_hk"
-      else
-        CS_V_ENGINE_HOOKS="${CS_V_ENGINE_HOOKS},${_cs_hk}"
-      fi
+      cs_append_unique_csv "$CS_V_ENGINE_HOOKS" "$_cs_hk"
+      CS_V_ENGINE_HOOKS="$CS_AU_OUT"
     fi
 
     _cs_nv=$(cs_telem_get "$_cs_tf" "VIEWS_LUMINOUS")
     _cs_nt=$(cs_telem_get "$_cs_tf" "TOASTS_GUARDED")
     _cs_nr=$(cs_telem_get "$_cs_tf" "RECENTS_GUARDED")
+    _cs_ng=$(cs_telem_get "$_cs_tf" "NATIVE_GATES")
     _cs_nf=$(cs_telem_get "$_cs_tf" "FLOW_ANIMS")
     cs_is_uint "$_cs_nv" && CS_V_ENGINE_VIEWS=$((CS_V_ENGINE_VIEWS + _cs_nv))
     cs_is_uint "$_cs_nt" && CS_V_ENGINE_TOASTS=$((CS_V_ENGINE_TOASTS + _cs_nt))
     cs_is_uint "$_cs_nr" && CS_V_ENGINE_RECENTS=$((CS_V_ENGINE_RECENTS + _cs_nr))
-    cs_is_uint "$_cs_nf" && CS_V_ENGINE_FLOWS=$((CS_V_ENGINE_FLOWS + _cs_nf))
+    if cs_is_uint "$_cs_ng"; then
+      CS_V_ENGINE_FLOWS=$((CS_V_ENGINE_FLOWS + _cs_ng))
+    elif cs_is_uint "$_cs_nf"; then
+      CS_V_ENGINE_FLOWS=$((CS_V_ENGINE_FLOWS + _cs_nf))
+    fi
   done
 
   # 3. Map honest per-feature verification for Layer 2 Engine capabilities
@@ -174,7 +205,7 @@ cs_verify_engine() {
     CS_V_LUMINOUS_GLASS="$_cs_base_eng"
   fi
 
-  # FEAT_LUMINOUS_TILT
+  # FEAT_LUMINOUS_TILT (Touch Specular Highlight)
   if [ "$CFG_FEAT_LUMINOUS_TILT" = "0" ]; then
     CS_V_LUMINOUS_TILT="disabled"
   elif [ "$EFF_FEAT_LUMINOUS_TILT" != "1" ]; then
@@ -185,14 +216,14 @@ cs_verify_engine() {
     CS_V_LUMINOUS_TILT="$_cs_base_eng"
   fi
 
-  # FEAT_LIVING_FLOW
+  # FEAT_LIVING_FLOW (Native HyperOS Flagship DeviceLevel & Animation Gates)
   if [ "$CFG_FEAT_LIVING_FLOW" = "0" ]; then
     CS_V_LIVING_FLOW="disabled"
   elif [ "$EFF_FEAT_LIVING_FLOW" != "1" ]; then
     CS_V_LIVING_FLOW="skipped"
   elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
     case ",$CS_V_ENGINE_HOOKS," in
-      *,ControlCenterFlow,*|*,HomeLivingFlow,*|*,UnlockCascade,*)
+      *,NativeFlagshipTier,*|*,ControlCenterFlow,*|*,HomeLivingFlow,*)
         CS_V_LIVING_FLOW="verified_active"
         ;;
       *)
@@ -522,6 +553,7 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_ENGINE_INSTALLED" "$CS_V_ENGINE_INSTALLED"
   cs_verify_set "VERIFY_ENGINE_ACTIVE" "$CS_V_ENGINE_ACTIVE"
   cs_verify_set "VERIFY_ENGINE_AGSL" "$CS_V_ENGINE_AGSL"
+  cs_verify_set "VERIFY_ENGINE_RENDERER" "$CS_V_ENGINE_RENDERER"
   cs_verify_set "VERIFY_ENGINE_LOD" "$CS_V_ENGINE_LOD"
   cs_verify_set "VERIFY_ENGINE_HOOKS" "$CS_V_ENGINE_HOOKS"
   cs_verify_set "VERIFY_ENGINE_VIEWS" "$CS_V_ENGINE_VIEWS"

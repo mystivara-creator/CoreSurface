@@ -9,7 +9,7 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /**
- * CoreSurface Luminous & LivingFlow Engine - LSPosed Entry Point.
+ * CoreSurface Zero-FBO Luminous & Native Flagship Engine - LSPosed Entry Point.
  * Strictly scoped to com.android.systemui, com.miui.home, and com.miui.aod
  * (never hooks system_server -> zero bootloop risk).
  */
@@ -46,20 +46,22 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
             TelemetryReporter telemetry = new TelemetryReporter(pkg);
             ThermalLodController lodController = new ThermalLodController(config, telemetry);
             SurgicalBlurGuardHook blurGuard = new SurgicalBlurGuardHook(config, telemetry);
+            DeviceLevelUnlockHook deviceLevelHook = new DeviceLevelUnlockHook(config, telemetry);
 
             if (PKG_SYSTEMUI.equals(pkg)) {
-                LuminousShaderEngine shaderEngine = new LuminousShaderEngine(config, lodController, telemetry);
-                new LivingFlowSystemUIHook(config, lodController, shaderEngine, blurGuard, telemetry)
+                LuminousOverlayEngine luminousEngine = new LuminousOverlayEngine(config, lodController, telemetry);
+                new LivingFlowSystemUIHook(config, lodController, luminousEngine, blurGuard, deviceLevelHook, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized in com.android.systemui");
+                XposedBridge.log("CoreSurfaceEngine: initialized Zero-FBO Luminous + Native Flagship in com.android.systemui");
             } else if (PKG_HOME.equals(pkg)) {
-                LuminousShaderEngine shaderEngine = new LuminousShaderEngine(config, lodController, telemetry);
-                new LivingFlowHomeHook(config, lodController, shaderEngine, blurGuard, telemetry)
+                LuminousOverlayEngine luminousEngine = new LuminousOverlayEngine(config, lodController, telemetry);
+                new LivingFlowHomeHook(config, lodController, luminousEngine, blurGuard, deviceLevelHook, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized in com.miui.home");
+                XposedBridge.log("CoreSurfaceEngine: initialized Native Flagship + RecentsGuard in com.miui.home");
             } else if (PKG_AOD.equals(pkg)) {
-                new LivingFlowAodHook(config, lodController, telemetry).install();
-                XposedBridge.log("CoreSurfaceEngine: initialized in com.miui.aod");
+                new LivingFlowAodHook(config, lodController, deviceLevelHook, telemetry)
+                        .install(lpparam.classLoader);
+                XposedBridge.log("CoreSurfaceEngine: initialized Native Flagship in com.miui.aod");
             }
         } catch (Throwable t) {
             XposedBridge.log("CoreSurfaceEngine: safe isolation catch in " + pkg + ": " + t);

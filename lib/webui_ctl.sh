@@ -274,15 +274,17 @@ cs_cmd_set() {
     cs_detect_ram_tier
     cs_load_config "$CS_CONFIG_FILE"
     cs_resolve_features
+    cs_sync_engine_live_prop || true
     cs_settings_sync_engine_ipc || true
     cs_verifier_run || true
-    cs_log "WebUI live-updated ${_cs_set_k}=${_cs_set_v} (instant reload via Settings.Global IPC, 0 reboot)."
-    printf 'LIVE Applied %s=%s (langsung aktif tanpa reboot!).\n' "$_cs_set_k" "$_cs_set_v"
+    cs_log "WebUI live-updated ${_cs_set_k}=${_cs_set_v} (instant reload via debug.coresurface.cfg, 0 reboot)."
+    printf 'LIVE Applied %s=%s (langsung aktif < 1 detik tanpa reboot!).\n' "$_cs_set_k" "$_cs_set_v"
     return 0
   fi
 
   cs_sync_rro_for_next_boot || true
   if [ "$_cs_set_k" = "FEAT_AOD_UNLOCK" ]; then
+    cs_sync_engine_live_prop || true
     cs_settings_sync_engine_ipc || true
   fi
 
@@ -351,6 +353,7 @@ cs_cmd_preset() {
   esac
 
   cs_sync_rro_for_next_boot || true
+  cs_sync_engine_live_prop || true
   cs_settings_sync_all || true
   cs_verifier_run || true
   cs_state_set "PENDING_KEYS" "FEAT_BLUR,FEAT_ANIMATIONS,FEAT_XML_PATCHER,FEAT_RRO_OVERLAYS,FEAT_VIDEO_DEPTH,FEAT_MULTITASK,FEAT_DISPLAY_HZ"
@@ -364,6 +367,7 @@ cs_cmd_hot_sync() {
   cs_detect_ram_tier
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
+  cs_sync_engine_live_prop || true
   cs_settings_sync_all || true
   cs_verifier_run || true
   cs_log "WebUI triggered instant Live Engine + settings hot-sync & re-verification."

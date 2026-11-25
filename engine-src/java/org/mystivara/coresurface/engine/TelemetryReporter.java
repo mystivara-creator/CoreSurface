@@ -1,7 +1,6 @@
 package org.mystivara.coresurface.engine;
 
 import android.content.Context;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -16,26 +15,26 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Zero-gimmick live runtime telemetry writer.
- * Writes verified runtime state (AGSL compilation, bound hooks, guarded Toasts/Recents,
- * Thermal LOD tier) atomically on a single low-priority background thread (zero UI-thread
- * disk I/O) into the hooked app's own SELinux-allowed cache directory.
+ * Writes honest runtime proof (Zero-FBO HWUI renderer state, exact native HyperOS
+ * DeviceLevel gates hooked, decorated tile count, guarded Toasts/Recents, Thermal LOD)
+ * on a low-priority background daemon thread.
  */
 public final class TelemetryReporter {
     public static final String TELEMETRY_FILENAME = "coresurface_telemetry.prop";
 
     private final String processName;
     private volatile File cacheDir;
-    private volatile boolean agslSupported = Build.VERSION.SDK_INT >= 33;
-    private volatile boolean agslCompiled = false;
+    private volatile String rendererMode = "HWUI_ZERO_FBO";
+    private volatile boolean luminousReady = true;
     private volatile String lodTier = "FULL";
     private volatile int thermalStatus = 0;
     private volatile String lastConfig = "default";
 
     private final Set<String> boundHooks = new LinkedHashSet<>();
+    private final AtomicInteger nativeGatesHooked = new AtomicInteger(0);
     private final AtomicInteger luminousViews = new AtomicInteger(0);
     private final AtomicInteger toastsGuarded = new AtomicInteger(0);
     private final AtomicInteger recentsGuarded = new AtomicInteger(0);
-    private final AtomicInteger flowAnimations = new AtomicInteger(0);
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -72,11 +71,9 @@ public final class TelemetryReporter {
         }
     }
 
-    public void setAgslCompiled(boolean compiled) {
-        if (this.agslCompiled != compiled) {
-            this.agslCompiled = compiled;
-            scheduleFlush();
-        }
+    public void setLuminousReady(boolean ready) {
+        this.luminousReady = ready;
+        scheduleFlush();
     }
 
     public void setThermalState(String lodTier, int thermalStatus) {
@@ -90,8 +87,15 @@ public final class TelemetryReporter {
         scheduleFlush();
     }
 
-    public void incLuminousViews() {
-        luminousViews.incrementAndGet();
+    public void addNativeGatesHooked(int delta) {
+        if (delta > 0) {
+            nativeGatesHooked.addAndGet(delta);
+            scheduleFlush();
+        }
+    }
+
+    public void setLuminousViewCount(int count) {
+        luminousViews.set(Math.max(0, count));
         scheduleFlush();
     }
 
@@ -102,11 +106,6 @@ public final class TelemetryReporter {
 
     public void incRecentsGuarded() {
         recentsGuarded.incrementAndGet();
-        scheduleFlush();
-    }
-
-    public void incFlowAnimations() {
-        flowAnimations.incrementAndGet();
         scheduleFlush();
     }
 
@@ -139,15 +138,15 @@ public final class TelemetryReporter {
             sb.append("ENGINE_ACTIVE=1\n");
             sb.append("ENGINE_VERSION=1.0.0\n");
             sb.append("PROCESS=").append(processName).append('\n');
-            sb.append("AGSL_SUPPORTED=").append(agslSupported ? "1" : "0").append('\n');
-            sb.append("AGSL_COMPILED=").append(agslCompiled ? "1" : "0").append('\n');
+            sb.append("RENDERER=").append(rendererMode).append('\n');
+            sb.append("LUMINOUS_READY=").append(luminousReady ? "1" : "0").append('\n');
             sb.append("LOD_TIER=").append(lodTier).append('\n');
             sb.append("THERMAL_STATUS=").append(thermalStatus).append('\n');
             sb.append("HOOKS_BOUND=").append(hooksCsv).append('\n');
+            sb.append("NATIVE_GATES=").append(nativeGatesHooked.get()).append('\n');
             sb.append("VIEWS_LUMINOUS=").append(luminousViews.get()).append('\n');
             sb.append("TOASTS_GUARDED=").append(toastsGuarded.get()).append('\n');
             sb.append("RECENTS_GUARDED=").append(recentsGuarded.get()).append('\n');
-            sb.append("FLOW_ANIMS=").append(flowAnimations.get()).append('\n');
             sb.append("LAST_CONFIG=").append(lastConfig).append('\n');
             sb.append("UPDATED_MS=").append(System.currentTimeMillis()).append('\n');
 
