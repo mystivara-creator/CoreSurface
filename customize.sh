@@ -83,11 +83,11 @@ if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ] && 
   fi
 fi
 
-# Stage clean-room CoreSurface Luminous & LivingFlow Engine APK for automatic install after boot
+# Stage clean-room CoreSurface Flagship Motion Engine APK for automatic install after boot
 if [ -r "$_cs_modpath/engine/CoreSurfaceEngine.apk" ]; then
   cp "$_cs_modpath/engine/CoreSurfaceEngine.apk" "$_cs_state_dir/CoreSurfaceEngine.apk" 2>/dev/null || true
   chmod 0644 "$_cs_state_dir/CoreSurfaceEngine.apk" 2>/dev/null || true
-  _cs_ui_print "- Staged CoreSurfaceEngine.apk (AGSL Luminous & LivingFlow LSPosed Engine)"
+  _cs_ui_print "- Staged CoreSurfaceEngine.apk (Pure Flagship Motion & Experience LSPosed Engine)"
 fi
 
 # Reset boot strikes cleanly on fresh install or upgrade
@@ -106,5 +106,5 @@ _cs_set_exec "$_cs_modpath/lib/verifier.sh"
 _cs_set_exec "$_cs_modpath/lib/webui_ctl.sh"
 
 _cs_ui_print "- Watchdog armed (auto safe-mode disable on 2 consecutive failed boots)"
-_cs_ui_print "- Hybrid Architecture: Zero-Gimmick Base + AGSL Luminous & LivingFlow Engine"
-_cs_ui_print "- Enable 'CoreSurface Engine' in LSPosed (SystemUI, MiuiHome, MiuiAod) for live GPU shaders"
+_cs_ui_print "- Architecture: Zero-Gimmick Base + Native Folme Motion Engine (100% Original UI)"
+_cs_ui_print "- Enable 'CoreSurface Engine' in LSPosed (SystemUI, MiuiHome, MiuiAod) for live motion curves"

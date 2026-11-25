@@ -125,9 +125,8 @@ cs_cmd_status() {
   printf 'coreflow_guard=%s\n' "$_cs_cf_guard"
   printf 'pending_keys=%s\n' "${_cs_pending_keys:-}"
 
-  printf 'cfg_feat_luminous_glass=%s\n' "$CFG_FEAT_LUMINOUS_GLASS"
-  printf 'cfg_feat_luminous_tilt=%s\n' "$CFG_FEAT_LUMINOUS_TILT"
-  printf 'cfg_feat_living_flow=%s\n' "$CFG_FEAT_LIVING_FLOW"
+  printf 'cfg_feat_motion_profile=%s\n' "$CFG_FEAT_MOTION_PROFILE"
+  printf 'cfg_feat_native_tier=%s\n' "$CFG_FEAT_NATIVE_TIER"
   printf 'cfg_feat_surgical_guard=%s\n' "$CFG_FEAT_SURGICAL_GUARD"
   printf 'cfg_feat_thermal_lod=%s\n' "$CFG_FEAT_THERMAL_LOD"
   printf 'cfg_feat_blur=%s\n' "$CFG_FEAT_BLUR"
@@ -141,9 +140,8 @@ cs_cmd_status() {
   printf 'cfg_feat_gallery_pro=%s\n' "$CFG_FEAT_GALLERY_PRO"
   printf 'cfg_feat_aod_unlock=%s\n' "$CFG_FEAT_AOD_UNLOCK"
 
-  printf 'eff_feat_luminous_glass=%s\n' "$EFF_FEAT_LUMINOUS_GLASS"
-  printf 'eff_feat_luminous_tilt=%s\n' "$EFF_FEAT_LUMINOUS_TILT"
-  printf 'eff_feat_living_flow=%s\n' "$EFF_FEAT_LIVING_FLOW"
+  printf 'eff_feat_motion_profile=%s\n' "$EFF_FEAT_MOTION_PROFILE"
+  printf 'eff_feat_native_tier=%s\n' "$EFF_FEAT_NATIVE_TIER"
   printf 'eff_feat_surgical_guard=%s\n' "$EFF_FEAT_SURGICAL_GUARD"
   printf 'eff_feat_thermal_lod=%s\n' "$EFF_FEAT_THERMAL_LOD"
   printf 'eff_feat_blur=%s\n' "$EFF_FEAT_BLUR"
@@ -168,17 +166,18 @@ cs_cmd_status() {
 
   printf 'verify_engine_installed=%s\n' "$(cs_verify_get VERIFY_ENGINE_INSTALLED)"
   printf 'verify_engine_active=%s\n' "$(cs_verify_get VERIFY_ENGINE_ACTIVE)"
-  printf 'verify_engine_agsl=%s\n' "$(cs_verify_get VERIFY_ENGINE_AGSL)"
+  printf 'verify_engine_mode=%s\n' "$(cs_verify_get VERIFY_ENGINE_MODE)"
+  printf 'verify_engine_motion=%s\n' "$(cs_verify_get VERIFY_ENGINE_MOTION)"
   printf 'verify_engine_lod=%s\n' "$(cs_verify_get VERIFY_ENGINE_LOD)"
   printf 'verify_engine_hooks=%s\n' "$(cs_verify_get VERIFY_ENGINE_HOOKS)"
-  printf 'verify_engine_views=%s\n' "$(cs_verify_get VERIFY_ENGINE_VIEWS)"
+  printf 'verify_engine_native_gates=%s\n' "$(cs_verify_get VERIFY_ENGINE_NATIVE_GATES)"
+  printf 'verify_engine_folme_hooks=%s\n' "$(cs_verify_get VERIFY_ENGINE_FOLME_HOOKS)"
+  printf 'verify_engine_springs=%s\n' "$(cs_verify_get VERIFY_ENGINE_SPRINGS)"
   printf 'verify_engine_toasts=%s\n' "$(cs_verify_get VERIFY_ENGINE_TOASTS)"
   printf 'verify_engine_recents=%s\n' "$(cs_verify_get VERIFY_ENGINE_RECENTS)"
-  printf 'verify_engine_flows=%s\n' "$(cs_verify_get VERIFY_ENGINE_FLOWS)"
 
-  printf 'verify_feat_luminous_glass=%s\n' "$(cs_verify_get VERIFY_FEAT_LUMINOUS_GLASS)"
-  printf 'verify_feat_luminous_tilt=%s\n' "$(cs_verify_get VERIFY_FEAT_LUMINOUS_TILT)"
-  printf 'verify_feat_living_flow=%s\n' "$(cs_verify_get VERIFY_FEAT_LIVING_FLOW)"
+  printf 'verify_feat_motion_profile=%s\n' "$(cs_verify_get VERIFY_FEAT_MOTION_PROFILE)"
+  printf 'verify_feat_native_tier=%s\n' "$(cs_verify_get VERIFY_FEAT_NATIVE_TIER)"
   printf 'verify_feat_surgical_guard=%s\n' "$(cs_verify_get VERIFY_FEAT_SURGICAL_GUARD)"
   printf 'verify_feat_thermal_lod=%s\n' "$(cs_verify_get VERIFY_FEAT_THERMAL_LOD)"
   printf 'verify_feat_blur=%s\n' "$(cs_verify_get VERIFY_FEAT_BLUR)"
@@ -232,7 +231,17 @@ cs_cmd_set() {
   _cs_is_live="0"
 
   case "$_cs_set_k" in
-    FEAT_LUMINOUS_GLASS|FEAT_LUMINOUS_TILT|FEAT_LIVING_FLOW|FEAT_SURGICAL_GUARD|FEAT_THERMAL_LOD)
+    FEAT_MOTION_PROFILE)
+      _cs_is_live="1"
+      case "$_cs_set_v" in
+        hyperos4|silk|0) ;;
+        *)
+          printf 'Invalid value for %s: %s (expected hyperos4|silk|0)\n' "$_cs_set_k" "$_cs_set_v" >&2
+          return 1
+          ;;
+      esac
+      ;;
+    FEAT_NATIVE_TIER|FEAT_SURGICAL_GUARD|FEAT_THERMAL_LOD)
       _cs_is_live="1"
       case "$_cs_set_v" in
         auto|1|0) ;;
@@ -283,11 +292,6 @@ cs_cmd_set() {
   fi
 
   cs_sync_rro_for_next_boot || true
-  if [ "$_cs_set_k" = "FEAT_AOD_UNLOCK" ]; then
-    cs_sync_engine_live_prop || true
-    cs_settings_sync_engine_ipc || true
-  fi
-
   cs_add_pending_key "$_cs_set_k"
   cs_log "WebUI updated ${_cs_set_k}=${_cs_set_v} (reboot required for early-boot props/XML/RRO)."
   printf 'Saved %s=%s. Reboot required for early-boot props/XML/RRO.\n' "$_cs_set_k" "$_cs_set_v"
@@ -299,9 +303,8 @@ cs_cmd_preset() {
 
   case "$_cs_preset" in
     stock-safe)
-      cs_write_config_key "FEAT_LUMINOUS_GLASS" "0"
-      cs_write_config_key "FEAT_LUMINOUS_TILT" "0"
-      cs_write_config_key "FEAT_LIVING_FLOW" "auto"
+      cs_write_config_key "FEAT_MOTION_PROFILE" "0"
+      cs_write_config_key "FEAT_NATIVE_TIER" "0"
       cs_write_config_key "FEAT_SURGICAL_GUARD" "1"
       cs_write_config_key "FEAT_THERMAL_LOD" "1"
       cs_write_config_key "FEAT_BLUR" "0"
@@ -316,9 +319,8 @@ cs_cmd_preset() {
       cs_write_config_key "FEAT_AOD_UNLOCK" "0"
       ;;
     balanced)
-      cs_write_config_key "FEAT_LUMINOUS_GLASS" "auto"
-      cs_write_config_key "FEAT_LUMINOUS_TILT" "auto"
-      cs_write_config_key "FEAT_LIVING_FLOW" "auto"
+      cs_write_config_key "FEAT_MOTION_PROFILE" "hyperos4"
+      cs_write_config_key "FEAT_NATIVE_TIER" "auto"
       cs_write_config_key "FEAT_SURGICAL_GUARD" "auto"
       cs_write_config_key "FEAT_THERMAL_LOD" "auto"
       cs_write_config_key "FEAT_BLUR" "auto"
@@ -333,9 +335,8 @@ cs_cmd_preset() {
       cs_write_config_key "FEAT_AOD_UNLOCK" "0"
       ;;
     flagship-max)
-      cs_write_config_key "FEAT_LUMINOUS_GLASS" "1"
-      cs_write_config_key "FEAT_LUMINOUS_TILT" "1"
-      cs_write_config_key "FEAT_LIVING_FLOW" "1"
+      cs_write_config_key "FEAT_MOTION_PROFILE" "silk"
+      cs_write_config_key "FEAT_NATIVE_TIER" "1"
       cs_write_config_key "FEAT_SURGICAL_GUARD" "1"
       cs_write_config_key "FEAT_THERMAL_LOD" "1"
       cs_write_config_key "FEAT_BLUR" "1"
@@ -357,8 +358,8 @@ cs_cmd_preset() {
   cs_settings_sync_all || true
   cs_verifier_run || true
   cs_state_set "PENDING_KEYS" "FEAT_BLUR,FEAT_ANIMATIONS,FEAT_XML_PATCHER,FEAT_RRO_OVERLAYS,FEAT_VIDEO_DEPTH,FEAT_MULTITASK,FEAT_DISPLAY_HZ"
-  cs_log "WebUI applied preset=${_cs_preset} (Live Engine & settings hot-synced; reboot for early-boot props/RRO)."
-  printf 'Preset "%s" diterapkan (Luminous/LivingFlow aktif LIVE; reboot untuk prop/RRO).\n' "$_cs_preset"
+  cs_log "WebUI applied preset=${_cs_preset} (Motion Engine & settings hot-synced; reboot for early-boot props/RRO)."
+  printf 'Preset "%s" diterapkan (Profil Motion aktif LIVE; reboot untuk prop/RRO).\n' "$_cs_preset"
 }
 
 cs_cmd_hot_sync() {
@@ -370,8 +371,53 @@ cs_cmd_hot_sync() {
   cs_sync_engine_live_prop || true
   cs_settings_sync_all || true
   cs_verifier_run || true
-  cs_log "WebUI triggered instant Live Engine + settings hot-sync & re-verification."
-  printf 'Hot-Apply Live Engine + settings & verifikasi ulang selesai tanpa reboot.\n'
+  cs_log "WebUI triggered instant Motion Engine + settings hot-sync & re-verification."
+  printf 'Hot-Apply Motion Engine + settings & verifikasi ulang selesai tanpa reboot.\n'
+}
+
+cs_webui_try_pm_install() {
+  _cs_w_apk=$1
+  _cs_w_sz=$(wc -c < "$_cs_w_apk" 2>/dev/null | tr -d ' \t\r\n')
+  CS_W_PM_OUT=""
+
+  if [ -n "$_cs_w_sz" ] && [ "$_cs_w_sz" -gt 0 ] 2>/dev/null; then
+    CS_W_PM_OUT=$(pm install -r -S "$_cs_w_sz" < "$_cs_w_apk" 2>&1 || true)
+    case "$CS_W_PM_OUT" in
+      *Success*) return 0 ;;
+      *INSTALL_FAILED_UPDATE_INCOMPATIBLE*) return 2 ;;
+    esac
+  fi
+
+  _cs_tmp_apk="/data/local/tmp/coresurface_engine_install.apk"
+  if cp "$_cs_w_apk" "$_cs_tmp_apk" 2>/dev/null; then
+    chmod 0644 "$_cs_tmp_apk" 2>/dev/null || true
+    CS_W_PM_OUT=$(pm install -r "$_cs_tmp_apk" 2>&1 || true)
+    case "$CS_W_PM_OUT" in
+      *Success*)
+        rm -f "$_cs_tmp_apk" 2>/dev/null || true
+        return 0
+        ;;
+      *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
+        rm -f "$_cs_tmp_apk" 2>/dev/null || true
+        return 2
+        ;;
+    esac
+    if command -v su >/dev/null 2>&1; then
+      CS_W_PM_OUT=$(su 2000 -c "pm install -r ${_cs_tmp_apk}" 2>&1 || true)
+      case "$CS_W_PM_OUT" in
+        *Success*)
+          rm -f "$_cs_tmp_apk" 2>/dev/null || true
+          return 0
+          ;;
+        *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
+          rm -f "$_cs_tmp_apk" 2>/dev/null || true
+          return 2
+          ;;
+      esac
+    fi
+    rm -f "$_cs_tmp_apk" 2>/dev/null || true
+  fi
+  return 1
 }
 
 cs_cmd_install_engine() {
@@ -386,49 +432,25 @@ cs_cmd_install_engine() {
     return 1
   fi
 
-  _cs_sz=$(wc -c < "$_cs_apk" 2>/dev/null | tr -d ' \t\r\n')
-  _cs_out=""
-  if [ -n "$_cs_sz" ] && [ "$_cs_sz" -gt 0 ] 2>/dev/null; then
-    _cs_out=$(pm install -r -S "$_cs_sz" < "$_cs_apk" 2>&1 || true)
-    case "$_cs_out" in
-      *Success*)
-        cs_verifier_run || true
-        cs_log "WebUI installed/updated CoreSurfaceEngine.apk (stream)."
-        printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
-        return 0
-        ;;
-    esac
-  fi
-
-  _cs_tmp_apk="/data/local/tmp/coresurface_engine_install.apk"
-  if cp "$_cs_apk" "$_cs_tmp_apk" 2>/dev/null; then
-    chmod 0644 "$_cs_tmp_apk" 2>/dev/null || true
-    _cs_out=$(pm install -r "$_cs_tmp_apk" 2>&1 || true)
-    case "$_cs_out" in
-      *Success*)
-        rm -f "$_cs_tmp_apk" 2>/dev/null || true
-        cs_verifier_run || true
-        cs_log "WebUI installed/updated CoreSurfaceEngine.apk."
-        printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
-        return 0
-        ;;
-    esac
+  cs_webui_try_pm_install "$_cs_apk"
+  _cs_rc=$?
+  if [ "$_cs_rc" -eq 2 ]; then
+    pm uninstall org.mystivara.coresurface.engine >/dev/null 2>&1 || true
     if command -v su >/dev/null 2>&1; then
-      _cs_out=$(su 2000 -c "pm install -r ${_cs_tmp_apk}" 2>&1 || true)
-      case "$_cs_out" in
-        *Success*)
-          rm -f "$_cs_tmp_apk" 2>/dev/null || true
-          cs_verifier_run || true
-          cs_log "WebUI installed/updated CoreSurfaceEngine.apk via UID 2000."
-          printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
-          return 0
-          ;;
-      esac
+      su 2000 -c "pm uninstall org.mystivara.coresurface.engine" >/dev/null 2>&1 || true
     fi
-    rm -f "$_cs_tmp_apk" 2>/dev/null || true
+    cs_webui_try_pm_install "$_cs_apk"
+    _cs_rc=$?
   fi
 
-  printf 'Gagal memasang APK (%s). Pasang manual dari %s\n' "$_cs_out" "$_cs_apk" >&2
+  if [ "$_cs_rc" -eq 0 ]; then
+    cs_verifier_run || true
+    cs_log "WebUI installed/updated CoreSurfaceEngine.apk."
+    printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
+    return 0
+  fi
+
+  printf 'Gagal memasang APK (%s). Pasang manual dari %s\n' "$CS_W_PM_OUT" "$_cs_apk" >&2
   return 1
 }
 
@@ -439,7 +461,7 @@ cs_cmd_diag_report() {
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
 
-  printf '=== CoreSurface v1.0.0 Hybrid Diagnostic Report ===\n'
+  printf '=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===\n'
   printf 'ROM: %s (%s) | HyperOS Major: %s | Android SDK: %s\n' \
     "$CS_ROM_FAMILY" "${CS_ROM_VERSION:-Unknown}" "$CS_HYPEROS_MAJOR" "$CS_ANDROID_SDK"
   printf 'RAM: %s MB (%s) | CoreFlow Guard: %s\n' \
@@ -450,12 +472,13 @@ cs_cmd_diag_report() {
     "$(cs_verify_get COMPAT_SCORE_PCT)" \
     "$(cs_verify_get VERIFY_FEAT_VERIFIED)" "$(cs_verify_get VERIFY_FEAT_EVALUATED)" \
     "$(cs_verify_get VERIFY_PROPS_MATCHED)" "$(cs_verify_get VERIFY_PROPS_TOTAL)"
-  printf 'Luminous Engine: installed=%s active=%s agsl=%s lod=%s hooks=%s views=%s toasts=%s recents=%s flows=%s\n' \
+  printf 'Motion Engine: installed=%s active=%s mode=%s profile=%s lod=%s hooks=%s gates=%s folme=%s springs=%s toasts=%s recents=%s\n' \
     "$(cs_verify_get VERIFY_ENGINE_INSTALLED)" "$(cs_verify_get VERIFY_ENGINE_ACTIVE)" \
-    "$(cs_verify_get VERIFY_ENGINE_AGSL)" "$(cs_verify_get VERIFY_ENGINE_LOD)" \
-    "$(cs_verify_get VERIFY_ENGINE_HOOKS)" "$(cs_verify_get VERIFY_ENGINE_VIEWS)" \
-    "$(cs_verify_get VERIFY_ENGINE_TOASTS)" "$(cs_verify_get VERIFY_ENGINE_RECENTS)" \
-    "$(cs_verify_get VERIFY_ENGINE_FLOWS)"
+    "$(cs_verify_get VERIFY_ENGINE_MODE)" "$(cs_verify_get VERIFY_ENGINE_MOTION)" \
+    "$(cs_verify_get VERIFY_ENGINE_LOD)" "$(cs_verify_get VERIFY_ENGINE_HOOKS)" \
+    "$(cs_verify_get VERIFY_ENGINE_NATIVE_GATES)" "$(cs_verify_get VERIFY_ENGINE_FOLME_HOOKS)" \
+    "$(cs_verify_get VERIFY_ENGINE_SPRINGS)" "$(cs_verify_get VERIFY_ENGINE_TOASTS)" \
+    "$(cs_verify_get VERIFY_ENGINE_RECENTS)"
   printf 'XML Patcher: status=%s mount=%s tags=%s source=%s\n' \
     "$(cs_state_get XML_STATUS)" "$(cs_verify_get VERIFY_XML_MOUNT)" \
     "$(cs_state_get XML_PATCHED_TAGS)" "$(cs_state_get XML_SOURCE)"
@@ -463,9 +486,8 @@ cs_cmd_diag_report() {
     "$(cs_state_get RRO_STATUS)" "$(cs_verify_get VERIFY_RRO_ACTIVE)" \
     "$(cs_verify_get VERIFY_RRO_TOTAL)" "$(cs_verify_get VERIFY_FEAT_VIDEO_DEPTH)"
   printf '\n--- Per-Feature Verification ---\n'
-  printf 'FEAT_LUMINOUS_GLASS=%s (%s)\n' "$CFG_FEAT_LUMINOUS_GLASS" "$(cs_verify_get VERIFY_FEAT_LUMINOUS_GLASS)"
-  printf 'FEAT_LUMINOUS_TILT=%s (%s)\n' "$CFG_FEAT_LUMINOUS_TILT" "$(cs_verify_get VERIFY_FEAT_LUMINOUS_TILT)"
-  printf 'FEAT_LIVING_FLOW=%s (%s)\n' "$CFG_FEAT_LIVING_FLOW" "$(cs_verify_get VERIFY_FEAT_LIVING_FLOW)"
+  printf 'FEAT_MOTION_PROFILE=%s (%s)\n' "$CFG_FEAT_MOTION_PROFILE" "$(cs_verify_get VERIFY_FEAT_MOTION_PROFILE)"
+  printf 'FEAT_NATIVE_TIER=%s (%s)\n' "$CFG_FEAT_NATIVE_TIER" "$(cs_verify_get VERIFY_FEAT_NATIVE_TIER)"
   printf 'FEAT_SURGICAL_GUARD=%s (%s)\n' "$CFG_FEAT_SURGICAL_GUARD" "$(cs_verify_get VERIFY_FEAT_SURGICAL_GUARD)"
   printf 'FEAT_THERMAL_LOD=%s (%s)\n' "$CFG_FEAT_THERMAL_LOD" "$(cs_verify_get VERIFY_FEAT_THERMAL_LOD)"
   printf 'FEAT_BLUR=%s (%s)\n' "$CFG_FEAT_BLUR" "$(cs_verify_get VERIFY_FEAT_BLUR)"

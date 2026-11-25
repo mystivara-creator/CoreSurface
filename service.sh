@@ -37,16 +37,16 @@ case "$_cs_cur_status" in
     ;;
 esac
 
-cs_pm_install_apk() {
+cs_pm_try_install_once() {
   _cs_pi_apk=$1
-  [ -r "$_cs_pi_apk" ] || return 1
-  command -v pm >/dev/null 2>&1 || return 1
-
   _cs_pi_size=$(wc -c < "$_cs_pi_apk" 2>/dev/null | tr -d ' \t\r\n')
+  CS_PM_LAST_OUT=""
+
   if [ -n "$_cs_pi_size" ] && [ "$_cs_pi_size" -gt 0 ] 2>/dev/null; then
-    _cs_pi_out=$(pm install -r -S "$_cs_pi_size" < "$_cs_pi_apk" 2>&1 || true)
-    case "$_cs_pi_out" in
+    CS_PM_LAST_OUT=$(pm install -r -S "$_cs_pi_size" < "$_cs_pi_apk" 2>&1 || true)
+    case "$CS_PM_LAST_OUT" in
       *Success*) return 0 ;;
+      *INSTALL_FAILED_UPDATE_INCOMPATIBLE*) return 2 ;;
     esac
   fi
 
@@ -54,23 +54,54 @@ cs_pm_install_apk() {
   _cs_pi_tmp="/data/local/tmp/coresurface_engine_install.apk"
   if cp "$_cs_pi_apk" "$_cs_pi_tmp" 2>/dev/null; then
     chmod 0644 "$_cs_pi_tmp" 2>/dev/null || true
-    _cs_pi_out=$(pm install -r "$_cs_pi_tmp" 2>&1 || true)
-    case "$_cs_pi_out" in
+    CS_PM_LAST_OUT=$(pm install -r "$_cs_pi_tmp" 2>&1 || true)
+    case "$CS_PM_LAST_OUT" in
       *Success*)
         rm -f "$_cs_pi_tmp" 2>/dev/null || true
         return 0
         ;;
+      *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
+        rm -f "$_cs_pi_tmp" 2>/dev/null || true
+        return 2
+        ;;
     esac
     if command -v su >/dev/null 2>&1; then
-      _cs_pi_out=$(su 2000 -c "pm install -r ${_cs_pi_tmp}" 2>&1 || true)
-      case "$_cs_pi_out" in
+      CS_PM_LAST_OUT=$(su 2000 -c "pm install -r ${_cs_pi_tmp}" 2>&1 || true)
+      case "$CS_PM_LAST_OUT" in
         *Success*)
           rm -f "$_cs_pi_tmp" 2>/dev/null || true
           return 0
           ;;
+        *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
+          rm -f "$_cs_pi_tmp" 2>/dev/null || true
+          return 2
+          ;;
       esac
     fi
     rm -f "$_cs_pi_tmp" 2>/dev/null || true
+  fi
+
+  return 1
+}
+
+cs_pm_install_apk() {
+  _cs_pi_target=$1
+  [ -r "$_cs_pi_target" ] || return 1
+  command -v pm >/dev/null 2>&1 || return 1
+
+  cs_pm_try_install_once "$_cs_pi_target"
+  _cs_pi_rc=$?
+  if [ "$_cs_pi_rc" -eq 0 ]; then
+    return 0
+  fi
+  if [ "$_cs_pi_rc" -eq 2 ]; then
+    pm uninstall org.mystivara.coresurface.engine >/dev/null 2>&1 || true
+    if command -v su >/dev/null 2>&1; then
+      su 2000 -c "pm uninstall org.mystivara.coresurface.engine" >/dev/null 2>&1 || true
+    fi
+    cs_log "Engine Installer: replaced previous signature build of CoreSurfaceEngine.apk."
+    cs_pm_try_install_once "$_cs_pi_target"
+    return $?
   fi
 
   return 1

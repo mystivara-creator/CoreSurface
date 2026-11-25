@@ -577,10 +577,19 @@ assert_file_contains "$SB/status.out" "xml_status=mounted" "WebUI exposes XML Pa
 assert_file_contains "$SB/status.out" "xml_source=$SB_XML_DIR1/aurora.xml" "WebUI exposes discovered XML source path"
 
 # Test granular key whitelist (valid + invalid)
-for _gk in FEAT_LUMINOUS_GLASS FEAT_LUMINOUS_TILT FEAT_LIVING_FLOW FEAT_SURGICAL_GUARD FEAT_THERMAL_LOD FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ; do
+for _gk in FEAT_NATIVE_TIER FEAT_SURGICAL_GUARD FEAT_THERMAL_LOD FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ; do
   PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
   assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts granular key ${_gk}=0"
 done
+for _mp in hyperos4 silk 0; do
+  PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE "$_mp" >/dev/null
+  assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=${_mp}" "WebUI accepts FEAT_MOTION_PROFILE=${_mp}"
+done
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE invalid >/dev/null 2>&1; then
+  fail "WebUI should reject invalid FEAT_MOTION_PROFILE value"
+else
+  pass "WebUI rejects invalid FEAT_MOTION_PROFILE value"
+fi
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_GALLERY_PRO 1 >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "FEAT_GALLERY_PRO=1" "WebUI accepts FEAT_GALLERY_PRO=1"
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_AOD_UNLOCK 1 >/dev/null
@@ -693,20 +702,22 @@ printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" preset flagship-max >/dev/null
-assert_file_contains "$SB_STATE/config.prop" "FEAT_LUMINOUS_GLASS=1" "Preset flagship-max sets FEAT_LUMINOUS_GLASS=1"
-assert_file_contains "$SB_STATE/config.prop" "FEAT_LIVING_FLOW=1" "Preset flagship-max sets FEAT_LIVING_FLOW=1"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=silk" "Preset flagship-max sets FEAT_MOTION_PROFILE=silk"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_NATIVE_TIER=1" "Preset flagship-max sets FEAT_NATIVE_TIER=1"
 assert_file_contains "$SB_STATE/config.prop" "FEAT_VIDEO_DEPTH=1" "Preset flagship-max sets FEAT_VIDEO_DEPTH=1"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "Preset flagship-max immediately hot-syncs settings"
-assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=luminous=1;tilt=1;livingflow=1;guard=1;" "Preset flagship-max pushes live Engine IPC immediately"
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=silk;native=1;guard=1;thermallod=1" "Preset flagship-max pushes live Motion Engine IPC immediately"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" preset stock-safe >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=0" "Preset stock-safe disables FEAT_MOTION_PROFILE"
 assert_file_contains "$SB_STATE/config.prop" "FEAT_BLUR=0" "Preset stock-safe disables FEAT_BLUR"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=1" "Preset stock-safe immediately rolls back disable_window_blurs=1"
 assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Preset stock-safe clears staged RRO overlays"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" preset balanced >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=hyperos4" "Preset balanced sets FEAT_MOTION_PROFILE=hyperos4"
 assert_file_contains "$SB_STATE/config.prop" "FEAT_BLUR=auto" "Preset balanced restores FEAT_BLUR=auto"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
@@ -716,9 +727,10 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync
 _diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
 printf '%s\n' "$_diag" > "$SB/diag.txt"
-assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.0.0 Hybrid Diagnostic Report ===" "diag-report outputs structured Hybrid header"
-assert_file_contains "$SB/diag.txt" "Luminous Engine:" "diag-report includes Luminous Engine telemetry line"
-assert_file_contains "$SB/diag.txt" "FEAT_LUMINOUS_GLASS=" "diag-report includes FEAT_LUMINOUS_GLASS verification"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===" "diag-report outputs structured Flagship Motion header"
+assert_file_contains "$SB/diag.txt" "Motion Engine:" "diag-report includes Motion Engine telemetry line"
+assert_file_contains "$SB/diag.txt" "FEAT_MOTION_PROFILE=" "diag-report includes FEAT_MOTION_PROFILE verification"
+assert_file_contains "$SB/diag.txt" "FEAT_NATIVE_TIER=" "diag-report includes FEAT_NATIVE_TIER verification"
 assert_file_contains "$SB/diag.txt" "FEAT_COLOR_EXPERT=" "diag-report includes FEAT_COLOR_EXPERT"
 
 if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" preset invalid-mode >/dev/null 2>&1; then
@@ -766,7 +778,7 @@ assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_COLOR_EXPERT=verified
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_AOD_UNLOCK=verified_active" "Verifier confirms FEAT_AOD_UNLOCK as verified_active via XML"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 13: Hybrid Live Luminous & LivingFlow Engine Telemetry & Zero-Reboot IPC ===\n'
+printf '=== Test 13: Pure Flagship Motion Engine Telemetry & Zero-Reboot IPC ===\n'
 setup_sandbox "t13_hybrid_engine"
 write_mock_getprop "OS3.0" "" "36" "1" "aurora"
 write_mock_meminfo "7800000"
@@ -788,29 +800,31 @@ CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
   run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_INSTALLED=1" "Verifier detects installed CoreSurfaceEngine.apk"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=0" "Verifier honestly reports ENGINE_ACTIVE=0 before LSPosed hook runs"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LUMINOUS_GLASS=pending_lsposed" "Zero-gimmick: marks Luminous Glass as pending_lsposed when unhooked"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LIVING_FLOW=pending_lsposed" "Zero-gimmick: marks LivingFlow as pending_lsposed when unhooked"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=pending_lsposed" "Zero-gimmick: marks FEAT_MOTION_PROFILE as pending_lsposed when unhooked"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_NATIVE_TIER=pending_lsposed" "Zero-gimmick: marks FEAT_NATIVE_TIER as pending_lsposed when unhooked"
 
 # 13b: Live telemetry present from SystemUI + MiuiHome -> verified_active with deduped hooks & real counters!
 cat > "$SB/sysui_telem.prop" <<'EOF'
 ENGINE_ACTIVE=1
-RENDERER=HWUI_ZERO_FBO
-LUMINOUS_READY=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=hyperos4
 LOD_TIER=FULL
-HOOKS_BOUND=ToastGuard,NativeFlagshipTier,LuminousGlass,TouchSpecular
+HOOKS_BOUND=ToastGuard,NativeFlagshipTier,FolmePhysics
 NATIVE_GATES=14
-VIEWS_LUMINOUS=12
+FOLME_HOOKS=6
+SPRINGS_TUNED=48
 TOASTS_GUARDED=3
 RECENTS_GUARDED=0
 EOF
 cat > "$SB/home_telem.prop" <<'EOF'
 ENGINE_ACTIVE=1
-RENDERER=HWUI_ZERO_FBO
-LUMINOUS_READY=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=hyperos4
 LOD_TIER=FULL
-HOOKS_BOUND=ToastGuard,NativeFlagshipTier,RecentsGuard
+HOOKS_BOUND=ToastGuard,NativeFlagshipTier,FolmePhysics,RecentsGuard
 NATIVE_GATES=11
-VIEWS_LUMINOUS=2
+FOLME_HOOKS=4
+SPRINGS_TUNED=72
 TOASTS_GUARDED=0
 RECENTS_GUARDED=4
 EOF
@@ -821,24 +835,26 @@ CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" \
 CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
   run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=1" "Verifier confirms active Engine runtime from telemetry"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_RENDERER=HWUI_ZERO_FBO" "Verifier records honest HWUI_ZERO_FBO renderer"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MODE=NATIVE_MOTION" "Verifier records honest NATIVE_MOTION engine mode"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MOTION=hyperos4" "Verifier records live MOTION_PROFILE=hyperos4"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_LOD=FULL" "Verifier reports live Thermal-Adaptive LOD tier"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=ToastGuard,NativeFlagshipTier,LuminousGlass,TouchSpecular,RecentsGuard" "Verifier deduplicates repeated hook names across SystemUI + MiuiHome"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_VIEWS=14" "Verifier aggregates luminous views across SystemUI + MiuiHome"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=ToastGuard,NativeFlagshipTier,FolmePhysics,RecentsGuard" "Verifier deduplicates repeated hook names across SystemUI + MiuiHome"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_NATIVE_GATES=25" "Verifier aggregates real native HyperOS flagship gates count"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_FOLME_HOOKS=10" "Verifier aggregates hooked Folme/SpringForce methods count"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_SPRINGS=120" "Verifier aggregates tuned spring animations count"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_TOASTS=3" "Verifier reports guarded Toast count"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_RECENTS=4" "Verifier reports guarded Recents count"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_FLOWS=25" "Verifier aggregates real native HyperOS flagship gates count"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LUMINOUS_GLASS=verified_active" "Luminous Glass verified_active only with real HWUI telemetry"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LIVING_FLOW=verified_active" "LivingFlow verified_active only with bound NativeFlagshipTier hooks"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=verified_active" "Motion Profile verified_active only with bound FolmePhysics hook"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_NATIVE_TIER=verified_active" "Native Tier verified_active only with bound NativeFlagshipTier hook"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_SURGICAL_GUARD=verified_active" "Surgical Guard verified_active only with bound Toast/Recents hooks"
 
-# 13c: Live Engine toggle via webui_ctl pushes zero-Binder debug.coresurface.cfg IMMEDIATELY with ZERO pending reboot!
+# 13c: Live Motion Profile switch via webui_ctl pushes zero-Binder debug.coresurface.cfg IMMEDIATELY with ZERO pending reboot!
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   CORESURFACE_ENGINE_INSTALLED=1 CORESURFACE_ENGINE_SYSUI_TELEM="$SB/sysui_telem.prop" \
   CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
-  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_LUMINOUS_TILT 0 >/dev/null
-assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=luminous=1;touch=0;livingflow=1;guard=1;" "Live toggle updates zero-Binder debug.coresurface.cfg via resetprop -n instantly"
-assert_file_not_contains "$SB_STATE/state.prop" "FEAT_LUMINOUS_TILT" "Live Engine toggle does NOT add to PENDING_KEYS (zero reboot required)"
+  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE silk >/dev/null
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=silk;native=1;guard=1;thermallod=1" "Live switch updates zero-Binder debug.coresurface.cfg via resetprop -n instantly"
+assert_file_not_contains "$SB_STATE/state.prop" "FEAT_MOTION_PROFILE" "Live Motion Profile switch does NOT add to PENDING_KEYS (zero reboot required)"
 
 # 13d: SELinux-safe pm install -r -S <size> streaming in service.sh (idempotent)
 SB_PM_LOG="$SB/pm.calls"
@@ -870,6 +886,40 @@ assert_eq "$( [ -f "$SB_STATE/.engine_installed.sig" ] && printf 'yes' || printf
 : > "$SB_PM_LOG"
 run_service
 assert_file_not_contains "$SB_PM_LOG" "install -r" "service.sh skips redundant pm install when APK signature unchanged"
+
+# 13e: Signature-mismatch upgrade (INSTALL_FAILED_UPDATE_INCOMPATIBLE) automatically uninstalls old cert & retries
+printf 'UPDATED_ENGINE_APK_BYTES_WITH_NEW_CERT_123456' > "$SB_STATE/CoreSurfaceEngine.apk"
+SB_PM_MARKER="$SB/pm.uninstalled"
+: > "$SB_PM_LOG"
+cat > "$SB_BIN/pm" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$SB_PM_LOG"
+case "\$1" in
+  path)
+    printf 'package:/data/app/org.mystivara.coresurface.engine/base.apk\n'
+    exit 0
+    ;;
+  uninstall)
+    : > "$SB_PM_MARKER"
+    printf 'Success\n'
+    exit 0
+    ;;
+  install)
+    cat >/dev/null
+    if [ ! -f "$SB_PM_MARKER" ]; then
+      printf 'Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package org.mystivara.coresurface.engine signatures do not match newer version]\n'
+      exit 1
+    fi
+    printf 'Success\n'
+    exit 0
+    ;;
+esac
+exit 1
+EOF
+chmod +x "$SB_BIN/pm"
+run_service
+assert_file_contains "$SB_PM_LOG" "uninstall org.mystivara.coresurface.engine" "service.sh automatically uninstalls mismatched-signature old APK before retrying"
+assert_eq "$( [ -f "$SB_PM_MARKER" ] && printf 'yes' || printf 'no' )" "yes" "Signature-mismatch recovery completed cleanly"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

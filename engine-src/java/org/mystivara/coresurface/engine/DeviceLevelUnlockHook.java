@@ -115,7 +115,7 @@ public final class DeviceLevelUnlockHook {
             XposedBridge.hookMethod(method, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (config.isLivingFlow()) {
+                    if (config.isNativeTierEnabled()) {
                         param.setResult(constantValue);
                     }
                 }

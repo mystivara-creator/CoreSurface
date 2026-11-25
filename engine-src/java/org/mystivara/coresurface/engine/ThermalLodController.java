@@ -9,9 +9,9 @@ import android.os.PowerManager;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * CoreSurface Exclusive: Thermal-Adaptive Visual LOD Controller.
+ * CoreSurface Exclusive: Thermal-Adaptive Motion Safety Controller.
  * Uses Android's official user-space PowerManager thermal status listener
- * (zero kernel/sysfs coupling) to smoothly scale AGSL optical shader complexity
+ * (zero kernel/sysfs coupling) to smoothly tighten Folme/SpringForce motion curves
  * when the phone warms up, keeping 120 FPS responsive without stutter.
  */
 public final class ThermalLodController {

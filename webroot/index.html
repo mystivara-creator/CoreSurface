@@ -12,7 +12,7 @@
       <div class="hero-top">
         <div>
           <h1>CoreSurface</h1>
-          <p class="subtitle">v1.0.0 · Hybrid Luminous Optical Glass &amp; LivingFlow Suite</p>
+          <p class="subtitle">v1.0.0 · Flagship Motion &amp; Experience Suite (100% Original UI)</p>
         </div>
         <button id="btn-refresh" class="btn-icon" type="button" aria-label="Perbarui status">↻</button>
       </div>
@@ -25,7 +25,7 @@
     </header>
 
     <div id="reboot-banner" class="banner banner-info hidden" role="status">
-      <strong>Perubahan early-boot disimpan.</strong> Reboot perangkat saat suhu dingin agar properti/XML/RRO baru berlaku (kontrol Live Engine tidak butuh reboot).
+      <strong>Perubahan early-boot disimpan.</strong> Reboot perangkat saat suhu dingin agar properti/XML/RRO baru berlaku (kontrol Live Motion tidak butuh reboot).
     </div>
 
     <div id="safemode-banner" class="banner banner-danger hidden" role="alert">
@@ -38,10 +38,10 @@
 
     <section class="card">
       <div class="card-head">
-        <h2>Luminous &amp; LivingFlow Engine (LSPosed)</h2>
+        <h2>Flagship Motion Engine (LSPosed)</h2>
         <span id="engine-lod-badge" class="pill">-</span>
       </div>
-      <p class="hint">Zero-gimmick runtime proof dari proses <code>SystemUI</code>, <code>MiuiHome</code>, &amp; <code>MiuiAod</code>. Aktifkan modul <strong>CoreSurface Engine</strong> di LSPosed Manager agar AGSL GPU Shader &amp; LivingFlow aktif live.</p>
+      <p class="hint">Zero-gimmick runtime proof dari proses <code>SystemUI</code>, <code>MiuiHome</code>, &amp; <code>MiuiAod</code>. 100% mempertahankan tampilan asli HyperOS — hanya membuka tier flagship native &amp; menyempurnakan fisika pegas 120 Hz.</p>
       <div class="kv-list" id="engine-summary">
         <div class="kv-row"><span>Status</span><strong>Memuat…</strong></div>
       </div>
@@ -52,19 +52,19 @@
 
     <section class="card">
       <h2>Preset Profil 1-Klik &amp; Aksi Cepat</h2>
-      <p class="hint">Preset langsung menerapkan pengaturan Live Engine &amp; <code>settings</code> tanpa reboot, dan menyiapkan RRO untuk boot berikutnya.</p>
+      <p class="hint">Preset langsung menerapkan profil Motion Engine &amp; <code>settings</code> tanpa reboot, dan menyiapkan RRO untuk boot berikutnya.</p>
       <div class="preset-grid">
         <button type="button" class="btn-preset" data-preset="stock-safe">
           <strong>Stock Safe</strong>
-          <span>Paling ringan &amp; hemat daya</span>
+          <span>Kurva bawaan &amp; hemat daya</span>
         </button>
         <button type="button" class="btn-preset" data-preset="balanced">
-          <strong>Balanced Daily</strong>
-          <span>Auto sesuai RAM &amp; Termal</span>
+          <strong>HyperOS 4 Daily</strong>
+          <span>Fisika HyperOS 4 + Auto RAM</span>
         </button>
         <button type="button" class="btn-preset" data-preset="flagship-max">
-          <strong>Flagship Max</strong>
-          <span>Luminous + LivingFlow penuh</span>
+          <strong>iOS · ColorOS Silk</strong>
+          <span>Kurva Silk Fluid + Unlock Penuh</span>
         </button>
       </div>
       <div class="quick-actions">
@@ -74,58 +74,40 @@
     </section>
 
     <section class="card">
-      <h2>⚡ Live Luminous &amp; Flagship Controls (Tanpa Reboot)</h2>
-      <p class="hint">Perubahan dikirim instan lewat properti memori non-persisten <code>debug.coresurface.cfg</code> (bebas error Binder Android 16) — aktif &lt; 1 detik tanpa reboot.</p>
+      <h2>⚡ Live Flagship Motion Controls (Tanpa Reboot)</h2>
+      <p class="hint">Perubahan dikirim instan lewat properti memori non-persisten <code>debug.coresurface.cfg</code> (bebas error Binder Android 16) — aktif &lt; 1 detik tanpa reboot &amp; tanpa mengubah tampilan asli HyperOS.</p>
 
       <div class="feat-list">
-        <div class="feat-card" data-feat="FEAT_LUMINOUS_GLASS">
+        <div class="feat-card" data-feat="FEAT_MOTION_PROFILE">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Luminous Optical Glass (Zero-FBO 120 FPS)</h3>
+              <h3>Folme &amp; SpringForce Motion Profile</h3>
               <div class="meta-pills">
-                <span class="load-pill load-low">HWUI Zero-FBO</span>
-                <span id="verify-FEAT_LUMINOUS_GLASS" class="v-pill v-neutral">-</span>
+                <span class="load-pill load-low">Native 120 Hz</span>
+                <span id="verify-FEAT_MOTION_PROFILE" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Bevel kaca spekular &amp; kilau atas optik nyata pada tile Control Center, Slider, Media Card, &amp; Folder (maks 24 tile ter-dedup, 0 FBO, 0 sensor storm → 120 FPS mulus).</p>
+            <p class="feat-desc">Menyelaraskan fisika pegas bawaan <code>miuix.animation.EaseManager</code> &amp; <code>SpringForce</code> tanpa bentrok animator: pilih <strong>HyperOS 4</strong> (tegas &amp; ringan) atau <strong>iOS · ColorOS 17</strong> (momentum fluida silk).</p>
           </div>
-          <div class="seg-group" data-key="FEAT_LUMINOUS_GLASS" role="group" aria-label="Luminous Optical Glass">
-            <button type="button" data-val="auto">Auto</button>
-            <button type="button" data-val="1">ON</button>
-            <button type="button" data-val="0">OFF</button>
+          <div class="seg-group" data-key="FEAT_MOTION_PROFILE" role="group" aria-label="Folme Motion Profile">
+            <button type="button" data-val="0">Stock</button>
+            <button type="button" data-val="hyperos4">HyperOS 4</button>
+            <button type="button" data-val="silk">iOS · ColorOS</button>
           </div>
         </div>
 
-        <div class="feat-card" data-feat="FEAT_LUMINOUS_TILT">
-          <div class="feat-head">
-            <div class="feat-title-wrap">
-              <h3>Touch Specular Glass Ripple</h3>
-              <div class="meta-pills">
-                <span class="load-pill load-low">0% Idle Drain</span>
-                <span id="verify-FEAT_LUMINOUS_TILT" class="v-pill v-neutral">-</span>
-              </div>
-            </div>
-            <p class="feat-desc">Kilau cahaya radial mengikuti titik jari hanya saat tile ditekan (tanpa polling sensor latar belakang).</p>
-          </div>
-          <div class="seg-group" data-key="FEAT_LUMINOUS_TILT" role="group" aria-label="Touch Specular Ripple">
-            <button type="button" data-val="auto">Auto</button>
-            <button type="button" data-val="1">ON</button>
-            <button type="button" data-val="0">OFF</button>
-          </div>
-        </div>
-
-        <div class="feat-card" data-feat="FEAT_LIVING_FLOW">
+        <div class="feat-card" data-feat="FEAT_NATIVE_TIER">
           <div class="feat-head">
             <div class="feat-title-wrap">
               <h3>Native HyperOS Flagship Tier Unlock</h3>
               <div class="meta-pills">
                 <span class="load-pill load-low">Zero Conflict</span>
-                <span id="verify-FEAT_LIVING_FLOW" class="v-pill v-neutral">-</span>
+                <span id="verify-FEAT_NATIVE_TIER" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Membuka gerbang <code>DeviceLevel</code> / <code>DeviceConfig</code> / <code>CpuLevel</code> bawaan Xiaomi di <code>SystemUI</code> &amp; <code>MiuiHome</code> agar animasi Lockscreen→Home &amp; Control Center flagship berjalan native tanpa bentrok Folme.</p>
+            <p class="feat-desc">Membuka gerbang <code>DeviceLevel</code> / <code>DeviceConfig</code> / <code>CpuLevel</code> / <code>GpuLevel</code> bawaan Xiaomi di <code>SystemUI</code>, <code>MiuiHome</code>, &amp; <code>MiuiAod</code> agar seluruh animasi flagship berjalan native.</p>
           </div>
-          <div class="seg-group" data-key="FEAT_LIVING_FLOW" role="group" aria-label="Native HyperOS Flagship Tier">
+          <div class="seg-group" data-key="FEAT_NATIVE_TIER" role="group" aria-label="Native HyperOS Flagship Tier">
             <button type="button" data-val="auto">Auto</button>
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
@@ -137,11 +119,11 @@
             <div class="feat-title-wrap">
               <h3>HyperOS 3 Surgical Toast &amp; Recents Guard</h3>
               <div class="meta-pills">
-                <span class="load-pill load-low">Bug Fix</span>
+                <span class="load-pill load-low">Pure Bug Fix</span>
                 <span id="verify-FEAT_SURGICAL_GUARD" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Memblokir blur rusak pada jendela Toast pop-up &amp; mengganti scrim hitam Recent Apps menjadi kaca transparan bersih bahkan saat <em>Advanced textures</em> aktif.</p>
+            <p class="feat-desc">Memblokir blur rusak pada jendela Toast pop-up &amp; mencegah scrim hitam pekat di Recent Apps bahkan saat <em>Advanced textures</em> dinyalakan.</p>
           </div>
           <div class="seg-group" data-key="FEAT_SURGICAL_GUARD" role="group" aria-label="Surgical Toast and Recents Guard">
             <button type="button" data-val="auto">Auto</button>
@@ -153,15 +135,15 @@
         <div class="feat-card" data-feat="FEAT_THERMAL_LOD">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Thermal-Adaptive Visual LOD</h3>
+              <h3>Thermal-Adaptive Motion Safety</h3>
               <div class="meta-pills">
-                <span class="load-pill load-low">CoreSurface Exclusive</span>
+                <span class="load-pill load-low">User-Space Only</span>
                 <span id="verify-FEAT_THERMAL_LOD" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Menyesuaikan kompleksitas shader AGSL otomatis (<code>FULL → BALANCED → ECO</code>) saat suhu naik agar 120 FPS tetap mulus &amp; HP tetap adem.</p>
+            <p class="feat-desc">Memantau status termal <code>PowerManager</code> resmi (tanpa menyentuh kernel/sysfs) untuk mengetatkan kurva pegas otomatis (<code>FULL → BALANCED → ECO</code>) saat suhu naik agar 120 FPS tetap responsif.</p>
           </div>
-          <div class="seg-group" data-key="FEAT_THERMAL_LOD" role="group" aria-label="Thermal Adaptive Visual LOD">
+          <div class="seg-group" data-key="FEAT_THERMAL_LOD" role="group" aria-label="Thermal Adaptive Motion Safety">
             <button type="button" data-val="auto">Auto</button>
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
@@ -211,7 +193,7 @@
                 <span id="verify-FEAT_BLUR" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">SurfaceFlinger &amp; HyperOS Control Center, Notification Shade, Folder, &amp; Launcher blur. Di HyperOS 3+ menjaga default <em>Advanced textures</em> OFF agar aman dari bug Toast/Recents.</p>
+            <p class="feat-desc">SurfaceFlinger &amp; HyperOS Control Center, Notification Shade, Folder, &amp; Launcher blur bawaan. Di HyperOS 3+ menjaga default <em>Advanced textures</em> OFF agar aman dari bug Toast/Recents.</p>
           </div>
           <div class="seg-group" data-key="FEAT_BLUR" role="group" aria-label="Control Center and Surface Blur">
             <button type="button" data-val="auto">Auto</button>
@@ -247,7 +229,7 @@
                 <span id="verify-FEAT_XML_PATCHER" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Auto-discovery XML fitur bawaan + bind-mount non-destruktif &amp; SELinux-safe.</p>
+            <p class="feat-desc">Auto-discovery XML fitur bawaan + bind-mount non-destruktif &amp; SELinux-safe (aman soft-reboot).</p>
           </div>
           <div class="seg-group" data-key="FEAT_XML_PATCHER" role="group" aria-label="Dynamic XML Patcher">
             <button type="button" data-val="auto">Auto</button>
@@ -365,13 +347,13 @@
         <div class="feat-card feat-exp" data-feat="FEAT_AOD_UNLOCK">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>AOD Limit Unlock &amp; LivingFlow Reveal <span class="tag-warn">Opt-in</span></h3>
+              <h3>AOD Limit Unlock &amp; Native Tier <span class="tag-warn">Opt-in</span></h3>
               <div class="meta-pills">
                 <span class="load-pill load-low">XML + RRO + Engine</span>
                 <span id="verify-FEAT_AOD_UNLOCK" class="v-pill v-neutral">-</span>
               </div>
             </div>
-            <p class="feat-desc">Menghapus batas 10 detik via <code>CoreSurfaceMiuiAod</code> RRO + XML AON, ditambah transisi halus AOD → Lockscreen via LivingFlow Engine (aman HyperOS 3 tanpa bootloop <code>mFullAodHideEase</code>).</p>
+            <p class="feat-desc">Menghapus batas 10 detik via <code>CoreSurfaceMiuiAod</code> RRO + XML AON + pembukaan tier native di <code>MiuiAod</code> (aman HyperOS 3 tanpa bootloop <code>mFullAodHideEase</code>).</p>
           </div>
           <div class="seg-group" data-key="FEAT_AOD_UNLOCK" role="group" aria-label="AOD Unlock">
             <button type="button" data-val="0">OFF</button>

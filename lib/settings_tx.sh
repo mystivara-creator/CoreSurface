@@ -189,12 +189,10 @@ cs_settings_rollback_key() {
 }
 
 cs_settings_build_engine_ipc() {
-  printf 'luminous=%s;tilt=%s;livingflow=%s;guard=%s;aodflow=%s;thermallod=%s' \
-    "${EFF_FEAT_LUMINOUS_GLASS:-0}" \
-    "${EFF_FEAT_LUMINOUS_TILT:-0}" \
-    "${EFF_FEAT_LIVING_FLOW:-0}" \
+  printf 'motion=%s;native=%s;guard=%s;thermallod=%s' \
+    "${EFF_FEAT_MOTION_PROFILE:-off}" \
+    "${EFF_FEAT_NATIVE_TIER:-0}" \
     "${EFF_FEAT_SURGICAL_GUARD:-0}" \
-    "${EFF_FEAT_AOD_UNLOCK:-0}" \
     "${EFF_FEAT_THERMAL_LOD:-1}"
 }
 
@@ -202,7 +200,7 @@ cs_settings_sync_engine_ipc() {
   cs_watchdog_init_dir || return 0
   cs_settings_available || return 0
   _cs_ipc_val=$(cs_settings_build_engine_ipc)
-  cs_settings_apply_key "FEAT_LUMINOUS_GLASS" "global" "coresurface_engine_v1" "$_cs_ipc_val" || true
+  cs_settings_apply_key "FEAT_MOTION_PROFILE" "global" "coresurface_engine_v1" "$_cs_ipc_val" || true
 }
 
 # One-time cleanup on HyperOS 3+ if an earlier preview left secure/background_blur_enable=1

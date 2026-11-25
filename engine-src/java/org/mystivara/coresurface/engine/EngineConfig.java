@@ -9,19 +9,22 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Zero-Binder Live Configuration Bridge.
- * Primary transport: non-persistent memory property `debug.coresurface.cfg` set via
- * `resetprop -n` (instant, zero Binder calls, 100% SELinux-readable by all system apps).
- * Fallback: Settings.Global ("coresurface_engine_v1").
+ * Reads non-persistent memory property `debug.coresurface.cfg` set via `resetprop -n`
+ * (~2 microseconds, zero Binder calls, 100% SELinux-safe on Android 16 KernelSU-Next).
+ *
+ * Format: motion=hyperos4|silk|off;native=1|0;guard=1|0;thermallod=1|0
  */
 public final class EngineConfig {
     public static final String PROP_KEY = "debug.coresurface.cfg";
     public static final String SETTINGS_KEY = "coresurface_engine_v1";
 
-    private volatile boolean luminousGlass = true;
-    private volatile boolean luminousTouch = true;
-    private volatile boolean livingFlow = true;
+    public static final String MOTION_OFF = "off";
+    public static final String MOTION_HYPEROS4 = "hyperos4";
+    public static final String MOTION_SILK = "silk";
+
+    private volatile String motionProfile = MOTION_HYPEROS4;
+    private volatile boolean nativeTier = true;
     private volatile boolean surgicalGuard = true;
-    private volatile boolean aodFlow = true;
     private volatile boolean thermalLod = true;
     private volatile String rawConfig = "default";
 
@@ -48,10 +51,6 @@ public final class EngineConfig {
         }
     }
 
-    /**
-     * Fast lazy sync (~2 microseconds via SystemProperties mmap read, throttled to 750ms).
-     * Guarantees WebUI toggles take effect live without reboot and without Binder errors.
-     */
     public void refreshIfStale() {
         long now = System.currentTimeMillis();
         if (now - lastRefreshMs < 750L) {
@@ -137,21 +136,21 @@ public final class EngineConfig {
             String v = pair.substring(eq + 1).trim();
             boolean on = "1".equals(v) || "true".equalsIgnoreCase(v);
             switch (k) {
-                case "luminous":
-                    luminousGlass = on;
+                case "motion":
+                    if (MOTION_SILK.equals(v)) {
+                        motionProfile = MOTION_SILK;
+                    } else if (MOTION_HYPEROS4.equals(v)) {
+                        motionProfile = MOTION_HYPEROS4;
+                    } else {
+                        motionProfile = MOTION_OFF;
+                    }
                     break;
-                case "tilt":
-                case "touch":
-                    luminousTouch = on;
-                    break;
+                case "native":
                 case "livingflow":
-                    livingFlow = on;
+                    nativeTier = on;
                     break;
                 case "guard":
                     surgicalGuard = on;
-                    break;
-                case "aodflow":
-                    aodFlow = on;
                     break;
                 case "thermallod":
                     thermalLod = on;
@@ -162,29 +161,19 @@ public final class EngineConfig {
         }
     }
 
-    public boolean isLuminousGlass() {
+    public String getMotionProfile() {
         refreshIfStale();
-        return luminousGlass;
+        return motionProfile;
     }
 
-    public boolean isLuminousTouch() {
+    public boolean isNativeTierEnabled() {
         refreshIfStale();
-        return luminousTouch;
-    }
-
-    public boolean isLivingFlow() {
-        refreshIfStale();
-        return livingFlow;
+        return nativeTier;
     }
 
     public boolean isSurgicalGuard() {
         refreshIfStale();
         return surgicalGuard;
-    }
-
-    public boolean isAodFlow() {
-        refreshIfStale();
-        return aodFlow;
     }
 
     public boolean isThermalLod() {

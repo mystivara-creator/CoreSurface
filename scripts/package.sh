@@ -1,6 +1,6 @@
 #!/bin/sh
 # CoreSurface v1.0.0 - Production Module ZIP Packager (POSIX sh)
-# Builds clean-room RRO overlays + clean-room Luminous & LivingFlow Engine APK
+# Builds clean-room RRO overlays + clean-room Flagship Motion Engine APK
 # and packages whitelisted production files into dist/CoreSurface-v1.0.0.zip.
 
 set -eu
@@ -20,7 +20,7 @@ trap 'rm -rf "$STAGE_DIR"' EXIT INT TERM
 # 1. Compile and sign clean-room RRO overlays from overlays-src/
 CORESURFACE_OVERLAY_OUT="$OVERLAY_BUILD_DIR" sh "$REPO_ROOT/scripts/build_overlays.sh"
 
-# 2. Compile and sign clean-room Luminous & LivingFlow LSPosed Engine APK from engine-src/
+# 2. Compile and sign clean-room Flagship Motion LSPosed Engine APK from engine-src/
 CORESURFACE_ENGINE_OUT="$ENGINE_BUILD_DIR" sh "$REPO_ROOT/scripts/build_engine.sh"
 
 mkdir -p "$DIST_DIR"

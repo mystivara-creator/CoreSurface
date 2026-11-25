@@ -37,7 +37,7 @@ jobs:
         run: sh tests/run_tests.sh
 
   package:
-    name: Build Clean-Room RRO, Luminous Engine & CoreSurface-v1.0.0.zip
+    name: Build Clean-Room RRO, Flagship Motion Engine & CoreSurface-v1.0.0.zip
     needs: lint-and-test
     runs-on: ubuntu-latest
     steps:

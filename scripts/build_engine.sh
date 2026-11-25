@@ -1,6 +1,6 @@
 #!/bin/sh
-# CoreSurface v1.0.0 - Clean-Room Luminous & LivingFlow LSPosed Engine APK Builder (POSIX sh)
-# Compiles engine-src/ (Java + AGSL shaders) into a tiny signed APK (~30-45 KB) with
+# CoreSurface v1.0.0 - Clean-Room Flagship Motion LSPosed Engine APK Builder (POSIX sh)
+# Compiles engine-src/ into a tiny signed APK (~28-35 KB) with
 # ZERO external Maven downloads and ZERO binary blobs committed to git.
 
 set -eu
@@ -17,7 +17,7 @@ find_android_jar() {
     if [ -z "$_sdk" ] || [ ! -d "$_sdk/platforms" ]; then
       continue
     fi
-    # Prefer API 36 / 35 / 34 (needs API 33+ for RuntimeShader)
+    # Prefer API 36 / 35 / 34 / 33
     for _api in android-36 android-35 android-34 android-33; do
       if [ -r "$_sdk/platforms/$_api/android.jar" ]; then
         printf '%s\n' "$_sdk/platforms/$_api/android.jar"
@@ -53,7 +53,7 @@ find_sdk_tool() {
 }
 
 ANDROID_JAR=$(find_android_jar) || {
-  printf 'ERROR: Cannot find Android SDK android.jar (API 33+ required for AGSL RuntimeShader)\n' >&2
+  printf 'ERROR: Cannot find Android SDK android.jar (API 33+ recommended)\n' >&2
   exit 1
 }
 

@@ -9,9 +9,9 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /**
- * CoreSurface Zero-FBO Luminous & Native Flagship Engine - LSPosed Entry Point.
+ * CoreSurface Pure Flagship Motion & Experience Engine - LSPosed Entry Point.
  * Strictly scoped to com.android.systemui, com.miui.home, and com.miui.aod
- * (never hooks system_server -> zero bootloop risk).
+ * (never hooks system_server -> zero bootloop risk, 100% original HyperOS UI preserved).
  */
 public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
     private static final String SELF_PKG = "org.mystivara.coresurface.engine";
@@ -47,21 +47,20 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
             ThermalLodController lodController = new ThermalLodController(config, telemetry);
             SurgicalBlurGuardHook blurGuard = new SurgicalBlurGuardHook(config, telemetry);
             DeviceLevelUnlockHook deviceLevelHook = new DeviceLevelUnlockHook(config, telemetry);
+            FolmePhysicsHook folmeHook = new FolmePhysicsHook(config, lodController, telemetry);
 
             if (PKG_SYSTEMUI.equals(pkg)) {
-                LuminousOverlayEngine luminousEngine = new LuminousOverlayEngine(config, lodController, telemetry);
-                new LivingFlowSystemUIHook(config, lodController, luminousEngine, blurGuard, deviceLevelHook, telemetry)
+                new LivingFlowSystemUIHook(config, lodController, folmeHook, blurGuard, deviceLevelHook, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Zero-FBO Luminous + Native Flagship in com.android.systemui");
+                XposedBridge.log("CoreSurfaceEngine: initialized Native Flagship Motion in com.android.systemui");
             } else if (PKG_HOME.equals(pkg)) {
-                LuminousOverlayEngine luminousEngine = new LuminousOverlayEngine(config, lodController, telemetry);
-                new LivingFlowHomeHook(config, lodController, luminousEngine, blurGuard, deviceLevelHook, telemetry)
+                new LivingFlowHomeHook(config, lodController, folmeHook, blurGuard, deviceLevelHook, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Native Flagship + RecentsGuard in com.miui.home");
+                XposedBridge.log("CoreSurfaceEngine: initialized Native Flagship Motion + RecentsGuard in com.miui.home");
             } else if (PKG_AOD.equals(pkg)) {
-                new LivingFlowAodHook(config, lodController, deviceLevelHook, telemetry)
+                new LivingFlowAodHook(config, lodController, folmeHook, deviceLevelHook, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Native Flagship in com.miui.aod");
+                XposedBridge.log("CoreSurfaceEngine: initialized Native Flagship Motion in com.miui.aod");
             }
         } catch (Throwable t) {
             XposedBridge.log("CoreSurfaceEngine: safe isolation catch in " + pkg + ": " + t);

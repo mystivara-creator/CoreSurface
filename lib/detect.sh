@@ -87,10 +87,9 @@ cs_detect_ram_tier() {
 cs_load_config() {
   _cs_cfg_file=$1
 
-  # Live Layer 2 Luminous & LivingFlow Engine toggles
-  CFG_FEAT_LUMINOUS_GLASS="auto"
-  CFG_FEAT_LUMINOUS_TILT="auto"
-  CFG_FEAT_LIVING_FLOW="auto"
+  # Live Layer 2 Pure Flagship Motion & Experience toggles
+  CFG_FEAT_MOTION_PROFILE="hyperos4"
+  CFG_FEAT_NATIVE_TIER="auto"
   CFG_FEAT_SURGICAL_GUARD="auto"
   CFG_FEAT_THERMAL_LOD="auto"
 
@@ -108,7 +107,7 @@ cs_load_config() {
   CFG_FEAT_GALLERY_PRO="0"
   CFG_FEAT_AOD_UNLOCK="0"
 
-  export CFG_FEAT_LUMINOUS_GLASS CFG_FEAT_LUMINOUS_TILT CFG_FEAT_LIVING_FLOW \
+  export CFG_FEAT_MOTION_PROFILE CFG_FEAT_NATIVE_TIER \
     CFG_FEAT_SURGICAL_GUARD CFG_FEAT_THERMAL_LOD \
     CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
     CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ \
@@ -116,19 +115,31 @@ cs_load_config() {
 
   [ -r "$_cs_cfg_file" ] || return 0
 
+  _cs_seen_native_tier="0"
   while IFS='=' read -r _cs_k _cs_v || [ -n "$_cs_k" ]; do
     _cs_k=$(printf '%s' "$_cs_k" | tr -d '\r')
     _cs_v=$(printf '%s' "$_cs_v" | tr -d '\r')
     case "$_cs_k" in
       ''|'#'*) continue ;;
-      FEAT_LUMINOUS_GLASS)
-        case "$_cs_v" in auto|1|0) CFG_FEAT_LUMINOUS_GLASS="$_cs_v" ;; esac
+      FEAT_MOTION_PROFILE)
+        case "$_cs_v" in
+          hyperos4|silk|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
+          off) CFG_FEAT_MOTION_PROFILE="0" ;;
+        esac
         ;;
-      FEAT_LUMINOUS_TILT)
-        case "$_cs_v" in auto|1|0) CFG_FEAT_LUMINOUS_TILT="$_cs_v" ;; esac
+      FEAT_NATIVE_TIER)
+        case "$_cs_v" in
+          auto|1|0)
+            CFG_FEAT_NATIVE_TIER="$_cs_v"
+            _cs_seen_native_tier="1"
+            ;;
+        esac
         ;;
       FEAT_LIVING_FLOW)
-        case "$_cs_v" in auto|1|0) CFG_FEAT_LIVING_FLOW="$_cs_v" ;; esac
+        # Backward-compatibility with configs created by earlier preview builds
+        if [ "$_cs_seen_native_tier" = "0" ]; then
+          case "$_cs_v" in auto|1|0) CFG_FEAT_NATIVE_TIER="$_cs_v" ;; esac
+        fi
         ;;
       FEAT_SURGICAL_GUARD)
         case "$_cs_v" in auto|1|0) CFG_FEAT_SURGICAL_GUARD="$_cs_v" ;; esac
@@ -172,9 +183,8 @@ cs_load_config() {
 
 # Resolve effective per-feature enablement from config + dynamic hardware tiering.
 cs_resolve_features() {
-  EFF_FEAT_LUMINOUS_GLASS="0"
-  EFF_FEAT_LUMINOUS_TILT="0"
-  EFF_FEAT_LIVING_FLOW="0"
+  EFF_FEAT_MOTION_PROFILE="off"
+  EFF_FEAT_NATIVE_TIER="0"
   EFF_FEAT_SURGICAL_GUARD="0"
   EFF_FEAT_THERMAL_LOD="0"
 
@@ -189,46 +199,23 @@ cs_resolve_features() {
   EFF_FEAT_GALLERY_PRO="0"
   EFF_FEAT_AOD_UNLOCK="0"
 
-  export EFF_FEAT_LUMINOUS_GLASS EFF_FEAT_LUMINOUS_TILT EFF_FEAT_LIVING_FLOW \
+  export EFF_FEAT_MOTION_PROFILE EFF_FEAT_NATIVE_TIER \
     EFF_FEAT_SURGICAL_GUARD EFF_FEAT_THERMAL_LOD \
     EFF_FEAT_BLUR EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER EFF_FEAT_RRO_OVERLAYS \
     EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK EFF_FEAT_DISPLAY_HZ \
     EFF_FEAT_COLOR_EXPERT EFF_FEAT_GALLERY_PRO EFF_FEAT_AOD_UNLOCK
 
-  # FEAT_LUMINOUS_GLASS: AGSL RuntimeShader requires Android 13+ (SDK >= 33) & RAM >= 6 GB in auto
-  case "$CFG_FEAT_LUMINOUS_GLASS" in
-    1)
-      if [ "${CS_ANDROID_SDK:-0}" -ge 33 ]; then
-        EFF_FEAT_LUMINOUS_GLASS="1"
-      fi
-      ;;
-    auto)
-      if [ "${CS_ANDROID_SDK:-0}" -ge 33 ] && [ "$CS_RAM_TIER" != "low" ]; then
-        EFF_FEAT_LUMINOUS_GLASS="1"
-      fi
-      ;;
-    0) EFF_FEAT_LUMINOUS_GLASS="0" ;;
+  # FEAT_MOTION_PROFILE: Native Folme & Jetpack SpringForce Physics Profile
+  case "$CFG_FEAT_MOTION_PROFILE" in
+    hyperos4) EFF_FEAT_MOTION_PROFILE="hyperos4" ;;
+    silk) EFF_FEAT_MOTION_PROFILE="silk" ;;
+    *) EFF_FEAT_MOTION_PROFILE="off" ;;
   esac
 
-  # FEAT_LUMINOUS_TILT: Gravity-reactive specular rim light (requires Luminous Glass active)
-  case "$CFG_FEAT_LUMINOUS_TILT" in
-    1)
-      if [ "$EFF_FEAT_LUMINOUS_GLASS" = "1" ]; then
-        EFF_FEAT_LUMINOUS_TILT="1"
-      fi
-      ;;
-    auto)
-      if [ "$EFF_FEAT_LUMINOUS_GLASS" = "1" ] && [ "$CS_RAM_TIER" = "high" ]; then
-        EFF_FEAT_LUMINOUS_TILT="1"
-      fi
-      ;;
-    0) EFF_FEAT_LUMINOUS_TILT="0" ;;
-  esac
-
-  # FEAT_LIVING_FLOW: VSync Spring Physics (Control Center swipe + Lockscreen->Home cascade)
-  case "$CFG_FEAT_LIVING_FLOW" in
-    1|auto) EFF_FEAT_LIVING_FLOW="1" ;;
-    0) EFF_FEAT_LIVING_FLOW="0" ;;
+  # FEAT_NATIVE_TIER: Native HyperOS Flagship DeviceLevel / CpuLevel / GpuLevel Unlock
+  case "$CFG_FEAT_NATIVE_TIER" in
+    1|auto) EFF_FEAT_NATIVE_TIER="1" ;;
+    0) EFF_FEAT_NATIVE_TIER="0" ;;
   esac
 
   # FEAT_SURGICAL_GUARD: HyperOS 3 Toast & Black Recent Apps surgical guard (ON by default)
@@ -237,7 +224,7 @@ cs_resolve_features() {
     0) EFF_FEAT_SURGICAL_GUARD="0" ;;
   esac
 
-  # FEAT_THERMAL_LOD: Thermal-Adaptive Visual LOD (ON by default to protect 120 FPS)
+  # FEAT_THERMAL_LOD: Thermal-Adaptive Motion Safety (ON by default to protect 120 FPS)
   case "$CFG_FEAT_THERMAL_LOD" in
     1|auto) EFF_FEAT_THERMAL_LOD="1" ;;
     0) EFF_FEAT_THERMAL_LOD="0" ;;
@@ -325,7 +312,7 @@ cs_resolve_features() {
     EFF_FEAT_GALLERY_PRO="1"
   fi
 
-  # FEAT_AOD_UNLOCK: Opt-in only (real AOD XML + MiuiAod RRO + Layer 2 AOD LivingFlow)
+  # FEAT_AOD_UNLOCK: Opt-in only (real AOD XML + MiuiAod RRO + Native AOD Tier)
   if [ "$CFG_FEAT_AOD_UNLOCK" = "1" ]; then
     EFF_FEAT_AOD_UNLOCK="1"
   fi

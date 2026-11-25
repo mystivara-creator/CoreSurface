@@ -176,7 +176,7 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
 
   # On HyperOS 3+, keep default Advanced Textures OFF so Toasts/Recents stay clean out-of-the-box;
-  # real optical Luminous Glass is rendered surgically by CoreSurfaceEngine (AGSL) + SurgicalBlurGuard.
+  # SurgicalBlurGuardHook protects Toast windows & Recents scrims if the user enables it manually.
   if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
   else
@@ -210,12 +210,10 @@ cs_apply_feat_display_hz() {
 
 cs_sync_engine_live_prop() {
   cs_find_resetprop || return 0
-  _cs_live_cfg=$(printf 'luminous=%s;touch=%s;livingflow=%s;guard=%s;aodflow=%s;thermallod=%s' \
-    "${EFF_FEAT_LUMINOUS_GLASS:-0}" \
-    "${EFF_FEAT_LUMINOUS_TILT:-0}" \
-    "${EFF_FEAT_LIVING_FLOW:-0}" \
+  _cs_live_cfg=$(printf 'motion=%s;native=%s;guard=%s;thermallod=%s' \
+    "${EFF_FEAT_MOTION_PROFILE:-off}" \
+    "${EFF_FEAT_NATIVE_TIER:-0}" \
     "${EFF_FEAT_SURGICAL_GUARD:-0}" \
-    "${EFF_FEAT_AOD_UNLOCK:-0}" \
     "${EFF_FEAT_THERMAL_LOD:-1}")
 
   if [ "$CS_RESETPROP_MODE" = "magisk" ]; then

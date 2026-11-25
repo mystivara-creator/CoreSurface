@@ -4,17 +4,15 @@
 const CTL_SCRIPT = '/system/bin/sh /data/adb/modules/coresurface/lib/webui_ctl.sh';
 
 const LIVE_ENGINE_KEYS = new Set([
-  'FEAT_LUMINOUS_GLASS',
-  'FEAT_LUMINOUS_TILT',
-  'FEAT_LIVING_FLOW',
+  'FEAT_MOTION_PROFILE',
+  'FEAT_NATIVE_TIER',
   'FEAT_SURGICAL_GUARD',
   'FEAT_THERMAL_LOD'
 ]);
 
 const FEATURE_KEYS = [
-  'FEAT_LUMINOUS_GLASS',
-  'FEAT_LUMINOUS_TILT',
-  'FEAT_LIVING_FLOW',
+  'FEAT_MOTION_PROFILE',
+  'FEAT_NATIVE_TIER',
   'FEAT_SURGICAL_GUARD',
   'FEAT_THERMAL_LOD',
   'FEAT_BLUR',
@@ -129,6 +127,13 @@ function makeKvRow(label, value) {
   return row;
 }
 
+function formatMotionProfile(profile) {
+  if (profile === 'silk') return 'iOS · ColorOS 17 Silk Fluid';
+  if (profile === 'hyperos4') return 'HyperOS 4 Flagship';
+  if (profile === 'off' || profile === '0') return 'Stock ROM (OFF)';
+  return profile || 'N/A';
+}
+
 function renderWatchdogBadge(kv) {
   const badge = document.getElementById('watchdog-badge');
   const safeBanner = document.getElementById('safemode-banner');
@@ -171,7 +176,7 @@ function renderEngineSummary(kv) {
 
   const installed = kv.verify_engine_installed === '1';
   const active = kv.verify_engine_active === '1';
-  const agsl = kv.verify_engine_agsl === '1';
+  const motion = kv.verify_engine_motion || kv.eff_feat_motion_profile || 'N/A';
   const lod = kv.verify_engine_lod || 'N/A';
 
   badge.className = 'badge';
@@ -179,7 +184,7 @@ function renderEngineSummary(kv) {
 
   if (active) {
     badge.classList.add('badge-ok');
-    badge.textContent = agsl ? 'Engine: Zero-FBO Active' : 'Engine: Active';
+    badge.textContent = 'Engine: Native Motion Active';
     lodBadge.classList.add('on');
     lodBadge.textContent = 'LOD: ' + lod;
   } else if (installed) {
@@ -195,12 +200,13 @@ function renderEngineSummary(kv) {
 
   container.replaceChildren(
     makeKvRow('CoreSurfaceEngine.apk', installed ? 'Terpasang' : 'Belum terpasang (klik tombol di bawah)'),
-    makeKvRow('LSPosed Runtime Hook', active ? 'Aktif (Zero-Binder IPC Ready)' : 'Belum aktif di LSPosed Manager'),
-    makeKvRow('Renderer Luminous', agsl ? 'HWUI Zero-FBO DisplayList (120 FPS)' : 'Menunggu LSPosed'),
-    makeKvRow('Thermal-Adaptive LOD', lod),
+    makeKvRow('LSPosed Runtime Hook', active ? 'Aktif (Zero-Binder IPC · 100% Original UI)' : 'Belum aktif di LSPosed Manager'),
+    makeKvRow('Profil Fisika Folme', active ? formatMotionProfile(motion) : 'Menunggu LSPosed (' + formatMotionProfile(kv.eff_feat_motion_profile) + ')'),
+    makeKvRow('Thermal-Adaptive Motion', lod),
     makeKvRow('Hooks Terikat', kv.verify_engine_hooks || 'Belum ada'),
-    makeKvRow('Statistik Live', 'Tiles: ' + (kv.verify_engine_views || '0') + '/24'
-      + ' · Native Gates: ' + (kv.verify_engine_flows || '0')
+    makeKvRow('Statistik Live', 'Native Gates: ' + (kv.verify_engine_native_gates || '0')
+      + ' · Folme Hooks: ' + (kv.verify_engine_folme_hooks || '0')
+      + ' · Springs Tuned: ' + (kv.verify_engine_springs || '0')
       + ' · Toast Guard: ' + (kv.verify_engine_toasts || '0')
       + ' · Recents Guard: ' + (kv.verify_engine_recents || '0'))
   );
@@ -270,7 +276,7 @@ function renderVerifyPill(featKey, verifyStatus, isPending, effValue) {
       el.textContent = 'Disabled';
       break;
     default:
-      if (effValue === '1') {
+      if (effValue && effValue !== '0' && effValue !== 'off') {
         el.classList.add('v-info');
         el.textContent = LIVE_ENGINE_KEYS.has(featKey) ? 'Live Ready' : 'Pending Verify';
       } else {
@@ -414,6 +420,11 @@ function setToast(msg) {
   document.getElementById('toast-msg').textContent = msg || '';
 }
 
+function defaultFeatureValue(key) {
+  if (key === 'FEAT_MOTION_PROFILE') return 'hyperos4';
+  return OPT_IN_KEYS.has(key) ? '0' : 'auto';
+}
+
 async function refreshStatus() {
   const envList = document.getElementById('env-list');
   try {
@@ -453,7 +464,7 @@ async function refreshStatus() {
 
     for (const key of FEATURE_KEYS) {
       const lower = key.toLowerCase();
-      setSegmentValue(key, kv['cfg_' + lower] || (OPT_IN_KEYS.has(key) ? '0' : 'auto'));
+      setSegmentValue(key, kv['cfg_' + lower] || defaultFeatureValue(key));
       renderVerifyPill(key, kv['verify_' + lower] || '', pendingSet.has(key), kv['eff_' + lower] || '0');
     }
 
@@ -494,7 +505,7 @@ async function applyPreset(presetName) {
 }
 
 async function runHotSync() {
-  setToast('Menjalankan Hot-Apply Live Engine + settings & verifikasi ulang…');
+  setToast('Menjalankan Hot-Apply Motion Engine + settings & verifikasi ulang…');
   try {
     const res = await ksuExec(CTL_SCRIPT + ' hot-sync');
     setToast(res);

@@ -14,25 +14,24 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Zero-gimmick live runtime telemetry writer.
- * Writes honest runtime proof (Zero-FBO HWUI renderer state, exact native HyperOS
- * DeviceLevel gates hooked, decorated tile count, guarded Toasts/Recents, Thermal LOD)
- * on a low-priority background daemon thread.
+ * Zero-gimmick live runtime telemetry writer (background daemon thread, zero UI I/O).
+ * Reports genuine runtime metrics: hooked native HyperOS gates, hooked Folme/SpringForce
+ * methods, tuned spring animations count, guarded Toasts/Recents, and live Thermal LOD.
  */
 public final class TelemetryReporter {
     public static final String TELEMETRY_FILENAME = "coresurface_telemetry.prop";
 
     private final String processName;
     private volatile File cacheDir;
-    private volatile String rendererMode = "HWUI_ZERO_FBO";
-    private volatile boolean luminousReady = true;
+    private volatile String motionProfile = EngineConfig.MOTION_HYPEROS4;
     private volatile String lodTier = "FULL";
     private volatile int thermalStatus = 0;
     private volatile String lastConfig = "default";
 
     private final Set<String> boundHooks = new LinkedHashSet<>();
     private final AtomicInteger nativeGatesHooked = new AtomicInteger(0);
-    private final AtomicInteger luminousViews = new AtomicInteger(0);
+    private final AtomicInteger folmeHooksBound = new AtomicInteger(0);
+    private final AtomicInteger springsTuned = new AtomicInteger(0);
     private final AtomicInteger toastsGuarded = new AtomicInteger(0);
     private final AtomicInteger recentsGuarded = new AtomicInteger(0);
 
@@ -71,8 +70,8 @@ public final class TelemetryReporter {
         }
     }
 
-    public void setLuminousReady(boolean ready) {
-        this.luminousReady = ready;
+    public void setMotionProfile(String profile) {
+        this.motionProfile = profile != null ? profile : EngineConfig.MOTION_OFF;
         scheduleFlush();
     }
 
@@ -94,8 +93,15 @@ public final class TelemetryReporter {
         }
     }
 
-    public void setLuminousViewCount(int count) {
-        luminousViews.set(Math.max(0, count));
+    public void addFolmeHooksBound(int delta) {
+        if (delta > 0) {
+            folmeHooksBound.addAndGet(delta);
+            scheduleFlush();
+        }
+    }
+
+    public void incSpringsTuned() {
+        springsTuned.incrementAndGet();
         scheduleFlush();
     }
 
@@ -138,13 +144,14 @@ public final class TelemetryReporter {
             sb.append("ENGINE_ACTIVE=1\n");
             sb.append("ENGINE_VERSION=1.0.0\n");
             sb.append("PROCESS=").append(processName).append('\n');
-            sb.append("RENDERER=").append(rendererMode).append('\n');
-            sb.append("LUMINOUS_READY=").append(luminousReady ? "1" : "0").append('\n');
+            sb.append("ENGINE_MODE=NATIVE_MOTION\n");
+            sb.append("MOTION_PROFILE=").append(motionProfile).append('\n');
             sb.append("LOD_TIER=").append(lodTier).append('\n');
             sb.append("THERMAL_STATUS=").append(thermalStatus).append('\n');
             sb.append("HOOKS_BOUND=").append(hooksCsv).append('\n');
             sb.append("NATIVE_GATES=").append(nativeGatesHooked.get()).append('\n');
-            sb.append("VIEWS_LUMINOUS=").append(luminousViews.get()).append('\n');
+            sb.append("FOLME_HOOKS=").append(folmeHooksBound.get()).append('\n');
+            sb.append("SPRINGS_TUNED=").append(springsTuned.get()).append('\n');
             sb.append("TOASTS_GUARDED=").append(toastsGuarded.get()).append('\n');
             sb.append("RECENTS_GUARDED=").append(recentsGuarded.get()).append('\n');
             sb.append("LAST_CONFIG=").append(lastConfig).append('\n');

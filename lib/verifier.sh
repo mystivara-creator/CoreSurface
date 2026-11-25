@@ -1,11 +1,11 @@
 #!/system/bin/sh
-# CoreSurface - Zero-Gimmick User-Space Capability & Live Engine Verifier
+# CoreSurface - Zero-Gimmick User-Space Capability & Live Motion Engine Verifier
 # Pure POSIX sh. Verifies:
 #   - Layer 1: applied resetprop values, XML bind-mount + tags, RRO overlays via
 #              `cmd overlay list --user 0`, Video Depth marker, transactional settings.
 #   - Layer 2: CoreSurfaceEngine APK install + REAL live runtime telemetry written by
-#              SystemUI / MiuiHome / MiuiAod (AGSL shader compilation, bound hooks,
-#              Thermal-Adaptive LOD tier, guarded Toasts/Recents, LivingFlow count).
+#              SystemUI / MiuiHome / MiuiAod (Native Flagship gates, Folme/SpringForce
+#              hooks, tuned spring count, guarded Toasts/Recents, Thermal LOD tier).
 
 CS_VERIFY_FILE="$CS_STATE_DIR/verify.state"
 CS_OVERRIDDEN_PROPS_FILE="$CS_STATE_DIR/overridden_props.list"
@@ -92,14 +92,15 @@ cs_append_unique_csv() {
 cs_verify_engine() {
   CS_V_ENGINE_INSTALLED="0"
   CS_V_ENGINE_ACTIVE="0"
-  CS_V_ENGINE_AGSL="0"
-  CS_V_ENGINE_RENDERER="NONE"
+  CS_V_ENGINE_MODE="NONE"
+  CS_V_ENGINE_MOTION="N/A"
   CS_V_ENGINE_LOD="N/A"
   CS_V_ENGINE_HOOKS=""
-  CS_V_ENGINE_VIEWS=0
+  CS_V_ENGINE_NATIVE_GATES=0
+  CS_V_ENGINE_FOLME_HOOKS=0
+  CS_V_ENGINE_SPRINGS=0
   CS_V_ENGINE_TOASTS=0
   CS_V_ENGINE_RECENTS=0
-  CS_V_ENGINE_FLOWS=0
 
   # 1. Check whether CoreSurfaceEngine APK is installed
   if [ -n "${CORESURFACE_ENGINE_INSTALLED:-}" ]; then
@@ -150,14 +151,14 @@ cs_verify_engine() {
     [ "$_cs_act" = "1" ] || continue
 
     CS_V_ENGINE_ACTIVE="1"
-    _cs_rend=$(cs_telem_get "$_cs_tf" "RENDERER")
-    if [ -n "$_cs_rend" ] && [ "$CS_V_ENGINE_RENDERER" = "NONE" ]; then
-      CS_V_ENGINE_RENDERER="$_cs_rend"
+    _cs_mode=$(cs_telem_get "$_cs_tf" "ENGINE_MODE")
+    if [ -n "$_cs_mode" ] && [ "$CS_V_ENGINE_MODE" = "NONE" ]; then
+      CS_V_ENGINE_MODE="$_cs_mode"
     fi
-    _cs_lr=$(cs_telem_get "$_cs_tf" "LUMINOUS_READY")
-    _cs_agsl=$(cs_telem_get "$_cs_tf" "AGSL_COMPILED")
-    if [ "$_cs_lr" = "1" ] || [ "$_cs_agsl" = "1" ]; then
-      CS_V_ENGINE_AGSL="1"
+
+    _cs_mp=$(cs_telem_get "$_cs_tf" "MOTION_PROFILE")
+    if [ -n "$_cs_mp" ] && [ "$CS_V_ENGINE_MOTION" = "N/A" ]; then
+      CS_V_ENGINE_MOTION="$_cs_mp"
     fi
 
     _cs_lod=$(cs_telem_get "$_cs_tf" "LOD_TIER")
@@ -171,67 +172,58 @@ cs_verify_engine() {
       CS_V_ENGINE_HOOKS="$CS_AU_OUT"
     fi
 
-    _cs_nv=$(cs_telem_get "$_cs_tf" "VIEWS_LUMINOUS")
+    _cs_ng=$(cs_telem_get "$_cs_tf" "NATIVE_GATES")
+    _cs_fh=$(cs_telem_get "$_cs_tf" "FOLME_HOOKS")
+    _cs_sp=$(cs_telem_get "$_cs_tf" "SPRINGS_TUNED")
     _cs_nt=$(cs_telem_get "$_cs_tf" "TOASTS_GUARDED")
     _cs_nr=$(cs_telem_get "$_cs_tf" "RECENTS_GUARDED")
-    _cs_ng=$(cs_telem_get "$_cs_tf" "NATIVE_GATES")
-    _cs_nf=$(cs_telem_get "$_cs_tf" "FLOW_ANIMS")
-    cs_is_uint "$_cs_nv" && CS_V_ENGINE_VIEWS=$((CS_V_ENGINE_VIEWS + _cs_nv))
+    cs_is_uint "$_cs_ng" && CS_V_ENGINE_NATIVE_GATES=$((CS_V_ENGINE_NATIVE_GATES + _cs_ng))
+    cs_is_uint "$_cs_fh" && CS_V_ENGINE_FOLME_HOOKS=$((CS_V_ENGINE_FOLME_HOOKS + _cs_fh))
+    cs_is_uint "$_cs_sp" && CS_V_ENGINE_SPRINGS=$((CS_V_ENGINE_SPRINGS + _cs_sp))
     cs_is_uint "$_cs_nt" && CS_V_ENGINE_TOASTS=$((CS_V_ENGINE_TOASTS + _cs_nt))
     cs_is_uint "$_cs_nr" && CS_V_ENGINE_RECENTS=$((CS_V_ENGINE_RECENTS + _cs_nr))
-    if cs_is_uint "$_cs_ng"; then
-      CS_V_ENGINE_FLOWS=$((CS_V_ENGINE_FLOWS + _cs_ng))
-    elif cs_is_uint "$_cs_nf"; then
-      CS_V_ENGINE_FLOWS=$((CS_V_ENGINE_FLOWS + _cs_nf))
-    fi
   done
 
-  # 3. Map honest per-feature verification for Layer 2 Engine capabilities
+  # 3. Map honest per-feature verification for Layer 2 Motion Engine capabilities
   _cs_base_eng="skipped"
   if [ "$CS_V_ENGINE_INSTALLED" = "1" ] && [ "$CS_V_ENGINE_ACTIVE" != "1" ]; then
     _cs_base_eng="pending_lsposed"
   fi
 
-  # FEAT_LUMINOUS_GLASS
-  if [ "$CFG_FEAT_LUMINOUS_GLASS" = "0" ]; then
-    CS_V_LUMINOUS_GLASS="disabled"
-  elif [ "$EFF_FEAT_LUMINOUS_GLASS" != "1" ]; then
-    CS_V_LUMINOUS_GLASS="skipped"
-  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ] && [ "$CS_V_ENGINE_AGSL" = "1" ]; then
-    CS_V_LUMINOUS_GLASS="verified_active"
-  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
-    CS_V_LUMINOUS_GLASS="ignored_by_rom"
-  else
-    CS_V_LUMINOUS_GLASS="$_cs_base_eng"
-  fi
-
-  # FEAT_LUMINOUS_TILT (Touch Specular Highlight)
-  if [ "$CFG_FEAT_LUMINOUS_TILT" = "0" ]; then
-    CS_V_LUMINOUS_TILT="disabled"
-  elif [ "$EFF_FEAT_LUMINOUS_TILT" != "1" ]; then
-    CS_V_LUMINOUS_TILT="skipped"
-  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ] && [ "$CS_V_ENGINE_AGSL" = "1" ]; then
-    CS_V_LUMINOUS_TILT="verified_active"
-  else
-    CS_V_LUMINOUS_TILT="$_cs_base_eng"
-  fi
-
-  # FEAT_LIVING_FLOW (Native HyperOS Flagship DeviceLevel & Animation Gates)
-  if [ "$CFG_FEAT_LIVING_FLOW" = "0" ]; then
-    CS_V_LIVING_FLOW="disabled"
-  elif [ "$EFF_FEAT_LIVING_FLOW" != "1" ]; then
-    CS_V_LIVING_FLOW="skipped"
+  # FEAT_MOTION_PROFILE (Folme & Jetpack SpringForce physics tuning)
+  if [ "$CFG_FEAT_MOTION_PROFILE" = "0" ]; then
+    CS_V_MOTION_PROFILE="disabled"
+  elif [ "$EFF_FEAT_MOTION_PROFILE" = "off" ]; then
+    CS_V_MOTION_PROFILE="skipped"
   elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
     case ",$CS_V_ENGINE_HOOKS," in
-      *,NativeFlagshipTier,*|*,ControlCenterFlow,*|*,HomeLivingFlow,*)
-        CS_V_LIVING_FLOW="verified_active"
+      *,FolmePhysics,*)
+        CS_V_MOTION_PROFILE="verified_active"
         ;;
       *)
-        CS_V_LIVING_FLOW="ignored_by_rom"
+        CS_V_MOTION_PROFILE="ignored_by_rom"
         ;;
     esac
   else
-    CS_V_LIVING_FLOW="$_cs_base_eng"
+    CS_V_MOTION_PROFILE="$_cs_base_eng"
+  fi
+
+  # FEAT_NATIVE_TIER (Native HyperOS Flagship DeviceLevel & Cpu/GpuLevel Unlock)
+  if [ "$CFG_FEAT_NATIVE_TIER" = "0" ]; then
+    CS_V_NATIVE_TIER="disabled"
+  elif [ "$EFF_FEAT_NATIVE_TIER" != "1" ]; then
+    CS_V_NATIVE_TIER="skipped"
+  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
+    case ",$CS_V_ENGINE_HOOKS," in
+      *,NativeFlagshipTier,*)
+        CS_V_NATIVE_TIER="verified_active"
+        ;;
+      *)
+        CS_V_NATIVE_TIER="ignored_by_rom"
+        ;;
+    esac
+  else
+    CS_V_NATIVE_TIER="$_cs_base_eng"
   fi
 
   # FEAT_SURGICAL_GUARD
@@ -521,7 +513,7 @@ cs_verifier_run() {
   _cs_v_aod=$CS_XT_RESULT
   if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ] && [ "$_cs_v_aod" != "verified_active" ] && [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
     case ",$CS_V_ENGINE_HOOKS," in
-      *,KeyguardAodFlow,*|*,AodLivingFlow,*) _cs_v_aod="verified_active" ;;
+      *,AodFlagshipTier,*) _cs_v_aod="verified_active" ;;
     esac
   fi
 
@@ -535,7 +527,7 @@ cs_verifier_run() {
   _cs_v_hz=$CS_VF_RESULT
 
   for _cs_s in \
-    "$CS_V_LUMINOUS_GLASS" "$CS_V_LUMINOUS_TILT" "$CS_V_LIVING_FLOW" \
+    "$CS_V_MOTION_PROFILE" "$CS_V_NATIVE_TIER" \
     "$CS_V_SURGICAL_GUARD" "$CS_V_THERMAL_LOD" \
     "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
     "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" \
@@ -552,18 +544,18 @@ cs_verifier_run() {
 
   cs_verify_set "VERIFY_ENGINE_INSTALLED" "$CS_V_ENGINE_INSTALLED"
   cs_verify_set "VERIFY_ENGINE_ACTIVE" "$CS_V_ENGINE_ACTIVE"
-  cs_verify_set "VERIFY_ENGINE_AGSL" "$CS_V_ENGINE_AGSL"
-  cs_verify_set "VERIFY_ENGINE_RENDERER" "$CS_V_ENGINE_RENDERER"
+  cs_verify_set "VERIFY_ENGINE_MODE" "$CS_V_ENGINE_MODE"
+  cs_verify_set "VERIFY_ENGINE_MOTION" "$CS_V_ENGINE_MOTION"
   cs_verify_set "VERIFY_ENGINE_LOD" "$CS_V_ENGINE_LOD"
   cs_verify_set "VERIFY_ENGINE_HOOKS" "$CS_V_ENGINE_HOOKS"
-  cs_verify_set "VERIFY_ENGINE_VIEWS" "$CS_V_ENGINE_VIEWS"
+  cs_verify_set "VERIFY_ENGINE_NATIVE_GATES" "$CS_V_ENGINE_NATIVE_GATES"
+  cs_verify_set "VERIFY_ENGINE_FOLME_HOOKS" "$CS_V_ENGINE_FOLME_HOOKS"
+  cs_verify_set "VERIFY_ENGINE_SPRINGS" "$CS_V_ENGINE_SPRINGS"
   cs_verify_set "VERIFY_ENGINE_TOASTS" "$CS_V_ENGINE_TOASTS"
   cs_verify_set "VERIFY_ENGINE_RECENTS" "$CS_V_ENGINE_RECENTS"
-  cs_verify_set "VERIFY_ENGINE_FLOWS" "$CS_V_ENGINE_FLOWS"
 
-  cs_verify_set "VERIFY_FEAT_LUMINOUS_GLASS" "$CS_V_LUMINOUS_GLASS"
-  cs_verify_set "VERIFY_FEAT_LUMINOUS_TILT" "$CS_V_LUMINOUS_TILT"
-  cs_verify_set "VERIFY_FEAT_LIVING_FLOW" "$CS_V_LIVING_FLOW"
+  cs_verify_set "VERIFY_FEAT_MOTION_PROFILE" "$CS_V_MOTION_PROFILE"
+  cs_verify_set "VERIFY_FEAT_NATIVE_TIER" "$CS_V_NATIVE_TIER"
   cs_verify_set "VERIFY_FEAT_SURGICAL_GUARD" "$CS_V_SURGICAL_GUARD"
   cs_verify_set "VERIFY_FEAT_THERMAL_LOD" "$CS_V_THERMAL_LOD"
   cs_verify_set "VERIFY_FEAT_BLUR" "$_cs_v_blur"
@@ -588,6 +580,6 @@ cs_verifier_run() {
   cs_verify_set "COMPAT_SCORE_PCT" "$_cs_compat_pct"
 
   mv -f "$CS_VERIFY_TMP" "$CS_VERIFY_FILE"
-  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (agsl=${CS_V_ENGINE_AGSL}, lod=${CS_V_ENGINE_LOD})."
+  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (motion=${CS_V_ENGINE_MOTION}, folme=${CS_V_ENGINE_FOLME_HOOKS}, gates=${CS_V_ENGINE_NATIVE_GATES}, lod=${CS_V_ENGINE_LOD})."
   return 0
 }
