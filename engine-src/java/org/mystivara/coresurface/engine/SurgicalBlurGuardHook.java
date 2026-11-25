@@ -146,7 +146,8 @@ public final class SurgicalBlurGuardHook {
             hooked += hookViewMiBlurForRecents("setMiViewBlurMode");
         }
 
-        // 3. Guard MiuiHome Recents window FLAG_BLUR_BEHIND / blurBehindRadius
+        // 3. Guard MiuiHome Recents & -1 Screen (App Vault / MinusOne) cross-window FLAG_BLUR_BEHIND
+        //    so SurfaceFlinger never drops the wallpaper layer to solid #000000 black under Advanced Textures.
         try {
             Class<?> wmgClass = XposedHelpers.findClassIfExists("android.view.WindowManagerGlobal", cl);
             if (wmgClass != null) {
@@ -165,7 +166,7 @@ public final class SurgicalBlurGuardHook {
                             }
                             View view = (View) param.args[0];
                             WindowManager.LayoutParams lp = (WindowManager.LayoutParams) param.args[1];
-                            if (isRecentsWindow(view, lp)) {
+                            if (isRecentsWindow(view, lp) || isMinusOneWindow(view, lp)) {
                                 boolean stripped = false;
                                 if ((lp.flags & WindowManager.LayoutParams.FLAG_BLUR_BEHIND) != 0) {
                                     lp.flags &= ~WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
@@ -184,6 +185,7 @@ public final class SurgicalBlurGuardHook {
                         }
                     }
                 };
+                XposedBridge.hookAllMethods(wmgClass, "addView", recentsWinHook);
                 XposedBridge.hookAllMethods(wmgClass, "updateViewLayout", recentsWinHook);
                 hooked++;
             }
@@ -234,11 +236,21 @@ public final class SurgicalBlurGuardHook {
                             return;
                         }
                         Object arg = param.args[0];
-                        if (!(arg instanceof Integer) || ((Integer) arg) == 0) {
+                        if (!(arg instanceof Integer)) {
+                            return;
+                        }
+                        int mode = (Integer) arg;
+                        if (mode == 0) {
                             return;
                         }
                         View v = (View) param.thisObject;
-                        if (isRecentsClass(v.getClass())) {
+                        Class<?> vClass = v.getClass();
+                        if (isRecentsClass(vClass)) {
+                            param.args[0] = 0;
+                            telemetry.incRecentsGuarded();
+                        } else if (mode >= 2 && isMinusOneClass(vClass)) {
+                            // Mode >= 2 is pass-window cross-process blur, which drops the home
+                            // wallpaper to solid #000000 black behind -1 Screen on mid-range HOS 3.
                             param.args[0] = 0;
                             telemetry.incRecentsGuarded();
                         }
@@ -251,6 +263,27 @@ public final class SurgicalBlurGuardHook {
         } catch (Throwable ignored) {
             return 0;
         }
+    }
+
+    private static boolean isMinusOneClass(Class<?> clazz) {
+        String cls = clazz.getName().toLowerCase(Locale.ROOT);
+        return cls.contains("minusone")
+                || cls.contains("minus_one")
+                || cls.contains("personalassistant")
+                || cls.contains("appvault");
+    }
+
+    private boolean isMinusOneWindow(View view, WindowManager.LayoutParams lp) {
+        if (isMinusOneClass(view.getClass())) {
+            return true;
+        }
+        CharSequence title = lp.getTitle();
+        if (title != null) {
+            String t = title.toString().toLowerCase(Locale.ROOT);
+            return t.contains("minusone") || t.contains("minus_one")
+                    || t.contains("personalassistant") || t.contains("appvault");
+        }
+        return false;
     }
 
     public boolean isRecentsClass(Class<?> clazz) {

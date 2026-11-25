@@ -400,7 +400,7 @@ EOF
 run_post_fs_data
 assert_file_contains "$SB_STATE/state.prop" "DETECTED_TIER=motion_only" "Genuine Native Flagship auto-detects motion_only passthrough"
 assert_file_contains "$SB_STATE/state.prop" "EFF_TIER=motion_only" "Native Flagship effective tier is motion_only"
-assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=hyperos4;native=0;guard=1;thermallod=1;aod=0" "Native Flagship still syncs live Folme Motion IPC"
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;guard=1;thermallod=1;aod=0" "Native Flagship still syncs live Folme Motion IPC"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.device_level=" "Native Flagship skips redundant device_level prop override"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.has_blur=1" "Native Flagship skips redundant blur prop overrides"
 assert_eq "$(wc -l < "$SB_MOUNT_LOG" | tr -d ' ')" "0" "Native Flagship skips XML bind-mount when factory XML already has expert color"
@@ -809,6 +809,7 @@ setup_sandbox "t13_hybrid_engine"
 write_mock_getprop "OS3.0" "" "36" "1" "aurora"
 write_mock_meminfo "7800000"
 write_sample_xml "$SB_XML_DIR1/aurora.xml"
+printf 'CS_TIER_MODE=auto\nFEAT_MOTION_PROFILE=hyperos4\n' > "$SB_STATE/config.prop"
 cat > "$SB_BIN/pidof" <<'EOF'
 #!/bin/sh
 printf '4242\n'
@@ -998,7 +999,7 @@ chmod +x "$SB_BIN/getevent"
 PATH="$SB_BIN:$PATH" MODPATH="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/customize.sh" >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=balanced_pro" "Volume Up x2 + Volume Down selects balanced_pro tier"
-assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=silk" "Volume Up + Volume Down selects iOS/ColorOS silk profile"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=hyperos4" "Volume Up + Volume Down selects Flagship Crisp (hyperos4) profile"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiWallpaper.apk" ] && printf 'yes' || printf 'no' )" "yes" "customize.sh stages balanced_pro RRO overlays immediately after volume selection"
 
 # Non-interactive fallback leaves CS_TIER_MODE=auto cleanly without hanging
@@ -1171,6 +1172,7 @@ exit 1
 EOF
 chmod +x "$SB_BIN/su"
 
+printf 'CS_TIER_MODE=auto\nFEAT_MOTION_PROFILE=hyperos4\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 
 # Stale-boot telemetry with an OLD boot_id MUST be rejected by verifier.sh
@@ -1330,18 +1332,16 @@ EOF
 chmod +x "$SB_BIN/pidof"
 
 run_post_fs_data
-# Launcher & SurfaceFlinger blur + HyperOS 3 Advanced Textures v4 contract (prevents -1 Screen & Folder black-blink)
+# Lightweight HyperOS 3 Advanced Textures v4 contract on non-flagship (prevents -1 Screen black blink & GPU heat)
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.sf.disable_blurs=false" "Blur contract sets persist.sys.sf.disable_blurs=false"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.launcher_blur_supported=true" "Blur contract sets persist.sys.launcher_blur_supported=true"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_setting=1" "Blur contract sets persist.sys.background_blur_setting=1"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.launcher_blur_supported=true" "Non-flagship HOS 3 omits launcher_blur_supported to prevent -1 Screen black blink"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_setting=1" "Blur contract omits conflicting user-toggle background_blur_setting prop"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "HyperOS 3 Flagship sets native Advanced Textures release=4"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.mi_shadow_supported=true" "HyperOS 3 Flagship sets mi_shadow_supported=true"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=true" "HyperOS 3 Flagship sets support_window_mishadow=true"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_view_mishadow=true" "HyperOS 3 Flagship sets support_view_mishadow=true"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.mi_shadow_supported=true" "Non-flagship HOS 3 skips heavy mi_shadow shader to keep GPU cool"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_smoothcorner=true" "HyperOS 3 Flagship sets support_window_smoothcorner=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_view_smoothcorner=true" "HyperOS 3 Flagship sets support_view_smoothcorner=true"
-assert_file_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "HyperOS 3 Flagship sets ro.miui.backdrop_sampling_enabled=true"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "HyperOS 3 Flagship sets add_blurnoise_supported=true"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "Non-flagship HOS 3 skips heavy backdrop_sampling shader"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "Non-flagship HOS 3 skips heavy blurnoise shader"
 # Audio & Speaker props
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Flagship Audio sets ro.vendor.audio.spk.stereo=true"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Flagship Audio sets ro.vendor.audio.spk.clean=true"

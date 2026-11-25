@@ -121,17 +121,17 @@ _cs_tier_key() {
 
 _cs_motion_label() {
   case "$1" in
-    1) printf 'HyperOS 4 Flagship (Tegas & Ringan 60/120 Hz)' ;;
-    2) printf 'iOS / ColorOS 17 Silk Fluid (Halus & Mengalir)' ;;
-    3) printf 'Stock ROM (Kurva Bawaan)' ;;
+    1) printf 'Stock Flagship (100%% Folme Native Xiaomi — Ultra Ringan)' ;;
+    2) printf 'Flagship Crisp (Penyesuaian Halus 70/30 — Responsif)' ;;
+    3) printf 'Smooth Flow (Penyesuaian Halus 70/30 — Mengalir)' ;;
   esac
 }
 
 _cs_motion_key() {
   case "$1" in
-    1) printf 'hyperos4' ;;
-    2) printf 'silk' ;;
-    3) printf '0' ;;
+    1) printf '0' ;;
+    2) printf 'hyperos4' ;;
+    3) printf 'silk' ;;
   esac
 }
 
@@ -185,14 +185,12 @@ _cs_run_vol_selector() {
   _cs_chosen_tier=$(_cs_tier_key "$_cs_sel")
   _cs_cfg_write_key "$_cs_vs_cfg" "CS_TIER_MODE" "$_cs_chosen_tier"
 
-  # Step 2: Select Live Motion Profile
+  # Step 2: Select Live Motion Profile (default: 1 = Stock Flagship native Folme)
   _cs_msel=1
-  if [ "$_cs_chosen_tier" = "flagship" ]; then
-    _cs_msel=2
-  fi
   case "${CFG_FEAT_MOTION_PROFILE:-}" in
-    silk)     _cs_msel=2 ;;
-    0)        _cs_msel=3 ;;
+    hyperos4) _cs_msel=2 ;;
+    silk)     _cs_msel=3 ;;
+    *)        _cs_msel=1 ;;
   esac
 
   _cs_ui_print ""

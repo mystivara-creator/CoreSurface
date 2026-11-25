@@ -156,3 +156,38 @@ cs_rro_stage() {
   cs_rro_fix_labels "$_cs_rs_moddir"
   return 0
 }
+
+# Post-boot RRO activator: enables any staged CoreSurface overlay that OverlayManagerService
+# registered as disabled (`[ ] <pkg>`) so all mounted overlays become active (`[x]`).
+cs_rro_enable_staged() {
+  [ "${EFF_FEAT_RRO_OVERLAYS:-0}" = "1" ] || return 0
+  [ -s "$CS_RRO_STAGED_LIST" ] || return 0
+  command -v cmd >/dev/null 2>&1 || return 0
+
+  _cs_ov_list=$(cmd overlay list --user 0 2>&1 || true)
+  case "$_cs_ov_list" in
+    ""|*Failure*|*Exception*|*Error*|*Binder*)
+      if command -v su >/dev/null 2>&1; then
+        _cs_ov_list=$(su 2000 -c "cmd overlay list --user 0" 2>&1 || true)
+      fi
+      ;;
+  esac
+  [ -n "$_cs_ov_list" ] || return 0
+
+  _cs_en_count=0
+  while IFS='|' read -r _cs_eapk _cs_epkg || [ -n "$_cs_eapk" ]; do
+    [ -n "$_cs_epkg" ] || continue
+    if printf '%s\n' "$_cs_ov_list" | grep -F -q "[ ] $_cs_epkg"; then
+      if cmd overlay enable --user 0 "$_cs_epkg" >/dev/null 2>&1; then
+        _cs_en_count=$((_cs_en_count + 1))
+      elif command -v su >/dev/null 2>&1 && su 2000 -c "cmd overlay enable --user 0 '${_cs_epkg}'" >/dev/null 2>&1; then
+        _cs_en_count=$((_cs_en_count + 1))
+      fi
+    fi
+  done < "$CS_RRO_STAGED_LIST"
+
+  if [ "$_cs_en_count" -gt 0 ]; then
+    cs_log "RRO Manager: enabled ${_cs_en_count} registered overlay(s) via OverlayManagerService."
+  fi
+  return 0
+}

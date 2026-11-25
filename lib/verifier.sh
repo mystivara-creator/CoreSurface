@@ -500,7 +500,7 @@ cs_verify_feature() {
 
       if ! cs_verify_settings_get "$_cs_sns" "$_cs_sk"; then
         CS_V_SETTINGS_OK="0"
-        cs_log "Verifier: settings service rejected Binder call; skipping remaining settings checks."
+        cs_log "Verifier: settings service rejected Binder call (${CS_SETTINGS_LAST_ERR:-unknown}); skipping remaining settings checks."
         break
       fi
 
@@ -644,6 +644,11 @@ cs_verifier_run() {
   cs_verify_set "COMPAT_SCORE_PCT" "$_cs_compat_pct"
 
   mv -f "$CS_VERIFY_TMP" "$CS_VERIFY_FILE"
-  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (motion=${CS_V_ENGINE_MOTION}, hz=${CS_V_ENGINE_HZ}, folme=${CS_V_ENGINE_FOLME_HOOKS}, gates=${CS_V_ENGINE_NATIVE_GATES}, lod=${CS_V_ENGINE_LOD})."
+  _cs_ov_note=""
+  if [ "$CS_V_PROPS_OVERRIDDEN" -gt 0 ] && [ -s "$CS_OVERRIDDEN_PROPS_FILE" ]; then
+    _cs_ov_keys=$(awk -F '|' 'NR <= 4 { if (s != "") s = s ","; s = s $2 } END { print s }' "$CS_OVERRIDDEN_PROPS_FILE" 2>/dev/null || true)
+    [ -n "$_cs_ov_keys" ] && _cs_ov_note=" overridden=[${_cs_ov_keys}]"
+  fi
+  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}${_cs_ov_note}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (motion=${CS_V_ENGINE_MOTION}, hz=${CS_V_ENGINE_HZ}, folme=${CS_V_ENGINE_FOLME_HOOKS}, gates=${CS_V_ENGINE_NATIVE_GATES}, lod=${CS_V_ENGINE_LOD})."
   return 0
 }

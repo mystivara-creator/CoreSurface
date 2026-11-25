@@ -4,8 +4,8 @@
 CS_TIER_MODE=auto
 
 # Live Motion Physics Profile (LSPosed Runtime — hot-reload without reboot):
-#   hyperos4 | silk | 0
-FEAT_MOTION_PROFILE=hyperos4
+#   0 (Stock Flagship native Folme) | hyperos4 (Flagship Crisp) | silk (Smooth Flow)
+FEAT_MOTION_PROFILE=0
 
 # Core User Toggles:
 #   FEAT_SURGICAL_GUARD:  1 | 0 (HyperOS 3 Toast & Recent Apps fix, live)
