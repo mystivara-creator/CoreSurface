@@ -144,19 +144,19 @@ public final class MotionProfileSpec {
             float fDamp = lerp(0.97f, 0.94f, w);
             float fResp = lerp(lerp(0.35f, 0.38f, w), lerp(0.37f, 0.41f, w), hz);
 
-            float perspTiltX = lerp(2.2f, 5.2f, w);
-            float perspTiltY = lerp(1.6f, 3.6f, w);
-            float perspScale = lerp(0.955f, 0.905f, w);
-            float perspDamp = lerp(0.86f, 0.78f, w);
-            float perspResp = lerp(0.38f, 0.43f, hz);
+            float perspTiltX = lerp(3.2f, 7.5f, w);
+            float perspTiltY = lerp(2.2f, 5.0f, w);
+            float perspScale = lerp(0.945f, 0.89f, w);
+            float perspDamp = lerp(0.84f, 0.72f, w);
+            float perspResp = lerp(0.38f, 0.44f, hz);
 
-            // Bouncy Lock Screen -> Home Screen fly-in (zeta=0.56 -> crisp ~5% elastic scale bounce)
-            float unlDamp = lerp(0.72f, 0.56f, w);
-            float unlResp = lerp(0.40f, 0.46f, hz);
-            float unlScale = lerp(1.18f, 1.36f, w);
-            float unlSpread = lerp(36.0f, 72.0f, w);
-            float unlTiltX = lerp(6.0f, 12.0f, w);
-            float unlStagger = lerp(0.025f, 0.048f, w);
+            // Bouncy Lock Screen -> Home Screen fly-in (zeta=0.54 -> unmistakable elastic iOS 27 bounce)
+            float unlDamp = lerp(0.70f, 0.54f, w);
+            float unlResp = lerp(0.41f, 0.47f, hz);
+            float unlScale = lerp(1.20f, 1.38f, w);
+            float unlSpread = lerp(40.0f, 76.0f, w);
+            float unlTiltX = lerp(6.5f, 13.0f, w);
+            float unlStagger = lerp(0.028f, 0.055f, w);
 
             return new MotionProfileSpec(
                     PROFILE_IOS,
