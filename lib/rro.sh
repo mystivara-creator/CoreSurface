@@ -100,6 +100,11 @@ cs_rro_stage() {
       cs_rro_sync_one "$_cs_rs_src" "$_cs_rs_dst" \
         "CoreSurfaceMiWallpaper.apk" "org.mystivara.coresurface.overlay.miwallpaper" || true
 
+      if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
+        cs_rro_sync_one "$_cs_rs_src" "$_cs_rs_dst" \
+          "CoreSurfaceMiuiAod.apk" "org.mystivara.coresurface.overlay.miuiaod" || true
+      fi
+
       cs_rro_remove_unwanted "$_cs_rs_dst"
       cs_state_set "RRO_STAGED_COUNT" "$CS_RRO_COUNT"
       if [ "$CS_RRO_COUNT" -gt 0 ]; then

@@ -1,7 +1,11 @@
 #!/system/bin/sh
-# CoreSurface - User-Space Capability Verifier & ROM Compatibility Scorer
-# Pure POSIX sh. Verifies applied resetprop values, XML bind-mount, RRO overlays
-# via `cmd overlay list --user 0`, Video Depth marker, and settings -> verify.state.
+# CoreSurface - Zero-Gimmick User-Space Capability & Live Engine Verifier
+# Pure POSIX sh. Verifies:
+#   - Layer 1: applied resetprop values, XML bind-mount + tags, RRO overlays via
+#              `cmd overlay list --user 0`, Video Depth marker, transactional settings.
+#   - Layer 2: CoreSurfaceEngine APK install + REAL live runtime telemetry written by
+#              SystemUI / MiuiHome / MiuiAod (AGSL shader compilation, bound hooks,
+#              Thermal-Adaptive LOD tier, guarded Toasts/Recents, LivingFlow count).
 
 CS_VERIFY_FILE="$CS_STATE_DIR/verify.state"
 CS_OVERRIDDEN_PROPS_FILE="$CS_STATE_DIR/overridden_props.list"
@@ -54,6 +58,158 @@ cs_verify_settings_get() {
   return 1
 }
 
+cs_telem_get() {
+  _cs_tg_file=$1
+  _cs_tg_key=$2
+  if [ -r "$_cs_tg_file" ]; then
+    awk -F '=' -v k="$_cs_tg_key" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$_cs_tg_file" 2>/dev/null | tr -d '\r'
+  fi
+}
+
+cs_verify_engine() {
+  CS_V_ENGINE_INSTALLED="0"
+  CS_V_ENGINE_ACTIVE="0"
+  CS_V_ENGINE_AGSL="0"
+  CS_V_ENGINE_LOD="N/A"
+  CS_V_ENGINE_HOOKS=""
+  CS_V_ENGINE_VIEWS=0
+  CS_V_ENGINE_TOASTS=0
+  CS_V_ENGINE_RECENTS=0
+  CS_V_ENGINE_FLOWS=0
+
+  # 1. Check whether CoreSurfaceEngine APK is installed
+  if [ -n "${CORESURFACE_ENGINE_INSTALLED:-}" ]; then
+    CS_V_ENGINE_INSTALLED="$CORESURFACE_ENGINE_INSTALLED"
+  elif command -v pm >/dev/null 2>&1; then
+    _cs_pm_out=$(pm path org.mystivara.coresurface.engine 2>&1 || true)
+    if [ -z "$_cs_pm_out" ] || cs_verify_is_settings_err "$_cs_pm_out"; then
+      if command -v su >/dev/null 2>&1; then
+        _cs_pm_out=$(su 2000 -c "pm path org.mystivara.coresurface.engine" 2>&1 || true)
+      fi
+    fi
+    case "$_cs_pm_out" in
+      package:*) CS_V_ENGINE_INSTALLED="1" ;;
+    esac
+  fi
+
+  # 2. Aggregate genuine live telemetry written by hooked processes
+  _cs_t_sysui=${CORESURFACE_ENGINE_SYSUI_TELEM:-/data/user_de/0/com.android.systemui/cache/coresurface_telemetry.prop}
+  _cs_t_home=${CORESURFACE_ENGINE_HOME_TELEM:-/data/user/0/com.miui.home/cache/coresurface_telemetry.prop}
+  _cs_t_aod=${CORESURFACE_ENGINE_AOD_TELEM:-/data/user_de/0/com.miui.aod/cache/coresurface_telemetry.prop}
+
+  for _cs_tf in "$_cs_t_sysui" "$_cs_t_home" "$_cs_t_aod"; do
+    [ -r "$_cs_tf" ] || continue
+    _cs_act=$(cs_telem_get "$_cs_tf" "ENGINE_ACTIVE")
+    [ "$_cs_act" = "1" ] || continue
+
+    CS_V_ENGINE_ACTIVE="1"
+    _cs_agsl=$(cs_telem_get "$_cs_tf" "AGSL_COMPILED")
+    if [ "$_cs_agsl" = "1" ]; then
+      CS_V_ENGINE_AGSL="1"
+    fi
+
+    _cs_lod=$(cs_telem_get "$_cs_tf" "LOD_TIER")
+    if [ -n "$_cs_lod" ] && [ "$CS_V_ENGINE_LOD" = "N/A" ]; then
+      CS_V_ENGINE_LOD="$_cs_lod"
+    fi
+
+    _cs_hk=$(cs_telem_get "$_cs_tf" "HOOKS_BOUND")
+    if [ -n "$_cs_hk" ]; then
+      if [ -z "$CS_V_ENGINE_HOOKS" ]; then
+        CS_V_ENGINE_HOOKS="$_cs_hk"
+      else
+        CS_V_ENGINE_HOOKS="${CS_V_ENGINE_HOOKS},${_cs_hk}"
+      fi
+    fi
+
+    _cs_nv=$(cs_telem_get "$_cs_tf" "VIEWS_LUMINOUS")
+    _cs_nt=$(cs_telem_get "$_cs_tf" "TOASTS_GUARDED")
+    _cs_nr=$(cs_telem_get "$_cs_tf" "RECENTS_GUARDED")
+    _cs_nf=$(cs_telem_get "$_cs_tf" "FLOW_ANIMS")
+    cs_is_uint "$_cs_nv" && CS_V_ENGINE_VIEWS=$((CS_V_ENGINE_VIEWS + _cs_nv))
+    cs_is_uint "$_cs_nt" && CS_V_ENGINE_TOASTS=$((CS_V_ENGINE_TOASTS + _cs_nt))
+    cs_is_uint "$_cs_nr" && CS_V_ENGINE_RECENTS=$((CS_V_ENGINE_RECENTS + _cs_nr))
+    cs_is_uint "$_cs_nf" && CS_V_ENGINE_FLOWS=$((CS_V_ENGINE_FLOWS + _cs_nf))
+  done
+
+  # 3. Map honest per-feature verification for Layer 2 Engine capabilities
+  _cs_base_eng="skipped"
+  if [ "$CS_V_ENGINE_INSTALLED" = "1" ] && [ "$CS_V_ENGINE_ACTIVE" != "1" ]; then
+    _cs_base_eng="pending_lsposed"
+  fi
+
+  # FEAT_LUMINOUS_GLASS
+  if [ "$CFG_FEAT_LUMINOUS_GLASS" = "0" ]; then
+    CS_V_LUMINOUS_GLASS="disabled"
+  elif [ "$EFF_FEAT_LUMINOUS_GLASS" != "1" ]; then
+    CS_V_LUMINOUS_GLASS="skipped"
+  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ] && [ "$CS_V_ENGINE_AGSL" = "1" ]; then
+    CS_V_LUMINOUS_GLASS="verified_active"
+  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
+    CS_V_LUMINOUS_GLASS="ignored_by_rom"
+  else
+    CS_V_LUMINOUS_GLASS="$_cs_base_eng"
+  fi
+
+  # FEAT_LUMINOUS_TILT
+  if [ "$CFG_FEAT_LUMINOUS_TILT" = "0" ]; then
+    CS_V_LUMINOUS_TILT="disabled"
+  elif [ "$EFF_FEAT_LUMINOUS_TILT" != "1" ]; then
+    CS_V_LUMINOUS_TILT="skipped"
+  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ] && [ "$CS_V_ENGINE_AGSL" = "1" ]; then
+    CS_V_LUMINOUS_TILT="verified_active"
+  else
+    CS_V_LUMINOUS_TILT="$_cs_base_eng"
+  fi
+
+  # FEAT_LIVING_FLOW
+  if [ "$CFG_FEAT_LIVING_FLOW" = "0" ]; then
+    CS_V_LIVING_FLOW="disabled"
+  elif [ "$EFF_FEAT_LIVING_FLOW" != "1" ]; then
+    CS_V_LIVING_FLOW="skipped"
+  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
+    case ",$CS_V_ENGINE_HOOKS," in
+      *,ControlCenterFlow,*|*,HomeLivingFlow,*|*,UnlockCascade,*)
+        CS_V_LIVING_FLOW="verified_active"
+        ;;
+      *)
+        CS_V_LIVING_FLOW="ignored_by_rom"
+        ;;
+    esac
+  else
+    CS_V_LIVING_FLOW="$_cs_base_eng"
+  fi
+
+  # FEAT_SURGICAL_GUARD
+  if [ "$CFG_FEAT_SURGICAL_GUARD" = "0" ]; then
+    CS_V_SURGICAL_GUARD="disabled"
+  elif [ "$EFF_FEAT_SURGICAL_GUARD" != "1" ]; then
+    CS_V_SURGICAL_GUARD="skipped"
+  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
+    case ",$CS_V_ENGINE_HOOKS," in
+      *,ToastGuard,*|*,RecentsGuard,*)
+        CS_V_SURGICAL_GUARD="verified_active"
+        ;;
+      *)
+        CS_V_SURGICAL_GUARD="ignored_by_rom"
+        ;;
+    esac
+  else
+    CS_V_SURGICAL_GUARD="$_cs_base_eng"
+  fi
+
+  # FEAT_THERMAL_LOD
+  if [ "$CFG_FEAT_THERMAL_LOD" = "0" ]; then
+    CS_V_THERMAL_LOD="disabled"
+  elif [ "$EFF_FEAT_THERMAL_LOD" != "1" ]; then
+    CS_V_THERMAL_LOD="skipped"
+  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
+    CS_V_THERMAL_LOD="verified_active"
+  else
+    CS_V_THERMAL_LOD="$_cs_base_eng"
+  fi
+}
+
 cs_verify_xml_mount() {
   _cs_mounts=${CORESURFACE_PROC_MOUNTS:-/proc/mounts}
   _cs_xml_status=$(cs_state_get "XML_STATUS")
@@ -80,6 +236,30 @@ cs_verify_xml_mount() {
   fi
 }
 
+cs_verify_xml_tag_feature() {
+  _cs_xt_cfg=$1
+  _cs_xt_eff=$2
+  _cs_xt_needle=$3
+  _cs_xt_xml="$CS_STATE_DIR/work/device_features.xml"
+  CS_XT_RESULT="skipped"
+
+  if [ "$_cs_xt_cfg" = "0" ]; then
+    CS_XT_RESULT="disabled"
+    return 0
+  fi
+  if [ "$_cs_xt_eff" != "1" ]; then
+    CS_XT_RESULT="skipped"
+    return 0
+  fi
+  if [ "$CS_V_XML_MOUNT" = "active" ] && [ -r "$_cs_xt_xml" ] && grep -F -q "$_cs_xt_needle" "$_cs_xt_xml" 2>/dev/null; then
+    CS_XT_RESULT="verified_active"
+  elif [ "$CS_V_XML_MOUNT" = "not_mounted" ]; then
+    CS_XT_RESULT="ignored_by_rom"
+  else
+    CS_XT_RESULT="skipped"
+  fi
+}
+
 cs_verify_rro_overlays() {
   CS_V_RRO_ACTIVE=0
   CS_V_RRO_TOTAL=0
@@ -95,7 +275,6 @@ cs_verify_rro_overlays() {
     return 0
   fi
 
-  # Check whether KernelSU-Next metamodule (e.g. meta-overlayfs) mounted any staged APK into /product/overlay
   _cs_any_mounted=0
   while IFS='|' read -r _cs_mapk _cs_mpkg || [ -n "$_cs_mapk" ]; do
     [ -n "$_cs_mapk" ] || continue
@@ -133,7 +312,6 @@ cs_verify_rro_overlays() {
 
   while IFS='|' read -r _cs_rapk _cs_rpkg || [ -n "$_cs_rapk" ]; do
     [ -n "$_cs_rpkg" ] || continue
-    # Only evaluate overlays whose target package exists in OverlayManagerService
     if printf '%s\n' "$_cs_ov_out" | grep -F -q "$_cs_rpkg"; then
       CS_V_RRO_TOTAL=$((CS_V_RRO_TOTAL + 1))
       if printf '%s\n' "$_cs_ov_out" | grep -F -q "[x] $_cs_rpkg"; then
@@ -169,7 +347,6 @@ cs_verify_video_depth() {
 }
 
 # Verify a single feature's applied props (and settings if any).
-# Sets CS_VF_RESULT to: verified_active | ignored_by_rom | skipped | disabled
 cs_verify_feature() {
   _cs_vf_name=$1
   _cs_vf_cfg=$2
@@ -254,25 +431,6 @@ cs_score_tally() {
   esac
 }
 
-cs_verify_color_expert() {
-  _cs_ce_xml="$CS_STATE_DIR/work/device_features.xml"
-  if [ "$CFG_FEAT_COLOR_EXPERT" = "0" ]; then
-    CS_V_COLOR_EXPERT="disabled"
-    return 0
-  fi
-  if [ "$EFF_FEAT_COLOR_EXPERT" != "1" ]; then
-    CS_V_COLOR_EXPERT="skipped"
-    return 0
-  fi
-  if [ "$CS_V_XML_MOUNT" = "active" ] && [ -r "$_cs_ce_xml" ] && grep -F -q '<bool name="support_display_expert_mode">true</bool>' "$_cs_ce_xml" 2>/dev/null; then
-    CS_V_COLOR_EXPERT="verified_active"
-  elif [ "$CS_V_XML_MOUNT" = "not_mounted" ]; then
-    CS_V_COLOR_EXPERT="ignored_by_rom"
-  else
-    CS_V_COLOR_EXPERT="skipped"
-  fi
-}
-
 cs_verifier_run() {
   cs_watchdog_init_dir || return 1
 
@@ -285,7 +443,6 @@ cs_verifier_run() {
   CS_V_RRO_ACTIVE=0
   CS_V_RRO_TOTAL=0
   CS_V_VIDEO_DEPTH="skipped"
-  CS_V_COLOR_EXPERT="disabled"
   CS_V_FEAT_EVALUATED=0
   CS_V_FEAT_VERIFIED=0
   CS_V_SETTINGS_OK="0"
@@ -297,29 +454,38 @@ cs_verifier_run() {
   CS_VERIFY_TMP="$CS_VERIFY_FILE.tmp.$$"
   : > "$CS_VERIFY_TMP"
 
+  cs_verify_engine
   cs_verify_xml_mount
   cs_verify_rro_overlays
   cs_verify_video_depth
-  cs_verify_color_expert
+
+  cs_verify_xml_tag_feature "$CFG_FEAT_COLOR_EXPERT" "$EFF_FEAT_COLOR_EXPERT" '<bool name="support_display_expert_mode">true</bool>'
+  _cs_v_color=$CS_XT_RESULT
+  cs_verify_xml_tag_feature "$CFG_FEAT_GALLERY_PRO" "$EFF_FEAT_GALLERY_PRO" '<bool name="gallery_support_video_compress">true</bool>'
+  _cs_v_gallery=$CS_XT_RESULT
+  cs_verify_xml_tag_feature "$CFG_FEAT_AOD_UNLOCK" "$EFF_FEAT_AOD_UNLOCK" '<bool name="support_aod_aon">true</bool>'
+  _cs_v_aod=$CS_XT_RESULT
+  if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ] && [ "$_cs_v_aod" != "verified_active" ] && [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
+    case ",$CS_V_ENGINE_HOOKS," in
+      *,KeyguardAodFlow,*|*,AodLivingFlow,*) _cs_v_aod="verified_active" ;;
+    esac
+  fi
 
   cs_verify_feature "FEAT_BLUR" "$CFG_FEAT_BLUR" "$EFF_FEAT_BLUR"
   _cs_v_blur=$CS_VF_RESULT
   cs_verify_feature "FEAT_ANIMATIONS" "$CFG_FEAT_ANIMATIONS" "$EFF_FEAT_ANIMATIONS"
   _cs_v_anim=$CS_VF_RESULT
-  cs_verify_feature "FEAT_ISLAND" "$CFG_FEAT_ISLAND" "$EFF_FEAT_ISLAND"
-  _cs_v_island=$CS_VF_RESULT
   cs_verify_feature "FEAT_MULTITASK" "$CFG_FEAT_MULTITASK" "$EFF_FEAT_MULTITASK"
   _cs_v_multi=$CS_VF_RESULT
   cs_verify_feature "FEAT_DISPLAY_HZ" "$CFG_FEAT_DISPLAY_HZ" "$EFF_FEAT_DISPLAY_HZ"
   _cs_v_hz=$CS_VF_RESULT
-  cs_verify_feature "FEAT_HYPERAI" "$CFG_FEAT_HYPERAI" "$EFF_FEAT_HYPERAI"
-  _cs_v_ai=$CS_VF_RESULT
-  cs_verify_feature "FEAT_AOD_UNLOCK" "$CFG_FEAT_AOD_UNLOCK" "$EFF_FEAT_AOD_UNLOCK"
-  _cs_v_aod=$CS_VF_RESULT
 
-  for _cs_s in "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
-    "$_cs_v_island" "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" \
-    "$CS_V_COLOR_EXPERT" "$_cs_v_ai" "$_cs_v_aod"
+  for _cs_s in \
+    "$CS_V_LUMINOUS_GLASS" "$CS_V_LUMINOUS_TILT" "$CS_V_LIVING_FLOW" \
+    "$CS_V_SURGICAL_GUARD" "$CS_V_THERMAL_LOD" \
+    "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
+    "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" \
+    "$_cs_v_color" "$_cs_v_gallery" "$_cs_v_aod"
   do
     cs_score_tally "$_cs_s"
   done
@@ -330,17 +496,32 @@ cs_verifier_run() {
     _cs_compat_pct=0
   fi
 
+  cs_verify_set "VERIFY_ENGINE_INSTALLED" "$CS_V_ENGINE_INSTALLED"
+  cs_verify_set "VERIFY_ENGINE_ACTIVE" "$CS_V_ENGINE_ACTIVE"
+  cs_verify_set "VERIFY_ENGINE_AGSL" "$CS_V_ENGINE_AGSL"
+  cs_verify_set "VERIFY_ENGINE_LOD" "$CS_V_ENGINE_LOD"
+  cs_verify_set "VERIFY_ENGINE_HOOKS" "$CS_V_ENGINE_HOOKS"
+  cs_verify_set "VERIFY_ENGINE_VIEWS" "$CS_V_ENGINE_VIEWS"
+  cs_verify_set "VERIFY_ENGINE_TOASTS" "$CS_V_ENGINE_TOASTS"
+  cs_verify_set "VERIFY_ENGINE_RECENTS" "$CS_V_ENGINE_RECENTS"
+  cs_verify_set "VERIFY_ENGINE_FLOWS" "$CS_V_ENGINE_FLOWS"
+
+  cs_verify_set "VERIFY_FEAT_LUMINOUS_GLASS" "$CS_V_LUMINOUS_GLASS"
+  cs_verify_set "VERIFY_FEAT_LUMINOUS_TILT" "$CS_V_LUMINOUS_TILT"
+  cs_verify_set "VERIFY_FEAT_LIVING_FLOW" "$CS_V_LIVING_FLOW"
+  cs_verify_set "VERIFY_FEAT_SURGICAL_GUARD" "$CS_V_SURGICAL_GUARD"
+  cs_verify_set "VERIFY_FEAT_THERMAL_LOD" "$CS_V_THERMAL_LOD"
   cs_verify_set "VERIFY_FEAT_BLUR" "$_cs_v_blur"
   cs_verify_set "VERIFY_FEAT_ANIMATIONS" "$_cs_v_anim"
   cs_verify_set "VERIFY_FEAT_XML_PATCHER" "$CS_V_XML_FEAT"
   cs_verify_set "VERIFY_FEAT_RRO_OVERLAYS" "$CS_V_RRO_FEAT"
-  cs_verify_set "VERIFY_FEAT_ISLAND" "$_cs_v_island"
   cs_verify_set "VERIFY_FEAT_VIDEO_DEPTH" "$CS_V_VIDEO_DEPTH"
   cs_verify_set "VERIFY_FEAT_MULTITASK" "$_cs_v_multi"
   cs_verify_set "VERIFY_FEAT_DISPLAY_HZ" "$_cs_v_hz"
-  cs_verify_set "VERIFY_FEAT_COLOR_EXPERT" "$CS_V_COLOR_EXPERT"
-  cs_verify_set "VERIFY_FEAT_HYPERAI" "$_cs_v_ai"
+  cs_verify_set "VERIFY_FEAT_COLOR_EXPERT" "$_cs_v_color"
+  cs_verify_set "VERIFY_FEAT_GALLERY_PRO" "$_cs_v_gallery"
   cs_verify_set "VERIFY_FEAT_AOD_UNLOCK" "$_cs_v_aod"
+
   cs_verify_set "VERIFY_XML_MOUNT" "$CS_V_XML_MOUNT"
   cs_verify_set "VERIFY_RRO_ACTIVE" "$CS_V_RRO_ACTIVE"
   cs_verify_set "VERIFY_RRO_TOTAL" "$CS_V_RRO_TOTAL"
@@ -352,6 +533,6 @@ cs_verifier_run() {
   cs_verify_set "COMPAT_SCORE_PCT" "$_cs_compat_pct"
 
   mv -f "$CS_VERIFY_TMP" "$CS_VERIFY_FILE"
-  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED} features), props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}."
+  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (agsl=${CS_V_ENGINE_AGSL}, lod=${CS_V_ENGINE_LOD})."
   return 0
 }

@@ -1,7 +1,9 @@
 #!/system/bin/sh
 # CoreSurface - Safe Non-Persistent Property Application & Per-Feature Audit
-# Pure POSIX sh. Strictly uses `resetprop -n` (memory-only, NEVER writes /data/property,
-# and NEVER generates system.prop so KernelSU/Magisk never persists persist.* keys).
+# Pure POSIX sh. Zero-Gimmick Policy: ONLY properties verified to be read by AOSP
+# SurfaceFlinger / HyperOS SystemUI / MiuiHome / MiuiFreeForm.
+# Strictly uses `resetprop -n` (memory-only, NEVER writes /data/property,
+# and NEVER generates system.prop).
 
 CS_RESETPROP_MODE=""
 CS_RESETPROP_BIN=""
@@ -49,10 +51,11 @@ cs_resetprop_delete_persist() {
   fi
 }
 
-# One-time cleanup for devices upgrading from earlier preview builds that had system.prop.
-# Purges leaked persist.* keys from /data/property so Toast/Recent Apps regressions vanish immediately.
+# One-time cleanup for devices upgrading from earlier preview builds.
+# Purges leaked persist.* keys (including advanced_visual_release & removed placebo keys)
+# from /data/property so Toast/Recent Apps regressions cannot persist across flashes.
 cs_purge_leaked_persist_props() {
-  _cs_marker="$CS_STATE_DIR/.purged_leaked_persist_v2"
+  _cs_marker="$CS_STATE_DIR/.purged_leaked_persist_v3"
   [ -f "$_cs_marker" ] && return 0
 
   cs_find_resetprop || return 0
@@ -67,6 +70,7 @@ cs_purge_leaked_persist_props() {
     persist.sys.background_blur_setting \
     persist.sys.background_blur_status_default \
     persist.sys.background_blur_version \
+    persist.sys.advanced_visual_release \
     persist.sys.launcher_blur_supported \
     persist.sys.sf.disable_blurs \
     persist.sys.computility.cpulevel \
@@ -81,18 +85,23 @@ cs_purge_leaked_persist_props() {
     persist.sys.element_transition_supported \
     persist.sys.enable_parallel_sweep \
     persist.hyper.barfollow_anim \
-    persist.sys.sf_charge_anim_supported
+    persist.sys.sf_charge_anim_supported \
+    persist.sys.feature.island \
+    persist.sys.feature.island.animation \
+    persist.sys.feature.island.shader \
+    persist.sys.miui_ai_supported \
+    persist.sys.hyperai_enabled \
+    persist.sys.aod_limit_disabled
   do
     cs_resetprop_delete_persist "$_cs_leak_k"
   done
 
   : > "$_cs_marker" 2>/dev/null || true
-  cs_log "Cleanup: purged legacy leaked persist.* keys from /data/property."
+  cs_log "Cleanup v3: purged leaked persist.* keys (including advanced_visual_release) from /data/property."
   return 0
 }
 
 # Strictly apply a property with -n (no-persist) and record feature|key=value in audit list.
-# Never falls back to resetprop without -n so persist.* props never stick in /data/property.
 cs_set_prop() {
   _cs_sp_feat=$1
   _cs_sp_key=$2
@@ -128,8 +137,8 @@ cs_set_prop() {
 cs_apply_feat_animations() {
   [ "$EFF_FEAT_ANIMATIONS" = "1" ] || return 0
 
-  # Verified flagship animation properties without distorting Recent Apps headers
-  # (omits computilityV2.devicelevel=4, shell_anim_enable_fcb, and barfollow_anim).
+  # Verified HyperOS/MIUI animation & split Control Center flags (zero placebo keys)
+  cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
   case "$CS_RAM_TIER" in
     high)
       cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "3"
@@ -155,7 +164,7 @@ cs_apply_feat_animations() {
 cs_apply_feat_blur() {
   [ "$EFF_FEAT_BLUR" = "1" ] || return 0
 
-  # Clean SurfaceFlinger & HyperOS Control Center/Shade/Folder/Launcher blur.
+  # Verified AOSP SurfaceFlinger & HyperOS Control Center/Shade/Folder/Launcher blur
   cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.sf.blurs_are_expensive" "0"
   cs_set_prop "FEAT_BLUR" "sf.blurs_are_expensive" "0"
@@ -166,9 +175,8 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "1"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
 
-  # On HyperOS 3+, forcing Advanced Textures (status_default=true + blur_version=2)
-  # causes bloated Toast blur boxes and dark/black Recent Apps on non-flagship GPUs.
-  # Keep the Settings toggle available, default OFF on HyperOS 3+ while preserving CC/Folder/Shade blur.
+  # On HyperOS 3+, keep default Advanced Textures OFF so Toasts/Recents stay clean out-of-the-box;
+  # real optical Luminous Glass is rendered surgically by CoreSurfaceEngine (AGSL) + SurgicalBlurGuard.
   if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
   else
@@ -176,14 +184,6 @@ cs_apply_feat_blur() {
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "3"
   fi
-}
-
-cs_apply_feat_island() {
-  [ "$EFF_FEAT_ISLAND" = "1" ] || return 0
-
-  cs_set_prop "FEAT_ISLAND" "persist.sys.feature.island" "1"
-  cs_set_prop "FEAT_ISLAND" "persist.sys.feature.island.animation" "true"
-  cs_set_prop "FEAT_ISLAND" "persist.sys.feature.island.shader" "true"
 }
 
 cs_apply_feat_multitask() {
@@ -208,21 +208,6 @@ cs_apply_feat_display_hz() {
   cs_set_prop "FEAT_DISPLAY_HZ" "ro.vendor.fps.switch.default" "true"
 }
 
-cs_apply_feat_hyperai() {
-  [ "$EFF_FEAT_HYPERAI" = "1" ] || return 0
-
-  cs_set_prop "FEAT_HYPERAI" "persist.sys.miui_ai_supported" "true"
-  cs_set_prop "FEAT_HYPERAI" "persist.sys.hyperai_enabled" "true"
-  cs_set_prop "FEAT_HYPERAI" "ro.miui.gallery_ai_enable" "true"
-}
-
-cs_apply_feat_aod_unlock() {
-  [ "$EFF_FEAT_AOD_UNLOCK" = "1" ] || return 0
-
-  cs_set_prop "FEAT_AOD_UNLOCK" "ro.miui.aod_always_on_supported" "true"
-  cs_set_prop "FEAT_AOD_UNLOCK" "persist.sys.aod_limit_disabled" "true"
-}
-
 cs_apply_all_props() {
   _cs_ap_moddir=${1:-}
   cs_watchdog_init_dir || return 1
@@ -243,14 +228,11 @@ cs_apply_all_props() {
 
   cs_apply_feat_animations
   cs_apply_feat_blur
-  cs_apply_feat_island
   cs_apply_feat_multitask
   cs_apply_feat_display_hz
-  cs_apply_feat_hyperai
-  cs_apply_feat_aod_unlock
 
   _cs_count=$(wc -l < "$CS_PROPS_AUDIT_FILE" 2>/dev/null | tr -d ' \t\r\n')
   cs_state_set "APPLIED_PROPS_COUNT" "${_cs_count:-0}"
-  cs_log "Applied ${_cs_count:-0} non-persistent props (blur=${EFF_FEAT_BLUR}, anim=${EFF_FEAT_ANIMATIONS}, island=${EFF_FEAT_ISLAND}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ}, ai=${EFF_FEAT_HYPERAI}, aod=${EFF_FEAT_AOD_UNLOCK})."
+  cs_log "Applied ${_cs_count:-0} verified non-persistent props (blur=${EFF_FEAT_BLUR}, anim=${EFF_FEAT_ANIMATIONS}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ})."
   return 0
 }

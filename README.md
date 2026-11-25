@@ -1,74 +1,58 @@
 # CoreSurface v1.0.0
 
-**CoreSurface** adalah modul KernelSU-Next / Magisk *clean-room* untuk membuka fitur *user-space* HyperOS/MIUI yang dipangkas vendor secara dinamis, terverifikasi, dan aman, dirancang sebagai *sister module* (pendamping terpisah) dari **CoreFlow-Engine**.
+**CoreSurface** adalah suite *user-space* HyperOS/MIUI **Hybrid Zero-Gimmick** yang ditulis ulang sepenuhnya dari nol (*clean-room*), menggabungkan:
+1. **Layer 1 — CoreSurface KernelSU-Next / Magisk Base:** Pondasi properti terverifikasi non-persisten (`resetprop -n`), *Dynamic `device_features` XML Patcher* fail-closed, 5 *Clean-Room RRO Overlays*, Watchdog anti-bootloop, dan *Transactional Settings Rollback*.
+2. **Layer 2 — CoreSurface Luminous & LivingFlow Engine (`CoreSurfaceEngine.apk`, ~33 KB, LSPosed):** Mesin runtime Java + **AGSL GPU `RuntimeShader`** & **VSync Spring Physics** tanpa modifikasi APK sistem, dengan hot-reload instan via `Settings.Global` IPC (**tanpa reboot**) dan **Thermal-Adaptive Visual LOD**.
 
-## Prinsip Arsitektur
-
-- **Zero Coupling dengan CoreFlow-Engine:** 100% mandiri di *user-space*. CoreSurface **tidak pernah** menyentuh `uclamp`, `thermal_zone`, `sysfs` CPU/GPU/storage, atau parameter kernel/scheduler.
-- **Zero-Hardcode Device List:** Tidak pernah menulis codename HP secara statis. Semua penemuan fitur dan profil menggunakan deteksi runtime (`ro.mi.os.version.name`, `ro.miui.ui.version.name`, `ro.build.version.sdk`, `ro.product.device`, dan `/proc/meminfo`).
-- **Non-Persistent & Clean Rollback:** Seluruh properti diterapkan wajib dengan **`resetprop -n`** (memori saja, tidak pernah menulis ke `/data/property`), sementara seluruh penyesuaian Android `settings` dicadangkan secara idempoten dan di-rollback bersih saat fitur dimatikan atau modul di-uninstall.
-- **POSIX Shell & Lulus CI:** Semua skrip ditulis ulang dari nol dengan POSIX `sh`, lulus `shellcheck -s sh -x`, dan diverifikasi oleh suite unit test host di GitHub Actions.
+Dirancang sebagai *sister module* (pendamping terpisah) dari **CoreFlow-Engine** dengan prinsip **Zero Coupling** & **Zero Gimmick**.
 
 ---
 
-## Kontrol Fitur Granular (`/data/adb/coresurface/config.prop` & WebUI)
+## Prinsip Arsitektur (Anti-Gimmick)
 
-| Kunci Fitur | Cakupan | Beban Hardware | Default `< 6 GB` | Default `6–7 GB` | Default `>= 8 GB` | Catatan |
-| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| `FEAT_BLUR` | Blur Control Center, Notification Shade, Folder, & Launcher (`disable_window_blurs=0`) | **High GPU/RAM** | OFF (`auto`) | ON (`auto`) | ON (`auto`) | Di HyperOS 3+ otomatis menjaga *Advanced textures* default OFF agar Toast & Recent Apps tetap bersih. |
-| `FEAT_ANIMATIONS` | Flagship Animation & `ro.miui.device_level` / `deviceLevelList` / HyperTransition | **Medium RAM** | ON (Lvl 2) | ON (Lvl 2+) | ON (Lvl 3) | Level animasi menyesuaikan kapasitas RAM aktual tanpa menggeser layout Recent Apps. |
-| `FEAT_XML_PATCHER` | Dynamic `device_features` XML Patcher (non-destruktif, SELinux-safe `mount --bind`) | **Low Load** | ON (`auto`) | ON (`auto`) | ON (`auto`) | *Fail-closed*; melindungi tag display/color/`fpsList`/`double_tap` bawaan. |
-| `FEAT_RRO_OVERLAYS` | Clean-Room RRO Overlays (SystemUI shade/gradient blur, charging ripple & AOD linkage, ThemeManager Video Wallpaper, MiWallpaper Super Wallpaper) | **Medium GPU** | OFF (`auto`) | ON (`auto`) | ON (`auto`) | Dikompilasi dari source XML di CI (`aapt2`/`apksigner`); mendukung mode *Lite Blur* otomatis bila `FEAT_BLUR=0`. |
-| `FEAT_ISLAND` | HyperOS Dynamic Island (animasi & shader) | **Low Load** | OFF (`auto`) | ON (HOS ≥ 2) | ON (HOS ≥ 2) | Aktif otomatis pada HyperOS 2/3 dengan RAM ≥ 6 GB. |
-| `FEAT_VIDEO_DEPTH` | Lockscreen Video Depth (`enable_video_depth` zero-byte marker) | **Low Load** | OFF (`auto`) | ON (`auto`) | ON (`auto`) | Tanpa biner; ikut dibersihkan fail-closed oleh Watchdog. |
-| `FEAT_MULTITASK` | Relaksasi `low_ram` & ambang GB, Freeform/Floating Window (`max_count=4`), One-Handed Mode, Partial Screenshot | **Medium RAM** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) | Default aktif hanya pada perangkat RAM ≥ 8 GB. |
-| `FEAT_DISPLAY_HZ` | Dukungan High Refresh Rate & Adaptive FPS user-space | **Medium GPU** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) | Default aktif hanya pada perangkat RAM ≥ 8 GB (tidak menyentuh `fpsList` XML bawaan). |
-| `FEAT_COLOR_EXPERT` | Custom Color Scheme (*Advanced settings / Original PRO / P3 / sRGB / RGB-HSV*) (`Opt-in`) | **Low Load** | OFF (`0`) | OFF (`0`) | OFF (`0`) | Hanya meng-upgrade `support_display_expert_mode=true` tanpa mengganggu 3 mode warna bawaan. |
-| `FEAT_HYPERAI` | HyperAI & AI Galeri (`Opt-in`) | **High RAM** | OFF (`0`) | OFF (`0`) | OFF (`0`) | Opt-in eksplisit; otomatis di-gate hanya untuk HyperOS + Android SDK ≥ 34. |
-| `FEAT_AOD_UNLOCK` | AOD Limit Unlock & Linkage (`Opt-in`) | **Low Load** | OFF (`0`) | OFF (`0`) | OFF (`0`) | Opt-in eksplisit; otomatis melewati `support_aod_fullscreen` di HyperOS 3+. |
-
-### Preset Profil 1-Klik & Aksi Cepat di WebUI
-- **Stock Safe:** Paling ringan & hemat daya (hanya animasi & XML non-destruktif; langsung me-rollback `settings` dan membersihkan RRO).
-- **Balanced Daily:** Profil otomatis berbasis *Dynamic RAM Tiering* (`auto`).
-- **Flagship Max:** Mengaktifkan seluruh 8 fitur UI/blur/RRO/Island/Video Depth secara penuh (tetap menjaga fitur eksperimental opt-in).
-- **Hot-Apply Settings (Tanpa Reboot):** Menerapkan/me-rollback `settings --user 0` dan memverifikasi ulang secara instan.
-- **ROM Compatibility Score (%) & Export Diagnostik 1-Klik:** Menampilkan persentase fitur aktif yang terverifikasi nyata serta menyalin laporan diagnostik bersih tanpa IMEI/serial.
+- **Zero Gimmick Policy:** Seluruh properti plasebo yang tidak dibaca binary ROM (seperti flag palsu Island/AI/AOD) telah dihapus total. Setiap lencana `Verified Active` di WebUI membutuhkan bukti runtime nyata (`getprop`, `/proc/mounts`, `cmd overlay list`, atau telemetri proses live `AGSL_COMPILED=1` & `HOOKS_BOUND` dari `SystemUI`/`MiuiHome`/`MiuiAod`).
+- **Zero Coupling dengan CoreFlow-Engine:** 100% mandiri di *user-space*. CoreSurface **tidak pernah** menyentuh `uclamp`, `thermal_zone`, `sysfs` CPU/GPU/storage, atau parameter kernel/scheduler. *Thermal-Adaptive Visual LOD* memakai API resmi Android `PowerManager.OnThermalStatusChangedListener`.
+- **Zero-Hardcode Device List:** Tidak pernah menulis codename HP secara statis. Semua deteksi menggunakan runtime `ro.mi.os.version.name`, `ro.miui.ui.version.name`, `ro.build.version.sdk`, `ro.product.device`, dan `/proc/meminfo`.
+- **Non-Persistent & Clean Rollback:** Seluruh properti wajib menggunakan **`resetprop -n`** (memori saja, tidak pernah menghasilkan `system.prop` atau menulis `/data/property`), dan semua perubahan `settings` (termasuk IPC `coresurface_engine_v1`) dibackup otomatis untuk rollback bersih.
+- **Zero Binary Blobs di Git:** Seluruh RRO Overlays (`overlays-src/`) dan `CoreSurfaceEngine.apk` (`engine-src/`) dikompilasi dan ditandatangani langsung dari source saat packaging/CI.
 
 ---
 
-## Arsitektur Pengaman & Verifikasi End-to-End
+## Fitur Live Engine (LSPosed — Hot-Reload Instan Tanpa Reboot)
 
-### 1. Empat Lapis Pengaman Anti-Bootloop
-1. **ROM & SDK Gate (`lib/detect.sh`):** Memeriksa `ro.mi.os.version.name` / `ro.miui.ui.version.name` di awal `post-fs-data.sh`. Jika bukan HyperOS/MIUI, segera `exit 0` tanpa menulis satu pun properti dan mencatat `WATCHDOG_STATUS=unsupported_rom`.
-2. **Dynamic Hardware Tiering (`lib/detect.sh`):** Mengklasifikasikan perangkat otomatis ke tier RAM (`< 6 GB`, `6–7 GB`, `>= 8 GB`) dari `/proc/meminfo`.
-3. **Bootloop & SystemUI Watchdog (`lib/watchdog.sh`):**
-   - Sebelum menerapkan `resetprop -n` atau XML mount, counter `/data/adb/coresurface/boot_strikes` dinaikkan (`+1`).
-   - Jika `boot_strikes >= 2`, modul otomatis membuat file `disable`, membersihkan staging RRO overlay, mereset `boot_strikes=0`, mencatat `safe_mode_disabled`, dan `exit 0` (*fail-closed*).
-   - Di `service.sh`, Watchdog menunggu `sys.boot_completed=1`, memberi *grace window* 30 detik agar `com.android.systemui` muncul, lalu memverifikasi PID tetap stabil selama **30 detik penuh** sebelum mereset `boot_strikes=0` dan menandai `healthy`.
-4. **Safe-Mode Recovery di WebUI (`webroot/` & `lib/webui_ctl.sh`):** Menyediakan tombol **"Reset Safe-Mode & Aktifkan Kembali"** langsung dari WebUI.
-
-### 2. Dynamic `device_features` XML Patcher (`lib/xml_patcher.sh`)
-- **Auto-Discovery Tanpa Hardcode:** Mencari XML fitur bawaan perangkat secara dinamis menggunakan nilai runtime `getprop ro.product.device` pada jalur standar HyperOS/MIUI (`/mi_ext/product/etc/device_features`, `/product/etc/device_features`, `/system/etc/device_features`, `/vendor/etc/device_features`), dengan fallback ke file `.xml` valid pertama bila penamaan berbeda.
-- **Non-Destructive, SELinux-Safe & Fail-Closed:** Menyalin ke `/data/adb/coresurface/work/device_features.xml`, hanya meng-upgrade `<bool>` dari `false -> true` dan tidak pernah menurunkan `<integer>` asli, melindungi tag display/color/`fpsList`/`double_tap`, memulihkan konteks SELinux (`chcon --reference`) sebelum `mount --bind`, dan melewatkan aman (`XML_STATUS=skipped`) bila gagal.
-
-### 3. Clean-Room RRO Overlay Layer (`overlays-src/`, `scripts/build_overlays.sh`, `lib/rro.sh`)
-- **Zero Biner di Git:** Seluruh RRO (`SystemUI`, `SystemUI Lite Blur`, `ThemeManager`, `MiWallpaper`) ditulis dalam XML source murni di `overlays-src/` dan dikompilasi serta ditandatangani otomatis oleh `aapt2` + `apksigner` saat packaging/CI.
-- **Staging Dinamis & Fail-Closed:** `lib/rro.sh` hanya men-stage APK yang sesuai ke `$MODDIR/system/product/overlay/` saat `FEAT_RRO_OVERLAYS` aktif, dan langsung membersihkannya bila fitur dimatikan di WebUI atau Safe-Mode Watchdog terpicu.
-
-### 4. Transactional `settings` Override & Clean Rollback (`lib/settings_tx.sh`)
-- **Android 16 Binder-Safe (`--user 0`) & Backup Idempoten:** Menggunakan `settings --user 0` (dengan fallback versi Android lama), menyimpan nilai asli **sekali saja** ke `/data/adb/coresurface/settings_backup.prop`.
-- **Auto-Rollback & Clean Uninstall:** Mematikan fitur di `config.prop` otomatis mengembalikan kunci `settings` terkait ke nilai aslinya (atau `settings delete` bila awalnya `null`). `uninstall.sh` menjalankan rollback penuh sebelum menghapus `/data/adb/coresurface/`.
-
-### 5. User-Space Capability Verifier (`lib/verifier.sh`)
-- Berjalan di `service.sh` setelah SystemUI dinyatakan stabil 30 detik.
-- Membandingkan seluruh properti di `applied_props.list` terhadap `getprop` aktual, memeriksa status *bind-mount* `device_features` di `/proc/mounts`, memeriksa aktivasi RRO melalui `cmd overlay list --user 0`, serta memverifikasi `settings` aktif.
-- Menulis hasil audit per fitur (`verified_active`, `ignored_by_rom`, `skipped`, atau `disabled`) ke `/data/adb/coresurface/verify.state` yang langsung ditampilkan sebagai lencana verifikasi di WebUI.
+| Kunci Fitur | Cakupan Nyata (Zero Gimmick) | Default | Catatan |
+| :--- | :--- | :---: | :--- |
+| `FEAT_LUMINOUS_GLASS` | **AGSL GPU Optical Glass Shader** (`RuntimeShader`): refraksi bevel optik + dispersi kromatik halus + specular rim pada tile Control Center, slider Volume/Brightness, Notifikasi, & Folder | `auto` (SDK ≥ 33 & RAM ≥ 6 GB) | Berjalan di HWUI/Skia GPU pipeline Android 13–16; tidak membutuhkan modifikasi APK sistem. |
+| `FEAT_LUMINOUS_TILT` | **Tilt & Touch Specular Rim Light:** kilau tepi kaca bereaksi terhadap kemiringan HP (`Sensor.TYPE_GRAVITY`) & titik sentuh jari | `auto` (RAM ≥ 8 GB) | **0% idle drain** — sensor otomatis berhenti saat panel tertutup. |
+| `FEAT_LIVING_FLOW` | **LivingFlow VSync Spring Physics:** fisika pegas interuptibel (60/90/120 Hz `Choreographer`) untuk swipe Control Center ↔ Notifikasi, sentuhan tile, & animasi radial Lockscreen → Home | `auto` (ON) | Menggunakan `View.dispatchTouchEvent` non-intrusif sehingga slider kecerahan/volume tidak pernah terganggu. |
+| `FEAT_SURGICAL_GUARD` | **HyperOS 3 Surgical Toast & Recents Guard:** memblokir blur rusak pada jendela Toast pop-up & mengganti scrim hitam Recent Apps menjadi kaca transparan | `auto` (ON) | Memperbaiki bug Toast melebar & Recent Apps hitam HyperOS 3 secara bedah tanpa mematikan blur Control Center. |
+| `FEAT_THERMAL_LOD` | **Thermal-Adaptive Visual LOD** (*CoreSurface Exclusive*): otomatis menyesuaikan tingkat shader `FULL → BALANCED → ECO` mengikuti status termal Android | `auto` (ON) | Menjaga 120 FPS tetap mulus saat perangkat hangat/gaming. |
 
 ---
 
-## Sinergi Pasif dengan CoreFlow-Engine
+## Fitur Early-Boot Base (`/data/adb/coresurface/config.prop` & WebUI)
 
-CoreSurface dan **CoreFlow-Engine** beroperasi pada lapisan yang sepenuhnya terpisah. WebUI CoreSurface secara pasif memeriksa keberadaan `/data/adb/modules/cfae_framework` dan proses aktif `pidof coreflowd`: bila keduanya aktif, WebUI menampilkan lencana **"CoreFlow Thermal Guard Active"**.
+| Kunci Fitur | Cakupan | Beban Hardware | Default `< 6 GB` | Default `6–7 GB` | Default `>= 8 GB` |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| `FEAT_BLUR` | SurfaceFlinger & HyperOS CC/Shade/Folder/Launcher Blur (`disable_window_blurs=0`; di HOS 3+ menjaga default *Advanced textures* OFF agar aman) | **High GPU/RAM** | OFF (`auto`) | ON (`auto`) | ON (`auto`) |
+| `FEAT_ANIMATIONS` | `HyperTransition`, `parallel_sweep`, `debug.sysui.use_control_center=1`, & `deviceLevelList` dinamis | **Medium RAM** | ON (Lvl 2) | ON (Lvl 2+) | ON (Lvl 3) |
+| `FEAT_XML_PATCHER` | Dynamic `device_features` XML Patcher (add-only, non-destruktif, SELinux `chcon --reference`) | **Low Load** | ON (`auto`) | ON (`auto`) | ON (`auto`) |
+| `FEAT_RRO_OVERLAYS` | 5 Clean-Room RRO APKs (`SystemUI`, `SystemUI Lite Blur`, `ThemeManager`, `MiWallpaper`, `MiuiAod`) | **Medium GPU** | OFF (`auto`) | ON (`auto`) | ON (`auto`) |
+| `FEAT_VIDEO_DEPTH` | Lockscreen Video Depth (`enable_video_depth` zero-byte marker) | **Low Load** | OFF (`auto`) | ON (`auto`) | ON (`auto`) |
+| `FEAT_MULTITASK` | Relaksasi `low_ram` & ambang GB, Freeform (`max_count=4`), One-Handed Mode, Partial Screenshot | **Medium RAM** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) |
+| `FEAT_DISPLAY_HZ` | Flag High Refresh Rate & Adaptive FPS user-space (tidak menyentuh `fpsList` XML) | **Medium GPU** | OFF (`auto`) | OFF (`auto`) | ON (`auto`) |
+| `FEAT_COLOR_EXPERT` | Custom Color Scheme (`support_display_expert_mode=true` XML, tanpa mengganggu 3 mode bawaan) | **Low Load** | OFF (`0`) | OFF (`0`) | OFF (`0`) |
+| `FEAT_GALLERY_PRO` | Tag XML Galeri nyata (video compress, time-burst, Dolby, print, analisis wajah/adegan; HyperOS SDK ≥ 34) | **XML Only** | OFF (`0`) | OFF (`0`) | OFF (`0`) |
+| `FEAT_AOD_UNLOCK` | Hapus batas 10 detik AOD (`CoreSurfaceMiuiAod` RRO + XML AON) + transisi halus AOD → Lockscreen via LivingFlow Engine (aman HOS 3 tanpa crash `mFullAodHideEase`) | **Low Load** | OFF (`0`) | OFF (`0`) | OFF (`0`) |
+
+---
+
+## Instalasi Singkat
+
+1. Flash `CoreSurface-v1.0.0.zip` melalui **KernelSU-Next** (pastikan metamodule `meta-overlayfs` aktif untuk RRO) lalu reboot 1 kali saat suhu perangkat normal.
+2. `service.sh` otomatis memasang `CoreSurfaceEngine.apk` (~33 KB) setelah SystemUI stabil 30 detik (atau klik **"Install / Update CoreSurfaceEngine.apk"** di WebUI).
+3. Buka **LSPosed / Vector → Modules → aktifkan CoreSurface Engine** (scope otomatis: `System UI`, `System Launcher / MiuiHome`, `Always-on Display`).
+4. Buka **KernelSU-Next → Modules → CoreSurface → Open WebUI**: semua kontrol **Live Luminous & LivingFlow** langsung aktif dalam hitungan milidetik **tanpa perlu reboot lagi**.
 
 ---
 
@@ -81,10 +65,10 @@ shellcheck -s sh -x customize.sh post-fs-data.sh service.sh uninstall.sh lib/*.s
 # Validasi sintaks JS WebUI
 node --check webroot/app.js
 
-# Jalankan unit test host (mock getprop, resetprop, pidof, mount, settings, /proc/meminfo, /proc/mounts)
+# Jalankan unit test host
 sh tests/run_tests.sh
 
-# Bangun artefak ZIP produksi (dist/CoreSurface-v1.0.0.zip)
+# Bangun RRO, CoreSurfaceEngine.apk, & dist/CoreSurface-v1.0.0.zip
 sh scripts/package.sh
 ```
 
@@ -92,4 +76,4 @@ sh scripts/package.sh
 
 ## References / Credits
 
-- Inspirasi konsep pembukaan kapabilitas *user-space* HyperOS dan referensi tag `device_features` merujuk secara jujur kepada **[`ukriu/HyperUnlocked`](https://github.com/ukriu/HyperUnlocked)**. Seluruh kode skrip, arsitektur pengaman, XML patcher fail-closed, transactional settings rollback, verifier, WebUI, dan pengujian pada CoreSurface ditulis ulang sepenuhnya (*clean-room*) dari nol.
+- Inspirasi konsep pembukaan kapabilitas *user-space* HyperOS dan referensi tag `device_features` merujuk secara jujur kepada **[`ukriu/HyperUnlocked`](https://github.com/ukriu/HyperUnlocked)**. Seluruh kode skrip, arsitektur pengaman, XML patcher fail-closed, RRO source, AGSL Luminous Shader, LivingFlow Spring Physics Engine, Surgical Guard, verifier, WebUI, dan pengujian pada CoreSurface ditulis ulang sepenuhnya (*clean-room*) dari nol.

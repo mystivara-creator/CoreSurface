@@ -188,6 +188,39 @@ cs_settings_rollback_key() {
   return 0
 }
 
+cs_settings_build_engine_ipc() {
+  printf 'luminous=%s;tilt=%s;livingflow=%s;guard=%s;aodflow=%s;thermallod=%s' \
+    "${EFF_FEAT_LUMINOUS_GLASS:-0}" \
+    "${EFF_FEAT_LUMINOUS_TILT:-0}" \
+    "${EFF_FEAT_LIVING_FLOW:-0}" \
+    "${EFF_FEAT_SURGICAL_GUARD:-0}" \
+    "${EFF_FEAT_AOD_UNLOCK:-0}" \
+    "${EFF_FEAT_THERMAL_LOD:-1}"
+}
+
+cs_settings_sync_engine_ipc() {
+  cs_watchdog_init_dir || return 0
+  cs_settings_available || return 0
+  _cs_ipc_val=$(cs_settings_build_engine_ipc)
+  cs_settings_apply_key "FEAT_LUMINOUS_GLASS" "global" "coresurface_engine_v1" "$_cs_ipc_val" || true
+}
+
+# One-time cleanup on HyperOS 3+ if an earlier preview left secure/background_blur_enable=1
+# stuck in Settings DB causing bloated Toasts and black Recent Apps.
+cs_settings_clear_hos3_stuck_blur() {
+  [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ] || return 0
+  _cs_cb_marker="$CS_STATE_DIR/.cleared_hos3_stuck_blur_v3"
+  [ -f "$_cs_cb_marker" ] && return 0
+
+  if cs_settings_get "secure" "background_blur_enable"; then
+    if [ "$CS_SETTINGS_READ_VAL" = "1" ]; then
+      cs_settings_put "secure" "background_blur_enable" "0" || true
+      cs_log "Cleanup v3: reset stuck HyperOS 3 secure/background_blur_enable=0 to clear Toast/Recents regression."
+    fi
+  fi
+  : > "$_cs_cb_marker" 2>/dev/null || true
+}
+
 cs_settings_sync_all() {
   cs_watchdog_init_dir || return 0
   : > "$CS_SETTINGS_APPLIED_FILE"
@@ -196,6 +229,12 @@ cs_settings_sync_all() {
     cs_log "Settings TX: 'settings' binary unavailable; skipping."
     return 0
   fi
+
+  # Clear any stuck HyperOS 3 Advanced Textures flag once on upgrade
+  cs_settings_clear_hos3_stuck_blur || true
+
+  # Push Live Engine IPC config (instant hot-reload in SystemUI / MiuiHome / MiuiAod)
+  cs_settings_sync_engine_ipc || true
 
   if [ "$EFF_FEAT_BLUR" = "1" ]; then
     cs_settings_apply_key "FEAT_BLUR" "global" "disable_window_blurs" "0" || true

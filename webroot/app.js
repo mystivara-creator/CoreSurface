@@ -3,21 +3,33 @@
 // Always invoke webui_ctl.sh with its absolute module path (id=coresurface).
 const CTL_SCRIPT = '/system/bin/sh /data/adb/modules/coresurface/lib/webui_ctl.sh';
 
+const LIVE_ENGINE_KEYS = new Set([
+  'FEAT_LUMINOUS_GLASS',
+  'FEAT_LUMINOUS_TILT',
+  'FEAT_LIVING_FLOW',
+  'FEAT_SURGICAL_GUARD',
+  'FEAT_THERMAL_LOD'
+]);
+
 const FEATURE_KEYS = [
+  'FEAT_LUMINOUS_GLASS',
+  'FEAT_LUMINOUS_TILT',
+  'FEAT_LIVING_FLOW',
+  'FEAT_SURGICAL_GUARD',
+  'FEAT_THERMAL_LOD',
   'FEAT_BLUR',
   'FEAT_ANIMATIONS',
   'FEAT_XML_PATCHER',
   'FEAT_RRO_OVERLAYS',
-  'FEAT_ISLAND',
   'FEAT_VIDEO_DEPTH',
   'FEAT_MULTITASK',
   'FEAT_DISPLAY_HZ',
   'FEAT_COLOR_EXPERT',
-  'FEAT_HYPERAI',
+  'FEAT_GALLERY_PRO',
   'FEAT_AOD_UNLOCK'
 ];
 
-const OPT_IN_KEYS = new Set(['FEAT_COLOR_EXPERT', 'FEAT_HYPERAI', 'FEAT_AOD_UNLOCK']);
+const OPT_IN_KEYS = new Set(['FEAT_COLOR_EXPERT', 'FEAT_GALLERY_PRO', 'FEAT_AOD_UNLOCK']);
 
 let execCounter = 0;
 
@@ -152,6 +164,48 @@ function renderWatchdogBadge(kv) {
   }
 }
 
+function renderEngineSummary(kv) {
+  const badge = document.getElementById('engine-badge');
+  const lodBadge = document.getElementById('engine-lod-badge');
+  const container = document.getElementById('engine-summary');
+
+  const installed = kv.verify_engine_installed === '1';
+  const active = kv.verify_engine_active === '1';
+  const agsl = kv.verify_engine_agsl === '1';
+  const lod = kv.verify_engine_lod || 'N/A';
+
+  badge.className = 'badge';
+  lodBadge.className = 'pill';
+
+  if (active) {
+    badge.classList.add('badge-ok');
+    badge.textContent = agsl ? 'Engine: AGSL Active' : 'Engine: Active (No AGSL)';
+    lodBadge.classList.add('on');
+    lodBadge.textContent = 'LOD: ' + lod;
+  } else if (installed) {
+    badge.classList.add('badge-warn');
+    badge.textContent = 'Engine: Enable in LSPosed';
+    lodBadge.classList.add('warn');
+    lodBadge.textContent = 'Pending LSPosed';
+  } else {
+    badge.classList.add('badge-neutral');
+    badge.textContent = 'Engine: Belum Terpasang';
+    lodBadge.textContent = 'Not Installed';
+  }
+
+  container.replaceChildren(
+    makeKvRow('CoreSurfaceEngine.apk', installed ? 'Terpasang' : 'Belum terpasang (klik tombol di bawah)'),
+    makeKvRow('LSPosed Runtime Hook', active ? 'Aktif (Live IPC Ready)' : 'Belum aktif di LSPosed Manager'),
+    makeKvRow('AGSL GPU Shader', agsl ? 'Terkompilasi & Aktif di GPU' : (active ? 'Tidak didukung GPU/SDK < 33' : 'Menunggu LSPosed')),
+    makeKvRow('Thermal-Adaptive LOD', lod),
+    makeKvRow('Hooks Terikat', kv.verify_engine_hooks || 'Belum ada'),
+    makeKvRow('Statistik Live', 'Luminous: ' + (kv.verify_engine_views || '0')
+      + ' · Flow: ' + (kv.verify_engine_flows || '0')
+      + ' · Toast Guard: ' + (kv.verify_engine_toasts || '0')
+      + ' · Recents Guard: ' + (kv.verify_engine_recents || '0'))
+  );
+}
+
 function renderCompatBadge(kv) {
   const badge = document.getElementById('compat-badge');
   const pct = kv.compat_score_pct;
@@ -188,7 +242,7 @@ function renderVerifyPill(featKey, verifyStatus, isPending, effValue) {
 
   el.className = 'v-pill';
 
-  if (isPending) {
+  if (isPending && !LIVE_ENGINE_KEYS.has(featKey)) {
     el.classList.add('v-info');
     el.textContent = 'Pending Reboot';
     return;
@@ -198,6 +252,10 @@ function renderVerifyPill(featKey, verifyStatus, isPending, effValue) {
     case 'verified_active':
       el.classList.add('v-ok');
       el.textContent = 'Verified Active';
+      break;
+    case 'pending_lsposed':
+      el.classList.add('v-info');
+      el.textContent = 'Enable in LSPosed';
       break;
     case 'ignored_by_rom':
       el.classList.add('v-danger');
@@ -214,7 +272,7 @@ function renderVerifyPill(featKey, verifyStatus, isPending, effValue) {
     default:
       if (effValue === '1') {
         el.classList.add('v-info');
-        el.textContent = 'Pending Verify';
+        el.textContent = LIVE_ENGINE_KEYS.has(featKey) ? 'Live Ready' : 'Pending Verify';
       } else {
         el.classList.add('v-neutral');
         el.textContent = 'Skipped';
@@ -367,6 +425,7 @@ async function refreshStatus() {
     }
 
     renderWatchdogBadge(kv);
+    renderEngineSummary(kv);
     renderCompatBadge(kv);
 
     const cfBadge = document.getElementById('coreflow-badge');
@@ -408,10 +467,13 @@ async function refreshStatus() {
 }
 
 async function updateConfig(key, value) {
-  setToast('Menyimpan ' + key + '=' + value + '…');
+  const isLive = LIVE_ENGINE_KEYS.has(key);
+  setToast((isLive ? 'Menerapkan LIVE ' : 'Menyimpan ') + key + '=' + value + '…');
   try {
     const res = await ksuExec(CTL_SCRIPT + ' set ' + key + ' ' + value);
-    document.getElementById('reboot-banner').classList.remove('hidden');
+    if (!isLive) {
+      document.getElementById('reboot-banner').classList.remove('hidden');
+    }
     setToast(res);
     await refreshStatus();
   } catch (err) {
@@ -432,13 +494,24 @@ async function applyPreset(presetName) {
 }
 
 async function runHotSync() {
-  setToast('Menjalankan Hot-Apply settings & verifikasi ulang…');
+  setToast('Menjalankan Hot-Apply Live Engine + settings & verifikasi ulang…');
   try {
     const res = await ksuExec(CTL_SCRIPT + ' hot-sync');
     setToast(res);
     await refreshStatus();
   } catch (err) {
     setToast('Gagal Hot-Apply: ' + err.message);
+  }
+}
+
+async function installEngineApk() {
+  setToast('Memasang CoreSurfaceEngine.apk…');
+  try {
+    const res = await ksuExec(CTL_SCRIPT + ' install-engine');
+    setToast(res);
+    await refreshStatus();
+  } catch (err) {
+    setToast('Gagal memasang Engine APK: ' + err.message);
   }
 }
 
@@ -487,6 +560,7 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
 
 document.getElementById('btn-reset-safemode').addEventListener('click', resetSafeMode);
 document.getElementById('btn-hot-sync').addEventListener('click', runHotSync);
+document.getElementById('btn-install-engine').addEventListener('click', installEngineApk);
 document.getElementById('btn-export-diag').addEventListener('click', exportDiagReport);
 
 for (const btn of document.querySelectorAll('.btn-preset')) {

@@ -87,20 +87,32 @@ cs_detect_ram_tier() {
 cs_load_config() {
   _cs_cfg_file=$1
 
+  # Live Layer 2 Luminous & LivingFlow Engine toggles
+  CFG_FEAT_LUMINOUS_GLASS="auto"
+  CFG_FEAT_LUMINOUS_TILT="auto"
+  CFG_FEAT_LIVING_FLOW="auto"
+  CFG_FEAT_SURGICAL_GUARD="auto"
+  CFG_FEAT_THERMAL_LOD="auto"
+
+  # Layer 1 Early-Boot Base toggles
   CFG_FEAT_BLUR="auto"
   CFG_FEAT_ANIMATIONS="auto"
   CFG_FEAT_XML_PATCHER="auto"
   CFG_FEAT_RRO_OVERLAYS="auto"
-  CFG_FEAT_ISLAND="auto"
   CFG_FEAT_VIDEO_DEPTH="auto"
   CFG_FEAT_MULTITASK="auto"
   CFG_FEAT_DISPLAY_HZ="auto"
+
+  # Opt-in features
   CFG_FEAT_COLOR_EXPERT="0"
-  CFG_FEAT_HYPERAI="0"
+  CFG_FEAT_GALLERY_PRO="0"
   CFG_FEAT_AOD_UNLOCK="0"
-  export CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
-    CFG_FEAT_ISLAND CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ \
-    CFG_FEAT_COLOR_EXPERT CFG_FEAT_HYPERAI CFG_FEAT_AOD_UNLOCK
+
+  export CFG_FEAT_LUMINOUS_GLASS CFG_FEAT_LUMINOUS_TILT CFG_FEAT_LIVING_FLOW \
+    CFG_FEAT_SURGICAL_GUARD CFG_FEAT_THERMAL_LOD \
+    CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
+    CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ \
+    CFG_FEAT_COLOR_EXPERT CFG_FEAT_GALLERY_PRO CFG_FEAT_AOD_UNLOCK
 
   [ -r "$_cs_cfg_file" ] || return 0
 
@@ -109,6 +121,21 @@ cs_load_config() {
     _cs_v=$(printf '%s' "$_cs_v" | tr -d '\r')
     case "$_cs_k" in
       ''|'#'*) continue ;;
+      FEAT_LUMINOUS_GLASS)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_LUMINOUS_GLASS="$_cs_v" ;; esac
+        ;;
+      FEAT_LUMINOUS_TILT)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_LUMINOUS_TILT="$_cs_v" ;; esac
+        ;;
+      FEAT_LIVING_FLOW)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_LIVING_FLOW="$_cs_v" ;; esac
+        ;;
+      FEAT_SURGICAL_GUARD)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_SURGICAL_GUARD="$_cs_v" ;; esac
+        ;;
+      FEAT_THERMAL_LOD)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_THERMAL_LOD="$_cs_v" ;; esac
+        ;;
       FEAT_BLUR)
         case "$_cs_v" in auto|1|0) CFG_FEAT_BLUR="$_cs_v" ;; esac
         ;;
@@ -120,9 +147,6 @@ cs_load_config() {
         ;;
       FEAT_RRO_OVERLAYS)
         case "$_cs_v" in auto|1|0) CFG_FEAT_RRO_OVERLAYS="$_cs_v" ;; esac
-        ;;
-      FEAT_ISLAND)
-        case "$_cs_v" in auto|1|0) CFG_FEAT_ISLAND="$_cs_v" ;; esac
         ;;
       FEAT_VIDEO_DEPTH)
         case "$_cs_v" in auto|1|0) CFG_FEAT_VIDEO_DEPTH="$_cs_v" ;; esac
@@ -136,8 +160,8 @@ cs_load_config() {
       FEAT_COLOR_EXPERT)
         case "$_cs_v" in 1|0) CFG_FEAT_COLOR_EXPERT="$_cs_v" ;; esac
         ;;
-      FEAT_HYPERAI)
-        case "$_cs_v" in 1|0) CFG_FEAT_HYPERAI="$_cs_v" ;; esac
+      FEAT_GALLERY_PRO|FEAT_HYPERAI)
+        case "$_cs_v" in 1|0) CFG_FEAT_GALLERY_PRO="$_cs_v" ;; esac
         ;;
       FEAT_AOD_UNLOCK)
         case "$_cs_v" in 1|0) CFG_FEAT_AOD_UNLOCK="$_cs_v" ;; esac
@@ -148,20 +172,76 @@ cs_load_config() {
 
 # Resolve effective per-feature enablement from config + dynamic hardware tiering.
 cs_resolve_features() {
+  EFF_FEAT_LUMINOUS_GLASS="0"
+  EFF_FEAT_LUMINOUS_TILT="0"
+  EFF_FEAT_LIVING_FLOW="0"
+  EFF_FEAT_SURGICAL_GUARD="0"
+  EFF_FEAT_THERMAL_LOD="0"
+
   EFF_FEAT_BLUR="0"
   EFF_FEAT_ANIMATIONS="0"
   EFF_FEAT_XML_PATCHER="0"
   EFF_FEAT_RRO_OVERLAYS="0"
-  EFF_FEAT_ISLAND="0"
   EFF_FEAT_VIDEO_DEPTH="0"
   EFF_FEAT_MULTITASK="0"
   EFF_FEAT_DISPLAY_HZ="0"
   EFF_FEAT_COLOR_EXPERT="0"
-  EFF_FEAT_HYPERAI="0"
+  EFF_FEAT_GALLERY_PRO="0"
   EFF_FEAT_AOD_UNLOCK="0"
-  export EFF_FEAT_BLUR EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER EFF_FEAT_RRO_OVERLAYS \
-    EFF_FEAT_ISLAND EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK EFF_FEAT_DISPLAY_HZ \
-    EFF_FEAT_COLOR_EXPERT EFF_FEAT_HYPERAI EFF_FEAT_AOD_UNLOCK
+
+  export EFF_FEAT_LUMINOUS_GLASS EFF_FEAT_LUMINOUS_TILT EFF_FEAT_LIVING_FLOW \
+    EFF_FEAT_SURGICAL_GUARD EFF_FEAT_THERMAL_LOD \
+    EFF_FEAT_BLUR EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER EFF_FEAT_RRO_OVERLAYS \
+    EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK EFF_FEAT_DISPLAY_HZ \
+    EFF_FEAT_COLOR_EXPERT EFF_FEAT_GALLERY_PRO EFF_FEAT_AOD_UNLOCK
+
+  # FEAT_LUMINOUS_GLASS: AGSL RuntimeShader requires Android 13+ (SDK >= 33) & RAM >= 6 GB in auto
+  case "$CFG_FEAT_LUMINOUS_GLASS" in
+    1)
+      if [ "${CS_ANDROID_SDK:-0}" -ge 33 ]; then
+        EFF_FEAT_LUMINOUS_GLASS="1"
+      fi
+      ;;
+    auto)
+      if [ "${CS_ANDROID_SDK:-0}" -ge 33 ] && [ "$CS_RAM_TIER" != "low" ]; then
+        EFF_FEAT_LUMINOUS_GLASS="1"
+      fi
+      ;;
+    0) EFF_FEAT_LUMINOUS_GLASS="0" ;;
+  esac
+
+  # FEAT_LUMINOUS_TILT: Gravity-reactive specular rim light (requires Luminous Glass active)
+  case "$CFG_FEAT_LUMINOUS_TILT" in
+    1)
+      if [ "$EFF_FEAT_LUMINOUS_GLASS" = "1" ]; then
+        EFF_FEAT_LUMINOUS_TILT="1"
+      fi
+      ;;
+    auto)
+      if [ "$EFF_FEAT_LUMINOUS_GLASS" = "1" ] && [ "$CS_RAM_TIER" = "high" ]; then
+        EFF_FEAT_LUMINOUS_TILT="1"
+      fi
+      ;;
+    0) EFF_FEAT_LUMINOUS_TILT="0" ;;
+  esac
+
+  # FEAT_LIVING_FLOW: VSync Spring Physics (Control Center swipe + Lockscreen->Home cascade)
+  case "$CFG_FEAT_LIVING_FLOW" in
+    1|auto) EFF_FEAT_LIVING_FLOW="1" ;;
+    0) EFF_FEAT_LIVING_FLOW="0" ;;
+  esac
+
+  # FEAT_SURGICAL_GUARD: HyperOS 3 Toast & Black Recent Apps surgical guard (ON by default)
+  case "$CFG_FEAT_SURGICAL_GUARD" in
+    1|auto) EFF_FEAT_SURGICAL_GUARD="1" ;;
+    0) EFF_FEAT_SURGICAL_GUARD="0" ;;
+  esac
+
+  # FEAT_THERMAL_LOD: Thermal-Adaptive Visual LOD (ON by default to protect 120 FPS)
+  case "$CFG_FEAT_THERMAL_LOD" in
+    1|auto) EFF_FEAT_THERMAL_LOD="1" ;;
+    0) EFF_FEAT_THERMAL_LOD="0" ;;
+  esac
 
   # FEAT_BLUR: High GPU/RAM load -> default ON only if RAM >= 6 GB (mid/high)
   case "$CFG_FEAT_BLUR" in
@@ -195,21 +275,6 @@ cs_resolve_features() {
       fi
       ;;
     0) EFF_FEAT_RRO_OVERLAYS="0" ;;
-  esac
-
-  # FEAT_ISLAND: HyperOS Dynamic Island -> auto ON on HyperOS >= 2 and RAM >= 6 GB
-  case "$CFG_FEAT_ISLAND" in
-    1)
-      if [ "$CS_ROM_FAMILY" = "hyperos" ]; then
-        EFF_FEAT_ISLAND="1"
-      fi
-      ;;
-    auto)
-      if [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "${CS_HYPEROS_MAJOR:-0}" -ge 2 ] && [ "$CS_RAM_TIER" != "low" ]; then
-        EFF_FEAT_ISLAND="1"
-      fi
-      ;;
-    0) EFF_FEAT_ISLAND="0" ;;
   esac
 
   # FEAT_VIDEO_DEPTH: Lockscreen Video Depth -> auto ON on HyperOS and RAM >= 6 GB
@@ -254,12 +319,13 @@ cs_resolve_features() {
     EFF_FEAT_COLOR_EXPERT="1"
   fi
 
-  # FEAT_HYPERAI: Opt-in only; version-gated on HyperOS + Android SDK >= 34
-  if [ "$CFG_FEAT_HYPERAI" = "1" ] && [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "$CS_ANDROID_SDK" -ge 34 ]; then
-    EFF_FEAT_HYPERAI="1"
+  # FEAT_GALLERY_PRO: Opt-in real Gallery XML capabilities (HyperOS + SDK >= 34 + XML patcher)
+  if [ "$CFG_FEAT_GALLERY_PRO" = "1" ] && [ "$EFF_FEAT_XML_PATCHER" = "1" ] \
+    && [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "$CS_ANDROID_SDK" -ge 34 ]; then
+    EFF_FEAT_GALLERY_PRO="1"
   fi
 
-  # FEAT_AOD_UNLOCK: Opt-in only
+  # FEAT_AOD_UNLOCK: Opt-in only (real AOD XML + MiuiAod RRO + Layer 2 AOD LivingFlow)
   if [ "$CFG_FEAT_AOD_UNLOCK" = "1" ]; then
     EFF_FEAT_AOD_UNLOCK="1"
   fi

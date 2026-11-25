@@ -98,7 +98,7 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_display_expert_mode|true\n'
     fi
 
-    if [ "$EFF_FEAT_HYPERAI" = "1" ]; then
+    if [ "$EFF_FEAT_GALLERY_PRO" = "1" ]; then
       printf 'bool|gallery_support_analytic_face_and_scene|true\n'
       printf 'bool|gallery_support_media_feature|true\n'
       printf 'bool|gallery_support_video_compress|true\n'

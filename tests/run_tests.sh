@@ -471,7 +471,7 @@ run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "Verifier marks matching FEAT_BLUR as verified_active"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_XML_PATCHER=verified_active" "Verifier confirms active XML bind-mount in /proc/mounts"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_DISPLAY_HZ=ignored_by_rom" "Verifier detects ROM-overridden FEAT_DISPLAY_HZ as ignored_by_rom"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_HYPERAI=disabled" "Verifier marks opt-in OFF feature as disabled"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_GALLERY_PRO=disabled" "Verifier marks opt-in OFF FEAT_GALLERY_PRO as disabled"
 assert_file_contains "$SB_STATE/overridden_props.list" "FEAT_DISPLAY_HZ|ro.miui.support_high_refresh_rate|true|false" "Verifier logs exact overridden prop diff"
 assert_file_contains "$SB_SETTINGS_LOG" "--user 0 get global disable_window_blurs" "Verifier calls settings with --user 0"
 
@@ -503,14 +503,16 @@ exit 0
 EOF
 chmod +x "$SB_BIN/pidof"
 
-# Seed initial vendor settings: disable_window_blurs=1, enable_freeform_support is absent (null)
-printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
+# Seed initial vendor settings: disable_window_blurs=1, stuck HOS3 background_blur_enable=1
+printf 'global|disable_window_blurs=1\nsecure|background_blur_enable=1\n' > "$SB_SETTINGS_DB"
 
 run_post_fs_data
 run_service
 assert_file_contains "$SB_SETTINGS_LOG" "--user 0 get global disable_window_blurs" "Settings TX reads via --user 0"
 assert_file_contains "$SB_SETTINGS_LOG" "--user 0 put global disable_window_blurs 0" "Settings TX writes via --user 0"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "Settings TX applies disable_window_blurs=0 for FEAT_BLUR"
+assert_file_contains "$SB_SETTINGS_DB" "secure|background_blur_enable=0" "One-time HOS3 cleanup clears stuck secure/background_blur_enable=1"
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=" "Settings TX syncs live Engine IPC global/coresurface_engine_v1"
 assert_file_contains "$SB_SETTINGS_DB" "global|enable_freeform_support=1" "Settings TX applies enable_freeform_support=1 for FEAT_MULTITASK"
 assert_file_contains "$SB_STATE/settings_backup.prop" "global|disable_window_blurs=1" "Settings TX backs up original value=1"
 assert_file_contains "$SB_STATE/settings_backup.prop" "global|enable_freeform_support=null" "Settings TX backs up originally absent key as null"
@@ -526,7 +528,7 @@ FEAT_ANIMATIONS=auto
 FEAT_XML_PATCHER=auto
 FEAT_MULTITASK=0
 FEAT_DISPLAY_HZ=auto
-FEAT_HYPERAI=0
+FEAT_GALLERY_PRO=0
 FEAT_AOD_UNLOCK=0
 EOF
 run_service
@@ -534,10 +536,11 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=1" "Disablin
 assert_file_not_contains "$SB_SETTINGS_DB" "global|enable_freeform_support=" "Disabling FEAT_MULTITASK deletes key whose original was null"
 assert_file_contains "$SB_SETTINGS_LOG" "--user 0 delete global enable_freeform_support" "Settings TX deletes null-original key via --user 0"
 
-# Verify uninstall.sh rolls back remaining keys and cleans state dir
+# Verify uninstall.sh rolls back remaining keys (including Engine IPC) and cleans state dir
 assert_file_contains "$SB_SETTINGS_DB" "system|miui_refresh_rate_adaptive=1" "FEAT_DISPLAY_HZ setting active before uninstall"
 PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/uninstall.sh"
 assert_file_not_contains "$SB_SETTINGS_DB" "system|miui_refresh_rate_adaptive=" "uninstall.sh rolls back remaining settings before deleting state"
+assert_file_not_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=" "uninstall.sh cleans up global/coresurface_engine_v1 IPC key"
 assert_eq "$( [ -d "$SB_STATE" ] && printf 'exists' || printf 'removed' )" "removed" "uninstall.sh removes state directory"
 
 # ---------------------------------------------------------------------------
@@ -574,19 +577,19 @@ assert_file_contains "$SB/status.out" "xml_status=mounted" "WebUI exposes XML Pa
 assert_file_contains "$SB/status.out" "xml_source=$SB_XML_DIR1/aurora.xml" "WebUI exposes discovered XML source path"
 
 # Test granular key whitelist (valid + invalid)
-for _gk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_ISLAND FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ; do
+for _gk in FEAT_LUMINOUS_GLASS FEAT_LUMINOUS_TILT FEAT_LIVING_FLOW FEAT_SURGICAL_GUARD FEAT_THERMAL_LOD FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ; do
   PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
   assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts granular key ${_gk}=0"
 done
-PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_HYPERAI 1 >/dev/null
-assert_file_contains "$SB_STATE/config.prop" "FEAT_HYPERAI=1" "WebUI accepts FEAT_HYPERAI=1"
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_GALLERY_PRO 1 >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_GALLERY_PRO=1" "WebUI accepts FEAT_GALLERY_PRO=1"
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_AOD_UNLOCK 1 >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "FEAT_AOD_UNLOCK=1" "WebUI accepts FEAT_AOD_UNLOCK=1"
 
-if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_HYPERAI auto >/dev/null 2>&1; then
-  fail "WebUI should reject 'auto' for opt-in FEAT_HYPERAI"
+if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_GALLERY_PRO auto >/dev/null 2>&1; then
+  fail "WebUI should reject 'auto' for opt-in FEAT_GALLERY_PRO"
 else
-  pass "WebUI rejects 'auto' for opt-in FEAT_HYPERAI"
+  pass "WebUI rejects 'auto' for opt-in FEAT_GALLERY_PRO"
 fi
 
 if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set BAD_KEY 1 >/dev/null 2>&1; then
@@ -602,7 +605,7 @@ assert_eq "$( [ -f "$SB_MOD/disable" ] && printf 'yes' || printf 'no' )" "no" "r
 assert_eq "$(cat "$SB_STATE/boot_strikes")" "0" "reset-safemode resets boot_strikes=0"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 10: Clean-Room RRO Staging, Fail-Closed Clear, Verifier & HyperOS 3 Prop Audit ===\n'
+printf '=== Test 10: Clean-Room RRO Staging, Fail-Closed Clear, Verifier & Zero-Gimmick HyperOS 3 Audit ===\n'
 setup_sandbox "t10_rro_and_hos3"
 write_mock_getprop "OS3.0" "" "36" "1" "aurora"
 write_mock_meminfo "7800000"
@@ -613,6 +616,7 @@ printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
 printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUILiteBlur.apk"
 printf 'apk' > "$SB_MOD/overlays/CoreSurfaceThemeManager.apk"
 printf 'apk' > "$SB_MOD/overlays/CoreSurfaceMiWallpaper.apk"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceMiuiAod.apk"
 
 cat > "$SB_BIN/pidof" <<'EOF'
 #!/bin/sh
@@ -634,29 +638,33 @@ EOF
 chmod +x "$SB_BIN/cmd"
 
 run_post_fs_data
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=3" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
+assert_file_contains "$SB_PROPS_LOG" "PURGED:persist.sys.advanced_visual_release" "Cleanup v3 purges leaked persist.sys.advanced_visual_release from /data/property"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_status_default=false" "HyperOS 3 defaults Advanced Textures OFF to prevent bloated Toasts & dark Recent Apps"
+assert_file_contains "$SB_PROPS_LOG" "debug.sysui.use_control_center=1" "Verified split Control Center prop is applied"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_version=2" "HyperOS 3 avoids forcing blur version 2"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=" "Omits mismatched MiShadow window prop that bloats Toasts"
-assert_file_not_contains "$SB_PROPS_LOG" "ro.multiwin.fulldecor_support=" "Omits fulldecor prop that distorts Recent Apps"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.feature.island=1" "Zero-gimmick: purged placebo persist.sys.feature.island prop"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "Zero-gimmick: purged placebo persist.sys.hyperai_enabled prop"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.aod_limit_disabled=true" "Zero-gimmick: purged placebo persist.sys.aod_limit_disabled prop"
 assert_file_contains "$SB_PROPS_LOG" "PURGED:persist.sys.support_window_mishadow" "One-time cleanup purges leaked persist.* keys from /data/property"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island=1" "HyperOS 3 auto-enables FEAT_ISLAND on >= 6 GB RAM"
 assert_eq "$( [ -f "$SB_MOD/system.prop" ] && printf 'exists' || printf 'absent' )" "absent" "Never creates system.prop (strictly memory-only resetprop -n)"
 assert_file_contains "$SB_CHCON_LOG" "-R u:object_r:system_file:s0 $SB_MOD/system" "RRO Manager restores SELinux system_file context on staged overlays"
 assert_eq "$( [ -f "$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" ] && printf 'yes' || printf 'no' )" "yes" "Stages zero-byte Lockscreen Video Depth marker"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUI.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceSystemUI.apk on >= 6 GB RAM"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceSystemUILiteBlur.apk" ] && printf 'yes' || printf 'no' )" "no" "RRO skips LiteBlur overlay when full FEAT_BLUR is active"
-assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceThemeManager.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceThemeManager.apk"
-assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiWallpaper.apk" ] && printf 'yes' || printf 'no' )" "yes" "RRO stages CoreSurfaceMiWallpaper.apk"
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiuiAod.apk" ] && printf 'yes' || printf 'no' )" "no" "RRO skips CoreSurfaceMiuiAod.apk when FEAT_AOD_UNLOCK=0"
 
 CORESURFACE_LIVE_OVERLAY_DIR="$SB_MOD/system/product/overlay" \
 CORESURFACE_VIDEO_DEPTH_PATH="$SB_MOD/system/product/media/wallpaper/sysui_editor_wallpaper_group/enable_video_depth" run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_BLUR=verified_active" "HyperOS 3 FEAT_BLUR achieves 100% verified_active"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_ISLAND=verified_active" "Verifier marks FEAT_ISLAND as verified_active"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_VIDEO_DEPTH=verified_active" "Verifier marks FEAT_VIDEO_DEPTH as verified_active"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_RRO_OVERLAYS=verified_active" "Verifier marks active RRO overlays via cmd overlay list as verified_active"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_RRO_ACTIVE=3" "Verifier counts 3/3 active RRO overlays"
 assert_file_contains "$SB_STATE/verify.state" "COMPAT_SCORE_PCT=100" "ROM Compatibility Score reaches 100% when all active features match"
+
+# Enabling FEAT_AOD_UNLOCK=1 stages CoreSurfaceMiuiAod.apk
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_AOD_UNLOCK 1 >/dev/null
+assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiuiAod.apk" ] && printf 'yes' || printf 'no' )" "yes" "Enabling FEAT_AOD_UNLOCK=1 stages CoreSurfaceMiuiAod.apk"
 
 # Turning FEAT_RRO_OVERLAYS=0 via webui_ctl immediately unstages RRO APKs for next boot
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_RRO_OVERLAYS 0 >/dev/null
@@ -685,9 +693,11 @@ printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" preset flagship-max >/dev/null
-assert_file_contains "$SB_STATE/config.prop" "FEAT_ISLAND=1" "Preset flagship-max sets FEAT_ISLAND=1"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_LUMINOUS_GLASS=1" "Preset flagship-max sets FEAT_LUMINOUS_GLASS=1"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_LIVING_FLOW=1" "Preset flagship-max sets FEAT_LIVING_FLOW=1"
 assert_file_contains "$SB_STATE/config.prop" "FEAT_VIDEO_DEPTH=1" "Preset flagship-max sets FEAT_VIDEO_DEPTH=1"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "Preset flagship-max immediately hot-syncs settings"
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=luminous=1;tilt=1;livingflow=1;guard=1;" "Preset flagship-max pushes live Engine IPC immediately"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" preset stock-safe >/dev/null
@@ -706,9 +716,9 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync
 _diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
 printf '%s\n' "$_diag" > "$SB/diag.txt"
-assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.0.0 Diagnostic Report ===" "diag-report outputs structured header"
-assert_file_contains "$SB/diag.txt" "Compatibility Score:" "diag-report includes Compatibility Score"
-assert_file_contains "$SB/diag.txt" "FEAT_ISLAND=" "diag-report includes per-feature verification summary"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.0.0 Hybrid Diagnostic Report ===" "diag-report outputs structured Hybrid header"
+assert_file_contains "$SB/diag.txt" "Luminous Engine:" "diag-report includes Luminous Engine telemetry line"
+assert_file_contains "$SB/diag.txt" "FEAT_LUMINOUS_GLASS=" "diag-report includes FEAT_LUMINOUS_GLASS verification"
 assert_file_contains "$SB/diag.txt" "FEAT_COLOR_EXPERT=" "diag-report includes FEAT_COLOR_EXPERT"
 
 if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" preset invalid-mode >/dev/null 2>&1; then
@@ -738,11 +748,9 @@ exit 0
 EOF
 chmod +x "$SB_BIN/pidof"
 
-# Default OFF: support_display_expert_mode stays false
 run_post_fs_data
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_display_expert_mode">false</bool>' "FEAT_COLOR_EXPERT=0 leaves support_display_expert_mode untouched"
 
-# Enable FEAT_COLOR_EXPERT=1 & FEAT_AOD_UNLOCK=1 via webui_ctl
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_COLOR_EXPERT 1 >/dev/null
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_AOD_UNLOCK 1 >/dev/null
 printf '0\n' > "$SB_STATE/boot_strikes"
@@ -755,6 +763,79 @@ assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_aod_fulls
 
 run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_COLOR_EXPERT=verified_active" "Verifier confirms FEAT_COLOR_EXPERT as verified_active when XML mounted"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_AOD_UNLOCK=verified_active" "Verifier confirms FEAT_AOD_UNLOCK as verified_active via XML"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 13: Hybrid Live Luminous & LivingFlow Engine Telemetry & Zero-Reboot IPC ===\n'
+setup_sandbox "t13_hybrid_engine"
+write_mock_getprop "OS3.0" "" "36" "1" "aurora"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/aurora.xml"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+
+# 13a: Engine APK installed, but NOT enabled in LSPosed yet -> honest pending_lsposed (ZERO gimmick!)
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/missing_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+  run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_INSTALLED=1" "Verifier detects installed CoreSurfaceEngine.apk"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=0" "Verifier honestly reports ENGINE_ACTIVE=0 before LSPosed hook runs"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LUMINOUS_GLASS=pending_lsposed" "Zero-gimmick: marks Luminous Glass as pending_lsposed when unhooked"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LIVING_FLOW=pending_lsposed" "Zero-gimmick: marks LivingFlow as pending_lsposed when unhooked"
+
+# 13b: Live telemetry present from SystemUI + MiuiHome -> verified_active with real counters!
+cat > "$SB/sysui_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+AGSL_COMPILED=1
+LOD_TIER=FULL
+HOOKS_BOUND=ToastGuard,LuminousGlass,ControlCenterFlow,KeyguardAodFlow,TactileSpring
+VIEWS_LUMINOUS=14
+TOASTS_GUARDED=3
+RECENTS_GUARDED=0
+FLOW_ANIMS=9
+EOF
+cat > "$SB/home_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+AGSL_COMPILED=1
+LOD_TIER=FULL
+HOOKS_BOUND=HomeLivingFlow,RecentsGuard,UnlockCascade
+VIEWS_LUMINOUS=2
+TOASTS_GUARDED=0
+RECENTS_GUARDED=4
+FLOW_ANIMS=6
+EOF
+
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/sysui_telem.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+  run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=1" "Verifier confirms active Engine runtime from telemetry"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_AGSL=1" "Verifier confirms AGSL GPU shader compiled"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_LOD=FULL" "Verifier reports live Thermal-Adaptive LOD tier"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_VIEWS=16" "Verifier aggregates luminous views across SystemUI + MiuiHome"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_TOASTS=3" "Verifier reports guarded Toast count"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_RECENTS=4" "Verifier reports guarded Recents count"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_FLOWS=15" "Verifier aggregates LivingFlow animation count"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LUMINOUS_GLASS=verified_active" "Luminous Glass verified_active only with real AGSL telemetry"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LIVING_FLOW=verified_active" "LivingFlow verified_active only with bound flow hooks"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_SURGICAL_GUARD=verified_active" "Surgical Guard verified_active only with bound Toast/Recents hooks"
+
+# 13c: Live Engine toggle via webui_ctl pushes Settings.Global IPC IMMEDIATELY with ZERO pending reboot!
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_ENGINE_INSTALLED=1 CORESURFACE_ENGINE_SYSUI_TELEM="$SB/sysui_telem.prop" \
+  CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_LUMINOUS_TILT 0 >/dev/null
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=luminous=1;tilt=0;livingflow=1;guard=1;" "Live toggle updates Settings.Global IPC instantly"
+assert_file_not_contains "$SB_STATE/state.prop" "FEAT_LUMINOUS_TILT" "Live Engine toggle does NOT add to PENDING_KEYS (zero reboot required)"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

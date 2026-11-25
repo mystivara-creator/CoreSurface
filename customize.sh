@@ -83,6 +83,13 @@ if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ] && 
   fi
 fi
 
+# Stage clean-room CoreSurface Luminous & LivingFlow Engine APK for automatic install after boot
+if [ -r "$_cs_modpath/engine/CoreSurfaceEngine.apk" ]; then
+  cp "$_cs_modpath/engine/CoreSurfaceEngine.apk" "$_cs_state_dir/CoreSurfaceEngine.apk" 2>/dev/null || true
+  chmod 0644 "$_cs_state_dir/CoreSurfaceEngine.apk" 2>/dev/null || true
+  _cs_ui_print "- Staged CoreSurfaceEngine.apk (AGSL Luminous & LivingFlow LSPosed Engine)"
+fi
+
 # Reset boot strikes cleanly on fresh install or upgrade
 printf '0\n' > "$_cs_state_dir/boot_strikes" 2>/dev/null || true
 
@@ -99,5 +106,5 @@ _cs_set_exec "$_cs_modpath/lib/verifier.sh"
 _cs_set_exec "$_cs_modpath/lib/webui_ctl.sh"
 
 _cs_ui_print "- Watchdog armed (auto safe-mode disable on 2 consecutive failed boots)"
-_cs_ui_print "- Dynamic XML Patcher, Clean-Room RRO, Transactional Settings & Verifier ready"
-_cs_ui_print "- Zero kernel/sysfs/thermal coupling; non-persistent resetprop -n only"
+_cs_ui_print "- Hybrid Architecture: Zero-Gimmick Base + AGSL Luminous & LivingFlow Engine"
+_cs_ui_print "- Enable 'CoreSurface Engine' in LSPosed (SystemUI, MiuiHome, MiuiAod) for live GPU shaders"
