@@ -26,7 +26,7 @@ public final class EngineConfig {
     public static final String MOTION_HYPEROS4 = "hyperos4";
     public static final String MOTION_SILK = "silk"; // legacy alias -> coloros
 
-    private static final long REFRESH_INTERVAL_MS = 3000L;
+    private static final long REFRESH_INTERVAL_MS = 500L;
 
     private volatile String motionProfile = MOTION_OFF;
     private volatile boolean nativeTier = true;

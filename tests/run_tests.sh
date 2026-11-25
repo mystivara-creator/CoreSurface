@@ -684,7 +684,7 @@ chmod +x "$SB_BIN/cmd"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=3" "HyperOS 3 skips dropped legacy persist.sys.advanced_visual_release"
 assert_file_contains "$SB_PROPS_LOG" "PURGED:persist.sys.advanced_visual_release" "Cleanup v3 purges leaked persist.sys.advanced_visual_release from /data/property"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_status_default=false" "HyperOS 3 defaults Advanced Textures OFF to prevent bloated Toasts & dark Recent Apps"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_status_default=" "HyperOS 3 Flagship does not fight user's Advanced Textures Settings toggle"
 assert_file_contains "$SB_PROPS_LOG" "debug.sysui.use_control_center=1" "Verified split Control Center prop is applied"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_version=2" "HyperOS 3 avoids forcing blur version 2"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.feature.island=1" "Zero-gimmick: purged placebo persist.sys.feature.island prop"
@@ -1697,6 +1697,8 @@ if [ -d /opt/android-sdk/build-tools ] || [ -n "${ANDROID_HOME:-}" ] || [ -n "${
   assert_file_contains "$SB/scope.list" "com.android.systemui" "scope.list recommends com.android.systemui"
   assert_file_contains "$SB/scope.list" "com.miui.home" "scope.list recommends com.miui.home"
   assert_file_contains "$SB/scope.list" "com.mi.android.globallauncher" "scope.list recommends POCO Launcher (com.mi.android.globallauncher)"
+  assert_file_contains "$SB/scope.list" "com.mi.android.globalminusscreen" "scope.list recommends Global -1 Screen App Vault (com.mi.android.globalminusscreen)"
+  assert_file_contains "$SB/scope.list" "com.miui.personalassistant" "scope.list recommends China -1 Screen App Vault (com.miui.personalassistant)"
   assert_file_contains "$SB/scope.list" "com.miui.aod" "scope.list recommends com.miui.aod"
   assert_file_contains "$SB/scope.list" "com.android.settings" "scope.list recommends com.android.settings"
 fi

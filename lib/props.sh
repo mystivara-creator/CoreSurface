@@ -308,9 +308,9 @@ cs_apply_feat_blur() {
   elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 4 ]; then
     # Native HyperOS 4+ Bionic Material & Advanced Textures contract (verified against OS4.0 factory dump):
     # - Never-Downgrade advanced_visual_release: min 5 (preserves 6+ on future HOS 4.1+ ROMs)
+    # - Never overwrite persist.sys.background_blur_status_default so HyperOS Settings toggle stays consistent
     # - Enables persist.sys.bionic_material_supported=true + G2 SmoothCorner (plus MiShadow/Backdrop on flagship GPU)
     _cs_avr=$(cs_max_uint 5 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
-    cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
     cs_set_prop "FEAT_BLUR" "persist.sys.bionic_material_supported" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
@@ -325,11 +325,11 @@ cs_apply_feat_blur() {
   elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
     # Lightweight HyperOS 3 Advanced Textures v4 contract (strictly resetprop -n):
     # - Never-Downgrade advanced_visual_release: min 4 (preserves 5+ on HOS 3.1/3.2 ROMs)
+    # - Never overwrite persist.sys.background_blur_status_default so HyperOS Settings toggle stays consistent
     # - Zero-cost G2 SmoothCorner on all devices; heavy GPU shaders (MiShadow, BlurNoise,
     #   BackdropSampling) gated to native flagship GPUs (stock device_level >= 3) to prevent
     #   mid-range GPU spikes and -1 Screen black blinks.
     _cs_avr=$(cs_max_uint 4 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
-    cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"

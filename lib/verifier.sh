@@ -240,6 +240,21 @@ cs_verify_engine() {
     cs_is_uint "$_cs_ct" && CS_V_ENGINE_CIRCUITS=$((CS_V_ENGINE_CIRCUITS + _cs_ct))
   done
 
+  # Reconcile live motion profile from zero-Binder debug.coresurface.cfg when Engine is active
+  # (prevents stale telemetry cache from showing the previous profile right after a live WebUI switch)
+  if [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
+    _cs_live_cfg=$(cs_getprop "debug.coresurface.cfg")
+    case ";${_cs_live_cfg};" in
+      *";motion="*)
+        _cs_live_m=$(printf '%s' "$_cs_live_cfg" | sed -n 's/.*motion=\([^;]*\).*/\1/p')
+        case "$_cs_live_m" in
+          ios|coloros|hyperos4|off) CS_V_ENGINE_MOTION="$_cs_live_m" ;;
+          silk) CS_V_ENGINE_MOTION="coloros" ;;
+        esac
+        ;;
+    esac
+  fi
+
   # 3. Map honest per-feature verification for Layer 2 Motion Engine capabilities
   _cs_base_eng="skipped"
   if [ "$CS_V_ENGINE_INSTALLED" = "1" ] && [ "$CS_V_ENGINE_ACTIVE" != "1" ]; then

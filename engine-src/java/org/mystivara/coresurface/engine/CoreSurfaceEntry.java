@@ -24,6 +24,8 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
     private static final String PKG_SYSTEMUI = "com.android.systemui";
     private static final String PKG_HOME = "com.miui.home";
     private static final String PKG_POCO_HOME = "com.mi.android.globallauncher";
+    private static final String PKG_GLOBAL_MINUS_ONE = "com.mi.android.globalminusscreen";
+    private static final String PKG_CN_MINUS_ONE = "com.miui.personalassistant";
     private static final String PKG_AOD = "com.miui.aod";
 
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
@@ -71,6 +73,10 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
                 new LivingFlowHomeHook(bootstrap, bugGuard, folmeHook, blurGuard, deviceLevelHook, launcherChoreo, telemetry)
                         .install(lpparam.classLoader);
                 XposedBridge.log("CoreSurfaceEngine: initialized True Physics (RectF + Folder + RecentsGuard) in " + pkg);
+            } else if (PKG_GLOBAL_MINUS_ONE.equals(pkg) || PKG_CN_MINUS_ONE.equals(pkg)) {
+                blurGuard.installMinusOneAppGuard(lpparam.classLoader);
+                bootstrap.install();
+                XposedBridge.log("CoreSurfaceEngine: initialized -1 Screen (App Vault) Black-Backdrop Blur Guard in " + pkg);
             } else if (PKG_AOD.equals(pkg)) {
                 new LivingFlowAodHook(config, bootstrap, bugGuard, telemetry)
                         .install(lpparam.classLoader);
