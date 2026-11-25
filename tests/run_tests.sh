@@ -1330,6 +1330,10 @@ EOF
 chmod +x "$SB_BIN/pidof"
 
 run_post_fs_data
+# Launcher & SurfaceFlinger blur contract (prevents -1 Screen & Folder black-blink)
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.sf.disable_blurs=false" "Blur contract sets persist.sys.sf.disable_blurs=false"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.launcher_blur_supported=true" "Blur contract sets persist.sys.launcher_blur_supported=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_setting=1" "Blur contract sets persist.sys.background_blur_setting=1"
 # Audio & Speaker props
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Flagship Audio sets ro.vendor.audio.spk.stereo=true"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Flagship Audio sets ro.vendor.audio.spk.clean=true"

@@ -34,8 +34,10 @@ public final class SurgicalBlurGuardHook {
     private static final int RECENTS_NO = 0;
     private static final int RECENTS_YES = 1;
 
-    private static final String[] HOME_BLUR_UTILS_CLASSES = new String[] {
-            "com.miui.home.launcher.common.BlurUtils",
+    // Strictly Recents-scoped classes ONLY — NEVER hook com.miui.home.launcher.common.BlurUtils
+    // globally because it drives -1 Screen (App Vault) and Folder open/close blur transitions;
+    // downgrading getBlurType()/isUseCompleteBlurOnDev() globally causes black-backdrop blinks.
+    private static final String[] HOME_RECENTS_BLUR_CLASSES = new String[] {
             "com.miui.home.recents.util.BlurUtils",
             "com.miui.home.recents.views.RecentsContainer",
             "com.miui.home.recents.NavStubView"
@@ -104,13 +106,14 @@ public final class SurgicalBlurGuardHook {
 
     /**
      * Installed strictly inside com.miui.home to fix HyperOS 3 black Recent Apps under
-     * Advanced Textures while leaving Control Center & Folder blur completely untouched.
+     * Advanced Textures while leaving Control Center, Folder, and -1 Screen (App Vault)
+     * blur transitions 100% untouched.
      */
     public void installHomeRecentsGuard(ClassLoader cl) {
         int hooked = 0;
 
-        // 1. Steer MiuiHome BlurUtils away from broken complete/pass-window Recents blur
-        for (String clsName : HOME_BLUR_UTILS_CLASSES) {
+        // 1. Steer ONLY Recents-specific blur queries away from broken pass-window Recents blur
+        for (String clsName : HOME_RECENTS_BLUR_CLASSES) {
             Class<?> clazz = safeFindClass(clsName, cl);
             if (clazz == null) {
                 continue;
@@ -131,16 +134,12 @@ public final class SurgicalBlurGuardHook {
                     if (hookReturnFalseWhenGuarded(m)) {
                         hooked++;
                     }
-                } else if (ret == int.class && "getBlurType".equals(name)) {
-                    if (hookClampBlurType(m)) {
-                        hooked++;
-                    }
                 }
             }
         }
 
-        // 2. Intercept MIUI View background blur setters ONLY on Recents/Overview/NavStub views
-        //    (explicitly excludes Folder & Control Center views so their blur stays 100% intact)
+        // 2. Intercept MIUI View background blur setters ONLY on true Recents/Overview/NavStub views
+        //    (explicitly excludes Folder, -1 Screen / App Vault, Wallpaper, Workspace & Control Center)
         hooked += hookViewMiBlurForRecents("setMiBackgroundBlurMode");
         hooked += hookViewMiBlurForRecents("setMiViewBlurMode");
 
@@ -217,35 +216,6 @@ public final class SurgicalBlurGuardHook {
         }
     }
 
-    private boolean hookClampBlurType(Method m) {
-        try {
-            XposedBridge.hookMethod(m, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (bugGuard.isHookTripped("RecentsBlurType")) {
-                        return;
-                    }
-                    try {
-                        if (!config.isSurgicalGuard()) {
-                            return;
-                        }
-                        Object res = param.getResult();
-                        if (res instanceof Integer && ((Integer) res) >= 2) {
-                            // Type 1 = standard reliable wallpaper blur; >=2 = broken HOS3 complete/advanced window blur
-                            param.setResult(1);
-                            telemetry.incRecentsGuarded();
-                        }
-                    } catch (Throwable ignored) {
-                        bugGuard.recordHookFault("RecentsBlurType");
-                    }
-                }
-            });
-            return true;
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
     private int hookViewMiBlurForRecents(String methodName) {
         try {
             Method m = View.class.getMethod(methodName, int.class);
@@ -286,8 +256,17 @@ public final class SurgicalBlurGuardHook {
             return cached == RECENTS_YES;
         }
         String cls = clazz.getName().toLowerCase(Locale.ROOT);
-        // Explicitly never touch Folder, Control Center, QS, or Notification blur views
+        // Explicitly never touch Folder, -1 Screen (App Vault / MinusOne), Wallpaper, Workspace,
+        // DragLayer, Control Center, QS, or Notification blur views
         boolean excluded = cls.contains("folder")
+                || cls.contains("minusone")
+                || cls.contains("minus_one")
+                || cls.contains("personalassistant")
+                || cls.contains("assistant")
+                || cls.contains("appvault")
+                || cls.contains("wallpaper")
+                || cls.contains("workspace")
+                || cls.contains("draglayer")
                 || cls.contains("controlcenter")
                 || cls.contains("notification")
                 || cls.contains(".qs.");
@@ -295,8 +274,7 @@ public final class SurgicalBlurGuardHook {
                 && (cls.contains("recents")
                 || cls.contains("taskstack")
                 || cls.contains("overview")
-                || cls.contains("navstub")
-                || cls.contains("blurbackground"));
+                || cls.contains("navstub"));
         recentsClassCache.put(clazz, match ? RECENTS_YES : RECENTS_NO);
         return match;
     }
@@ -324,11 +302,9 @@ public final class SurgicalBlurGuardHook {
 
     private static boolean isCompleteBlurQuery(String methodName) {
         String lower = methodName.toLowerCase(Locale.ROOT);
-        return lower.contains("completeblur")
-                || lower.contains("usecompleteblur")
+        return lower.contains("completerecentsblur")
                 || lower.contains("passwindowblur")
-                || lower.contains("realtimeblurinrecents")
-                || lower.contains("supportadvancedblur");
+                || lower.contains("realtimeblurinrecents");
     }
 
     private boolean isRecentsWindow(View view, WindowManager.LayoutParams lp) {

@@ -1,5 +1,6 @@
 package org.mystivara.coresurface.engine;
 
+import android.animation.ObjectAnimator;
 import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
 import android.content.Context;
@@ -16,6 +17,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Locale;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -33,9 +35,8 @@ import de.robv.android.xposed.XposedHelpers;
  * 2. Xiaomi Folme Interpolators (`miuix.animation.utils.EaseManager.getInterpolator`)
  * 3. Miui & Jetpack `SpringForce` (`setDampingRatio` & `setStiffness` via k = (2*pi/T)^2)
  * 4. Standard Android `ValueAnimator.setInterpolator` & `ViewPropertyAnimator.setInterpolator`
- *    (with finite UI transition duration scaling so iOS/ColorOS 17 Silk visibly glides
- *    and HyperOS 4 visibly whips, while strictly sparing LinearInterpolator, exit ease-in,
- *    progress spinners, and infinite animations).
+ *    (with one-shot spatial duration scaling on ObjectAnimator/ViewPropertyAnimator while
+ *    keeping raw blur/alpha ValueAnimators strictly duration-synced to prevent window blinks).
  */
 public final class FolmePhysicsHook {
     private static final int DEFAULT_SPRING_STYLE = -2;
@@ -48,6 +49,7 @@ public final class FolmePhysicsHook {
     private final TelemetryReporter telemetry;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ConcurrentHashMap<Class<?>, Integer> interpClassCache = new ConcurrentHashMap<>();
+    private final WeakHashMap<Object, Long> scaledDurations = new WeakHashMap<>();
 
     private volatile boolean displayAttached = false;
     private volatile float currentRefreshHz = 60.0f;
@@ -484,9 +486,14 @@ public final class FolmePhysicsHook {
                         if (isUpgradeableInterpolator((TimeInterpolator) raw)) {
                             SpringPhysicsCurve curve = getCurveForProfile(profile);
                             param.args[0] = curve;
-                            if (dur >= 120L && dur <= 550L) {
-                                long scaled = Math.round(dur * curve.getDurationScale());
-                                va.setDuration(Math.max(120L, Math.min(680L, scaled)));
+                            // Only scale duration on spatial ObjectAnimators (never raw ValueAnimators
+                            // like BlurUtils.sBlurAnim or pure alpha fades, which are synced to
+                            // window/surface detach lifecycles and would blink if stretched).
+                            if (dur >= 120L && dur <= 550L && isSpatialObjectAnimator(va)) {
+                                long scaled = computeNonCompoundingDuration(va, dur, curve.getDurationScale());
+                                if (scaled != dur) {
+                                    va.setDuration(scaled);
+                                }
                             }
                             telemetry.incCurvesApplied();
                         }
@@ -533,8 +540,10 @@ public final class FolmePhysicsHook {
                             ViewPropertyAnimator vpa = (ViewPropertyAnimator) param.thisObject;
                             long dur = vpa.getDuration();
                             if (dur >= 120L && dur <= 550L) {
-                                long scaled = Math.round(dur * curve.getDurationScale());
-                                vpa.setDuration(Math.max(120L, Math.min(680L, scaled)));
+                                long scaled = computeNonCompoundingDuration(vpa, dur, curve.getDurationScale());
+                                if (scaled != dur) {
+                                    vpa.setDuration(scaled);
+                                }
                             }
                             telemetry.incCurvesApplied();
                         }
@@ -546,6 +555,34 @@ public final class FolmePhysicsHook {
             return true;
         } catch (Throwable ignored) {
             return false;
+        }
+    }
+
+    private static boolean isSpatialObjectAnimator(ValueAnimator va) {
+        if (!(va instanceof ObjectAnimator)) {
+            return false;
+        }
+        String prop = ((ObjectAnimator) va).getPropertyName();
+        if (prop == null) {
+            return false;
+        }
+        String lower = prop.toLowerCase(Locale.ROOT);
+        // Never stretch opacity/blur/dim/color fades past surface detach lifecycles
+        return !lower.contains("alpha")
+                && !lower.contains("blur")
+                && !lower.contains("dim")
+                && !lower.contains("color");
+    }
+
+    private long computeNonCompoundingDuration(Object anim, long currentDur, float scale) {
+        synchronized (scaledDurations) {
+            Long prev = scaledDurations.get(anim);
+            if (prev != null && prev.longValue() == currentDur) {
+                return currentDur;
+            }
+            long scaled = Math.max(120L, Math.min(680L, Math.round(currentDur * scale)));
+            scaledDurations.put(anim, scaled);
+            return scaled;
         }
     }
 

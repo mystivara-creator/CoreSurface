@@ -280,12 +280,15 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.sf.blurs_are_expensive" "0"
   cs_set_prop "FEAT_BLUR" "sf.blurs_are_expensive" "0"
+  cs_set_prop "FEAT_BLUR" "persist.sys.sf.disable_blurs" "false"
   cs_set_prop "FEAT_BLUR" "ro.miui.has_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.miui.has_real_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.miui.cc_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.miui_folder_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "1"
+  cs_set_prop "FEAT_BLUR" "persist.sys.launcher_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
+  cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_setting" "1"
 
   if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ] || [ "${EFF_FEAT_ADV_TEXTURES:-0}" != "1" ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
