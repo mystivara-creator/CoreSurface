@@ -1603,21 +1603,16 @@ public final class PhysicsMathTest {
             throw new AssertionError("Legacy silk alias must map cleanly to coloros");
         }
 
-        // 5. iOS 27 3D Perspective App Open/Close & Bouncy Lock-to-Home verification
+        // 5. Clean iOS Bouncy Lock-to-Home unlock verification (profile-isolated, zero Workspace desync)
         MotionProfileSpec hos4 = MotionProfileSpec.forProfile("hyperos4", 120.0f, 1.0f);
-        if (!ios.ios3dPerspectiveEnabled || !ios.unlockBounceEnabled) {
-            throw new AssertionError("iOS 27 profile must enable 3D perspective & bouncy unlock");
+        if (!ios.unlockBounceEnabled) {
+            throw new AssertionError("iOS profile must enable clean bouncy Lock-to-Home unlock");
         }
-        if (cos.ios3dPerspectiveEnabled || cos.unlockBounceEnabled
-                || hos4.ios3dPerspectiveEnabled || hos4.unlockBounceEnabled) {
-            throw new AssertionError("ColorOS & HyperOS 4 profiles must stay clean without iOS 27 3D/unlock bounce");
+        if (cos.unlockBounceEnabled || hos4.unlockBounceEnabled) {
+            throw new AssertionError("ColorOS & HyperOS 4 profiles must stay clean without iOS unlock bounce");
         }
-        if (!(ios.perspectiveDepthScale < 0.94f && ios.perspectiveMaxTiltXDeg >= 4.0f)) {
-            throw new AssertionError("iOS 27 3D perspective depth/tilt out of range");
-        }
-        // Verify Lock-to-Home unlock spring produces genuine elastic bounce past resting scale 1.0 (e.g. < 0.97)
         CoreSpringSolver unlockScale = new CoreSpringSolver(ios.unlockDamping, ios.unlockResponseSec);
-        unlockScale.reset(ios.unlockStartScale, 1.0, -(ios.unlockStartScale - 1.0) * 3.2);
+        unlockScale.reset(ios.unlockStartScale, 1.0, -(ios.unlockStartScale - 1.0) * 3.0);
         double minScale = ios.unlockStartScale;
         for (int i = 0; i < 180; i++) {
             double v = unlockScale.step(1.0 / 120.0);
@@ -1625,11 +1620,11 @@ public final class PhysicsMathTest {
                 minScale = v;
             }
         }
-        if (!(minScale < 0.97 && minScale > 0.85)) {
-            throw new AssertionError("iOS 27 unlock spring did not produce clean elastic bounce: minScale=" + minScale);
+        if (!(minScale < 0.985 && minScale > 0.90)) {
+            throw new AssertionError("iOS unlock spring did not produce clean elastic bounce: minScale=" + minScale);
         }
         if (Math.abs(unlockScale.getPosition() - 1.0) > 0.005) {
-            throw new AssertionError("iOS 27 unlock spring failed to settle at 1.0: " + unlockScale.getPosition());
+            throw new AssertionError("iOS unlock spring failed to settle at 1.0: " + unlockScale.getPosition());
         }
         System.out.println("PHYSICS_MATH_OK");
     }

@@ -144,6 +144,38 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
         }
     }
 
+    /**
+     * Immediately cancels EVERY active spring track and restores every tracked View to exact
+     * identity rest (scale=1, tx=0, ty=0, rot=0, alpha=1). Prevents any stuck/unsynced layout
+     * when the Activity pauses or the screen turns off.
+     */
+    public void cancelAllActive() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            return;
+        }
+        for (int i = 0; i < MAX_SLOTS; i++) {
+            TrackSlot slot = slots[i];
+            if (!slot.active) {
+                continue;
+            }
+            View v = slot.viewRef != null ? slot.viewRef.get() : null;
+            slot.active = false;
+            slot.viewRef = null;
+            slot.delayRemainSec = 0.0;
+            if (v != null && v.isAttachedToWindow()) {
+                applyProperty(v, slot.propId, restValueFor(slot.propId));
+            }
+        }
+        if (running) {
+            running = false;
+            lastFrameNanos = 0L;
+            try {
+                Choreographer.getInstance().removeFrameCallback(this);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
     @Override
     public void doFrame(long frameTimeNanos) {
         double dtSec = (lastFrameNanos > 0L && frameTimeNanos > lastFrameNanos)

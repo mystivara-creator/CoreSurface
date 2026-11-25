@@ -47,20 +47,12 @@ public final class MotionProfileSpec {
     public final float folmeStiffnessK;
     public final float folmeBlendWeight;
 
-    // 5. iOS 27 3D Perspective App Open/Close & Bouncy Lock-to-Home Choreography (PROFILE_IOS only)
-    public final boolean ios3dPerspectiveEnabled;
-    public final float perspectiveMaxTiltXDeg;
-    public final float perspectiveMaxTiltYDeg;
-    public final float perspectiveDepthScale;
-    public final float perspectiveDamping;
-    public final float perspectiveResponseSec;
-
+    // 5. Bouncy Lock Screen -> Home Screen Choreography (PROFILE_IOS only, zero alpha-pop / zero Workspace scale fight)
     public final boolean unlockBounceEnabled;
     public final float unlockDamping;
     public final float unlockResponseSec;
     public final float unlockStartScale;
     public final float unlockRadialSpreadDp;
-    public final float unlockTiltXDeg;
     public final float unlockStaggerMaxSec;
 
     private MotionProfileSpec(
@@ -71,10 +63,8 @@ public final class MotionProfileSpec {
             float appScaleDamping, float appScaleResponseSec, float appVelocityScale,
             float surfaceDamping, float surfaceResponseSec, float surfaceLiftDp, float surfaceImpulseVel,
             float folmeDamping, float folmeResponseSec, float folmeBlendWeight,
-            boolean ios3dPerspectiveEnabled, float perspectiveMaxTiltXDeg, float perspectiveMaxTiltYDeg,
-            float perspectiveDepthScale, float perspectiveDamping, float perspectiveResponseSec,
             boolean unlockBounceEnabled, float unlockDamping, float unlockResponseSec,
-            float unlockStartScale, float unlockRadialSpreadDp, float unlockTiltXDeg, float unlockStaggerMaxSec) {
+            float unlockStartScale, float unlockRadialSpreadDp, float unlockStaggerMaxSec) {
         this.profileId = profileId;
         this.shellDamping = shellDamping;
         this.shellResponseSec = shellResponseSec;
@@ -102,19 +92,11 @@ public final class MotionProfileSpec {
         this.folmeStiffnessK = (float) (omegaN * omegaN);
         this.folmeBlendWeight = folmeBlendWeight;
 
-        this.ios3dPerspectiveEnabled = ios3dPerspectiveEnabled;
-        this.perspectiveMaxTiltXDeg = perspectiveMaxTiltXDeg;
-        this.perspectiveMaxTiltYDeg = perspectiveMaxTiltYDeg;
-        this.perspectiveDepthScale = perspectiveDepthScale;
-        this.perspectiveDamping = perspectiveDamping;
-        this.perspectiveResponseSec = perspectiveResponseSec;
-
         this.unlockBounceEnabled = unlockBounceEnabled;
         this.unlockDamping = unlockDamping;
         this.unlockResponseSec = unlockResponseSec;
         this.unlockStartScale = unlockStartScale;
         this.unlockRadialSpreadDp = unlockRadialSpreadDp;
-        this.unlockTiltXDeg = unlockTiltXDeg;
         this.unlockStaggerMaxSec = unlockStaggerMaxSec;
     }
 
@@ -124,39 +106,32 @@ public final class MotionProfileSpec {
         float w = clamp(thermalScale, 0.35f, 1.0f);
 
         if (PROFILE_IOS.equals(profile)) {
-            // iOS 27 Fluid: Apple CASpringAnimation mass-weighted glide + true 3D perspective depth
-            // on app open/close + signature bouncy radial SpringBoard Lock-to-Home fly-in.
+            // iOS Spring: Apple CASpringAnimation mass-weighted glide + elastic RectF app catch
+            // + synchronized bouncy Lock-to-Home icon & dock settle (zero Workspace layout desync).
             float shDamp = lerp(0.99f, 0.96f, w);
             float shResp = lerp(lerp(0.36f, 0.43f, w), lerp(0.39f, 0.47f, w), hz);
             float shV0 = lerp(0.45f, 0.72f, w);
 
-            float appPDamp = lerp(0.95f, 0.90f, w);
-            float appPResp = lerp(lerp(0.36f, 0.42f, w), lerp(0.39f, 0.46f, w), hz);
-            float appSDamp = lerp(0.96f, 0.92f, w);
-            float appSResp = lerp(lerp(0.38f, 0.44f, w), lerp(0.41f, 0.48f, w), hz);
+            float appPDamp = lerp(0.93f, 0.86f, w);
+            float appPResp = lerp(lerp(0.35f, 0.40f, w), lerp(0.38f, 0.44f, w), hz);
+            float appSDamp = lerp(0.94f, 0.88f, w);
+            float appSResp = lerp(lerp(0.37f, 0.42f, w), lerp(0.40f, 0.46f, w), hz);
             float appVel = lerp(1.02f, 1.07f, w);
 
-            float surfDamp = lerp(0.96f, 0.91f, w);
-            float surfResp = lerp(lerp(0.36f, 0.41f, w), lerp(0.39f, 0.44f, w), hz);
+            float surfDamp = lerp(0.95f, 0.89f, w);
+            float surfResp = lerp(lerp(0.35f, 0.40f, w), lerp(0.38f, 0.43f, w), hz);
             float surfLift = lerp(6.0f, 12.0f, w);
             float surfVel = lerp(0.8f, 1.4f, w);
 
-            float fDamp = lerp(0.97f, 0.94f, w);
+            float fDamp = lerp(0.97f, 0.93f, w);
             float fResp = lerp(lerp(0.35f, 0.38f, w), lerp(0.37f, 0.41f, w), hz);
 
-            float perspTiltX = lerp(3.2f, 7.5f, w);
-            float perspTiltY = lerp(2.2f, 5.0f, w);
-            float perspScale = lerp(0.945f, 0.89f, w);
-            float perspDamp = lerp(0.84f, 0.72f, w);
-            float perspResp = lerp(0.38f, 0.44f, hz);
-
-            // Bouncy Lock Screen -> Home Screen fly-in (zeta=0.54 -> unmistakable elastic iOS 27 bounce)
-            float unlDamp = lerp(0.70f, 0.54f, w);
-            float unlResp = lerp(0.41f, 0.47f, hz);
-            float unlScale = lerp(1.20f, 1.38f, w);
-            float unlSpread = lerp(40.0f, 76.0f, w);
-            float unlTiltX = lerp(6.5f, 13.0f, w);
-            float unlStagger = lerp(0.028f, 0.055f, w);
+            // Clean bouncy Lock Screen -> Home Screen spring (zeta=0.58 -> organic elastic bounce, no alpha blink)
+            float unlDamp = lerp(0.72f, 0.58f, w);
+            float unlResp = lerp(0.40f, 0.46f, hz);
+            float unlScale = lerp(1.08f, 1.16f, w);
+            float unlSpread = lerp(18.0f, 36.0f, w);
+            float unlStagger = lerp(0.014f, 0.028f, w);
 
             return new MotionProfileSpec(
                     PROFILE_IOS,
@@ -164,8 +139,7 @@ public final class MotionProfileSpec {
                     appPDamp, appPResp, appSDamp, appSResp, appVel,
                     surfDamp, surfResp, surfLift, surfVel,
                     fDamp, fResp, lerp(0.20f, 0.35f, w),
-                    true, perspTiltX, perspTiltY, perspScale, perspDamp, perspResp,
-                    true, unlDamp, unlResp, unlScale, unlSpread, unlTiltX, unlStagger);
+                    true, unlDamp, unlResp, unlScale, unlSpread, unlStagger);
         }
 
         if (PROFILE_COLOROS.equals(profile)) {
@@ -193,8 +167,7 @@ public final class MotionProfileSpec {
                     appPDamp, appPResp, appSDamp, appSResp, appVel,
                     surfDamp, surfResp, surfLift, surfVel,
                     fDamp, fResp, lerp(0.22f, 0.40f, w),
-                    false, 0.0f, 0.0f, 1.0f, 0.95f, 0.32f,
-                    false, 0.95f, 0.32f, 1.0f, 0.0f, 0.0f, 0.0f);
+                    false, 0.95f, 0.32f, 1.0f, 0.0f, 0.0f);
         }
 
         // HyperOS 4 Crisp (default active fallback): taut, agile, zero-overshoot precision
@@ -221,8 +194,7 @@ public final class MotionProfileSpec {
                 appPDamp, appPResp, appSDamp, appSResp, appVel,
                 surfDamp, surfResp, surfLift, surfVel,
                 fDamp, fResp, lerp(0.18f, 0.30f, w),
-                false, 0.0f, 0.0f, 1.0f, 0.96f, 0.30f,
-                false, 0.96f, 0.30f, 1.0f, 0.0f, 0.0f, 0.0f);
+                false, 0.96f, 0.30f, 1.0f, 0.0f, 0.0f);
     }
 
     public static String normalizeProfile(String raw) {

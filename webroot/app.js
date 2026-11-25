@@ -83,7 +83,7 @@ function makeKvRow(label, value) {
 }
 
 function formatMotion(p) {
-  if (p === 'ios') return 'iOS 27 3D (CoreSpring)';
+  if (p === 'ios') return 'iOS Spring (CoreSpring)';
   if (p === 'coloros' || p === 'silk') return 'ColorOS Quantum (CoreSpring)';
   if (p === 'hyperos4') return 'HyperOS 4 Crisp (CoreSpring)';
   if (p === 'off' || p === '0') return 'Stock Flagship (Native)';

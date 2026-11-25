@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.RectF;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -29,31 +28,29 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * CoreSurface Launcher Physics & iOS 27 3D Choreography Engine (com.miui.home / POCO Launcher).
+ * CoreSurface Launcher Physics Choreography Engine (com.miui.home / POCO Launcher).
  *
- * 1. Universal Activity Lifecycle Binding (100% obfuscation- & inheritance-proof):
- *    - Hooks android.app.Activity.onResume / onPause / onWindowFocusChanged directly inside the
- *      Launcher process so we ALWAYS capture the active Launcher Activity, root content View,
- *      and Workspace regardless of HyperOS 2/3/4 class hierarchy changes.
- * 2. iOS 27 3D Perspective App Open / App Close (`ios` profile):
- *    - Primary: hooks RectFSpringAnim (`start*`) + scans all RectF fields (by name or position).
- *    - Guaranteed fallback: hooks Launcher onPause (App Open) & onResume (Return Home) so 3D
- *      perspective depth recession (scale 1.0 <-> 0.89 + directional rotationX/rotationY) ALWAYS
- *      fires cleanly even if Xiaomi renames RectFSpringAnim fields.
- * 3. iOS 27 Bouncy Lock Screen -> Home Screen Radial Fly-In (`ios` profile):
- *    - Event-driven via ACTION_SCREEN_OFF + ACTION_USER_PRESENT + Keyguard unlock edge (0% polling).
- *    - Animates Workspace + every visible CellLayout icon/widget + Hotseat dock with genuine
- *      underdamped bouncy CoreSpringSolver (zeta=0.54) and radial wave stagger.
- * 4. Interruptible Folder Open/Close Choreography (`CoreSurfaceChoreographer`).
+ * Strictly layout-safe & zero-desync design:
+ * 1. App Open / App Close / Swipe-Up-to-Home (`RectFSpringAnim`):
+ *    - Reflectively caches spatial spring fields once per class (zero per-frame reflection).
+ *    - Tunes ONLY X/Y/Width/Scale SpringForce damping & stiffness + finger velocity handoff
+ *      while leaving Alpha, CornerRadius, and Workspace layout scale 100% owned by Launcher
+ *      (eliminates shrunk-Workspace vs Hotseat/Search layout desync).
+ * 2. Clean Bouncy Lock Screen -> Home Screen Spring (`ios` profile):
+ *    - Strict state machine: arms ONLY on true screen-off/Keyguard lock and disarms automatically
+ *      within 400ms if the user unlocked into another app (NEVER randomly spawns on Home press).
+ *    - NEVER drops View alpha (zero "tiba-tiba spawn" flash/pop) and NEVER mutates Workspace scale.
+ *    - Animates visible CellLayout icons/widgets & Hotseat dock together with synchronized
+ *      CoreSpringSolver elastic bounce (zeta=0.58), and guarantees exact identity cleanup on onPause.
+ * 3. Interruptible Folder Open/Close Choreography (`CoreSurfaceChoreographer`).
  */
 public final class LauncherChoreographyHook {
     private static final String CIRCUIT_RECTF = "LauncherRectF";
     private static final String CIRCUIT_FOLDER = "LauncherFolder";
-    private static final String CIRCUIT_IOS27 = "LauncherIos27";
+    private static final String CIRCUIT_UNLOCK = "LauncherUnlockBounce";
 
-    private static final long UNLOCK_WINDOW_MS = 1800L;
-    private static final long UNLOCK_DEBOUNCE_MS = 900L;
-    private static final long PERSPECTIVE_DEBOUNCE_MS = 220L;
+    private static final long UNLOCK_ARM_EXPIRE_MS = 450L;
+    private static final long UNLOCK_DEBOUNCE_MS = 1000L;
     private static final int MAX_UNLOCK_ICONS = 32;
 
     private static final String[] RECTF_CLASSES = new String[] {
@@ -70,14 +67,10 @@ public final class LauncherChoreographyHook {
     private static final class CachedRectFFields {
         final Field[] posSpringFields;
         final Field[] scaleSpringFields;
-        final Field startRectField;
-        final Field endRectField;
 
-        CachedRectFFields(Field[] pos, Field[] scale, Field startRect, Field endRect) {
+        CachedRectFFields(Field[] pos, Field[] scale) {
             this.posSpringFields = pos;
             this.scaleSpringFields = scale;
-            this.startRectField = startRect;
-            this.endRectField = endRect;
         }
     }
 
@@ -92,29 +85,17 @@ public final class LauncherChoreographyHook {
     private final ConcurrentHashMap<Class<?>, Method> stiffSetterCache = new ConcurrentHashMap<>();
 
     private final AtomicBoolean receiverRegistered = new AtomicBoolean(false);
-    private final AtomicBoolean logged3dOnce = new AtomicBoolean(false);
-    private final AtomicBoolean loggedUnlockOnce = new AtomicBoolean(false);
-
     private volatile WeakReference<Activity> launcherActivityRef = new WeakReference<>(null);
-    private volatile WeakReference<View> workspaceViewRef = new WeakReference<>(null);
     private volatile boolean launcherResumed = false;
-    private volatile boolean leftLauncherForApp = false;
-    private volatile boolean pendingUnlockFromScreenOff = false;
-    private volatile long lastUserPresentUptimeMs = 0L;
-    private volatile long lastUnlockAnimUptimeMs = 0L;
-    private volatile long lastPerspectiveAnimUptimeMs = 0L;
-    private volatile boolean workspaceRecededForAppOpen = false;
-    private volatile float lastOpenTiltX = 0.0f;
-    private volatile float lastOpenTiltY = 0.0f;
+    private volatile boolean armedForLockscreenUnlock = false;
+    private volatile long unlockTriggeredUptimeMs = 0L;
 
-    private final Runnable workspaceRestoreRunnable = new Runnable() {
+    // If user unlocked into another app (Launcher never became active within 450ms),
+    // automatically disarm so pressing Home later NEVER spawns a fake unlock animation.
+    private final Runnable disarmUnlockRunnable = new Runnable() {
         @Override
         public void run() {
-            View ws = getPerspectiveTargetView();
-            if (ws != null && workspaceRecededForAppOpen) {
-                workspaceRecededForAppOpen = false;
-                choreographer.cancelAllForView(ws);
-            }
+            armedForLockscreenUnlock = false;
         }
     };
 
@@ -142,7 +123,7 @@ public final class LauncherChoreographyHook {
     }
 
     // -------------------------------------------------------------------------
-    // 1. Universal Activity Lifecycle & Zero-Polling Lock->Home Unlock Observer
+    // 1. Strict Lock Screen -> Home Screen Unlock State Machine (Zero Pop / Zero Random Spawn)
     // -------------------------------------------------------------------------
 
     private int installUniversalActivityHooks() {
@@ -159,25 +140,9 @@ public final class LauncherChoreographyHook {
                         return;
                     }
                     launcherResumed = true;
-                    onLauncherActive(act);
-
-                    // Priority 1: Lock Screen -> Home Screen bouncy fly-in
-                    if (maybeTriggerIos27UnlockBounce(act)) {
-                        leftLauncherForApp = false;
-                        return;
-                    }
-
-                    // Priority 2: Guaranteed 3D Perspective emergence when returning from an app
-                    if (leftLauncherForApp) {
-                        leftLauncherForApp = false;
-                        MotionProfileSpec spec = specHub.getActiveSpec();
-                        long now = SystemClock.uptimeMillis();
-                        if (spec != null && spec.ios3dPerspectiveEnabled
-                                && (now - lastPerspectiveAnimUptimeMs) > PERSPECTIVE_DEBOUNCE_MS) {
-                            lastPerspectiveAnimUptimeMs = now;
-                            applyWorkspace3dPerspective(false, 0.5f, 0.5f, true, spec);
-                        }
-                    }
+                    launcherActivityRef = new WeakReference<>(act);
+                    registerUnlockReceiverOnce(act);
+                    maybeRunCleanUnlockBounce(act);
                 }
             });
             hooked++;
@@ -196,40 +161,8 @@ public final class LauncherChoreographyHook {
                         return;
                     }
                     launcherResumed = false;
-                    if (isKeyguardLockedSafe(act)) {
-                        pendingUnlockFromScreenOff = true;
-                        leftLauncherForApp = false;
-                        return;
-                    }
-                    leftLauncherForApp = true;
-                    MotionProfileSpec spec = specHub.getActiveSpec();
-                    long now = SystemClock.uptimeMillis();
-                    if (spec != null && spec.ios3dPerspectiveEnabled
-                            && (now - lastPerspectiveAnimUptimeMs) > PERSPECTIVE_DEBOUNCE_MS) {
-                        lastPerspectiveAnimUptimeMs = now;
-                        applyWorkspace3dPerspective(true, 0.5f, 0.65f, true, spec);
-                    }
-                }
-            });
-            hooked++;
-        } catch (Throwable ignored) {
-        }
-
-        try {
-            XposedBridge.hookAllMethods(Activity.class, "onWindowFocusChanged", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (!(param.thisObject instanceof Activity)
-                            || param.args == null || param.args.length < 1
-                            || !Boolean.TRUE.equals(param.args[0])) {
-                        return;
-                    }
-                    Activity act = (Activity) param.thisObject;
-                    if (!isMainLauncherActivity(act)) {
-                        return;
-                    }
-                    onLauncherActive(act);
-                    maybeTriggerIos27UnlockBounce(act);
+                    // Guarantee ZERO stuck/unsynced View transforms whenever leaving Home Screen
+                    choreographer.cancelAllActive();
                 }
             });
             hooked++;
@@ -244,18 +177,6 @@ public final class LauncherChoreographyHook {
         }
         String name = act.getClass().getName().toLowerCase(Locale.ROOT);
         return name.contains("launcher") && !name.contains("setting") && !name.contains("preference");
-    }
-
-    private void onLauncherActive(Activity act) {
-        launcherActivityRef = new WeakReference<>(act);
-        registerUnlockReceiverOnce(act);
-        View ws = workspaceViewRef.get();
-        if (ws == null || !ws.isAttachedToWindow()) {
-            View found = findViewByClassHint(getDecorView(act), "workspace", true);
-            if (found != null) {
-                workspaceViewRef = new WeakReference<>(found);
-            }
-        }
     }
 
     private void registerUnlockReceiverOnce(Activity act) {
@@ -275,18 +196,27 @@ public final class LauncherChoreographyHook {
                     }
                     String action = intent.getAction();
                     if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                        pendingUnlockFromScreenOff = true;
-                        workspaceRecededForAppOpen = false;
-                        leftLauncherForApp = false;
+                        mainHandler.removeCallbacks(disarmUnlockRunnable);
+                        armedForLockscreenUnlock = true;
+                        mainHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                choreographer.cancelAllActive();
+                            }
+                        });
                     } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                        lastUserPresentUptimeMs = SystemClock.uptimeMillis();
-                        pendingUnlockFromScreenOff = true;
+                        if (!armedForLockscreenUnlock) {
+                            return;
+                        }
+                        mainHandler.removeCallbacks(disarmUnlockRunnable);
+                        // Disarm quickly if user unlocked into another app instead of Home Screen
+                        mainHandler.postDelayed(disarmUnlockRunnable, UNLOCK_ARM_EXPIRE_MS);
                         mainHandler.post(new Runnable() {
                             @Override
                             public void run() {
                                 Activity cur = launcherActivityRef.get();
-                                if (cur != null && !cur.isFinishing()) {
-                                    maybeTriggerIos27UnlockBounce(cur);
+                                if (cur != null && !cur.isFinishing() && launcherResumed) {
+                                    maybeRunCleanUnlockBounce(cur);
                                 }
                             }
                         });
@@ -303,62 +233,58 @@ public final class LauncherChoreographyHook {
         }
     }
 
-    private boolean maybeTriggerIos27UnlockBounce(Activity act) {
-        if (bugGuard.isHookTripped(CIRCUIT_IOS27) || bugGuard.isAnimationDisabledByUser()) {
-            return false;
+    private void maybeRunCleanUnlockBounce(Activity act) {
+        if (!armedForLockscreenUnlock || bugGuard.isHookTripped(CIRCUIT_UNLOCK)
+                || bugGuard.isAnimationDisabledByUser()) {
+            return;
         }
         if (Looper.myLooper() != Looper.getMainLooper() || act == null) {
-            return false;
-        }
-        MotionProfileSpec spec = specHub.getActiveSpec();
-        if (spec == null || !spec.unlockBounceEnabled) {
-            return false;
-        }
-        long now = SystemClock.uptimeMillis();
-        boolean recentUserPresent = lastUserPresentUptimeMs > 0L
-                && (now - lastUserPresentUptimeMs) <= UNLOCK_WINDOW_MS;
-        if (!pendingUnlockFromScreenOff && !recentUserPresent) {
-            return false;
-        }
-        if ((now - lastUnlockAnimUptimeMs) < UNLOCK_DEBOUNCE_MS) {
-            return false;
+            return;
         }
         try {
-            if (isKeyguardLockedSafe(act)) {
-                return false;
+            KeyguardManager km = (KeyguardManager) act.getSystemService(Context.KEYGUARD_SERVICE);
+            if (km != null && km.isKeyguardLocked()) {
+                return;
             }
-            if (!launcherResumed && !act.hasWindowFocus()) {
-                return false;
+            // Disarm immediately so it can NEVER double-fire or randomly spawn later
+            armedForLockscreenUnlock = false;
+            mainHandler.removeCallbacks(disarmUnlockRunnable);
+
+            MotionProfileSpec spec = specHub.getActiveSpec();
+            if (spec == null || !spec.unlockBounceEnabled) {
+                return;
+            }
+            long now = SystemClock.uptimeMillis();
+            if ((now - unlockTriggeredUptimeMs) < UNLOCK_DEBOUNCE_MS) {
+                return;
             }
             View root = getDecorView(act);
             if (root == null || root.getWidth() <= 0 || root.getHeight() <= 0) {
-                return false;
+                return;
             }
             View recents = findViewByClassHint(root, "recentsview", true);
             if (recents != null && recents.getVisibility() == View.VISIBLE && recents.getAlpha() > 0.1f) {
-                return false;
+                return;
             }
-            pendingUnlockFromScreenOff = false;
-            lastUnlockAnimUptimeMs = now;
-            runIos27UnlockBounce(root, spec);
-            return true;
+            unlockTriggeredUptimeMs = now;
+            runCleanBouncyUnlock(root, spec);
         } catch (Throwable ignored) {
-            bugGuard.recordHookFault(CIRCUIT_IOS27);
-            return false;
+            bugGuard.recordHookFault(CIRCUIT_UNLOCK);
         }
     }
 
     /**
-     * Authentic iOS 27 Lock Screen -> Home Screen bouncy radial fly-in:
-     * - Workspace container emerges from 3D depth with bouncy scale + tilt settle.
-     * - Active CellLayout icons/widgets fly inward radially with stagger and zeta=0.54 bounce.
-     * - Hotseat dock leaps upward from below with matching bouncy spring.
+     * Synchronized, zero-pop bouncy Lock Screen -> Home Screen settle:
+     * - NEVER changes alpha (prevents sudden vanish/re-spawn pop).
+     * - NEVER touches Workspace container scale (prevents shrunk layout vs Hotseat desync).
+     * - Gently expands visible CellLayout items radially & lifts Hotseat dock together
+     *   using elastic underdamped CoreSpringSolver (zeta=0.58) that settles cleanly to rest.
      */
-    private void runIos27UnlockBounce(View root, MotionProfileSpec spec) {
+    private void runCleanBouncyUnlock(View root, MotionProfileSpec spec) {
         int screenW = root.getWidth();
         int screenH = root.getHeight();
         float centerX = screenW * 0.5f;
-        float centerY = screenH * 0.44f;
+        float centerY = screenH * 0.45f;
         float maxRadius = (float) Math.hypot(centerX, centerY);
         if (maxRadius < 1.0f) {
             return;
@@ -368,21 +294,7 @@ public final class LauncherChoreographyHook {
         float spreadPx = spec.unlockRadialSpreadDp * density;
         float damp = spec.unlockDamping;
         float resp = spec.unlockResponseSec;
-        int animatedCount = 0;
 
-        // 1. Workspace container itself gets a clean 3D depth bounce (guarantees visible bounce even on sparse pages)
-        View ws = getPerspectiveTargetView();
-        if (ws != null && ws.isAttachedToWindow()) {
-            ws.setPivotX(ws.getWidth() * 0.5f);
-            ws.setPivotY(ws.getHeight() * 0.5f);
-            choreographer.springTo(ws, CoreSurfaceChoreographer.PROP_SCALE_XY,
-                    1.15f, 1.0f, -0.55f, Math.min(0.60f, damp + 0.04f), resp);
-            choreographer.springTo(ws, CoreSurfaceChoreographer.PROP_ROTATION_X,
-                    8.5f, 0.0f, -18.0f, Math.min(0.68f, damp + 0.10f), resp);
-            animatedCount++;
-        }
-
-        // 2. Active CellLayout icons & widgets fly in radially with elastic bounce
         ArrayList<View> icons = new ArrayList<>(MAX_UNLOCK_ICONS);
         int[] loc = new int[2];
         collectVisibleHomeItems(root, screenW, screenH, loc, icons);
@@ -399,49 +311,36 @@ public final class LauncherChoreographyHook {
             float dirX = dist > 1.0f ? (dx / dist) : 0.0f;
             float dirY = dist > 1.0f ? (dy / dist) : 0.0f;
 
-            float startTx = dirX * spreadPx * (0.35f + 0.65f * normDist);
-            float startTy = dirY * spreadPx * (0.35f + 0.65f * normDist) + (16.0f * density);
-            float startScale = 1.14f + (spec.unlockStartScale - 1.14f) * normDist;
-            float startRotX = spec.unlockTiltXDeg * (0.55f + 0.45f * normDist);
+            float startTx = dirX * spreadPx * (0.30f + 0.70f * normDist);
+            float startTy = dirY * spreadPx * (0.30f + 0.70f * normDist) + (12.0f * density);
+            float startScale = 1.06f + (spec.unlockStartScale - 1.06f) * normDist;
             float delaySec = normDist * spec.unlockStaggerMaxSec;
 
             choreographer.springToDelayed(item, CoreSurfaceChoreographer.PROP_TRANSLATION_X,
-                    startTx, 0.0f, -startTx * 2.6f, damp, resp, delaySec);
+                    startTx, 0.0f, -startTx * 2.4f, damp, resp, delaySec);
             choreographer.springToDelayed(item, CoreSurfaceChoreographer.PROP_TRANSLATION_Y,
-                    startTy, 0.0f, -startTy * 2.6f, damp, resp, delaySec);
+                    startTy, 0.0f, -startTy * 2.4f, damp, resp, delaySec);
             choreographer.springToDelayed(item, CoreSurfaceChoreographer.PROP_SCALE_XY,
-                    startScale, 1.0f, -(startScale - 1.0f) * 3.4f, damp, resp, delaySec);
-            choreographer.springToDelayed(item, CoreSurfaceChoreographer.PROP_ROTATION_X,
-                    startRotX, 0.0f, -startRotX * 2.4f, Math.min(0.70f, damp + 0.08f), resp, delaySec);
-            choreographer.springToDelayed(item, CoreSurfaceChoreographer.PROP_ALPHA,
-                    0.15f, 1.0f, 3.2f, 0.96f, resp * 0.52f, delaySec);
-            animatedCount++;
+                    startScale, 1.0f, -(startScale - 1.0f) * 3.0f, damp, resp, delaySec);
         }
 
-        // 3. Hotseat dock rises energetically from below with matching bounce
         View hotseat = findViewByClassHint(root, "hotseat", true);
         if (hotseat != null && hotseat.getVisibility() == View.VISIBLE) {
-            float dockDropPx = 64.0f * density;
-            float dockDamp = Math.max(0.52f, damp - 0.02f);
+            float dockDropPx = 38.0f * density;
+            float dockDamp = Math.max(0.55f, damp - 0.02f);
             choreographer.springTo(hotseat, CoreSurfaceChoreographer.PROP_TRANSLATION_Y,
-                    dockDropPx, 0.0f, -dockDropPx * 2.8f, dockDamp, resp * 1.04f);
+                    dockDropPx, 0.0f, -dockDropPx * 2.5f, dockDamp, resp * 1.02f);
             choreographer.springTo(hotseat, CoreSurfaceChoreographer.PROP_SCALE_XY,
-                    0.86f, 1.0f, 0.65f, dockDamp, resp * 1.04f);
-            choreographer.springTo(hotseat, CoreSurfaceChoreographer.PROP_ROTATION_X,
-                    11.0f, 0.0f, -22.0f, Math.min(0.72f, dockDamp + 0.08f), resp);
-            animatedCount++;
+                    0.92f, 1.0f, 0.45f, dockDamp, resp * 1.02f);
         }
 
-        if (animatedCount > 0) {
+        if (!icons.isEmpty() || hotseat != null) {
             telemetry.incCurvesApplied();
-            if (loggedUnlockOnce.compareAndSet(false, true)) {
-                XposedBridge.log("CoreSurfaceEngine: iOS 27 Bouncy Lock->Home fired (items=" + animatedCount + ")");
-            }
         }
     }
 
     // -------------------------------------------------------------------------
-    // 2. App Open / Close RectFSpringAnim + iOS 27 3D Perspective Workspace Depth
+    // 2. Native RectFSpringAnim App Open / Close Physics Calibration
     // -------------------------------------------------------------------------
 
     private int installRectFSpringHooks(ClassLoader cl) {
@@ -495,9 +394,6 @@ public final class LauncherChoreographyHook {
                         if (tuneRectFSpringAnim(param.thisObject, spec)) {
                             telemetry.incSpringsTuned();
                         }
-                        if (spec.ios3dPerspectiveEnabled) {
-                            scheduleAppTransition3dPerspective(param.thisObject, spec);
-                        }
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault(CIRCUIT_RECTF);
                     }
@@ -537,105 +433,6 @@ public final class LauncherChoreographyHook {
         }
     }
 
-    private void scheduleAppTransition3dPerspective(Object rectAnim, final MotionProfileSpec spec) {
-        CachedRectFFields cached = getOrScanRectFFields(rectAnim.getClass());
-        RectF startRect = readRectField(rectAnim, cached.startRectField);
-        RectF endRect = readRectField(rectAnim, cached.endRectField);
-        final boolean isOpening;
-        final float coordX;
-        final float coordY;
-        final boolean normalizedCoords;
-
-        if (startRect != null && endRect != null && Math.abs(endRect.width() - startRect.width()) > 20.0f) {
-            isOpening = endRect.width() > startRect.width();
-            RectF iconRect = isOpening ? startRect : endRect;
-            coordX = iconRect.centerX();
-            coordY = iconRect.centerY();
-            normalizedCoords = false;
-        } else {
-            // Fallback when RectF fields are obfuscated: infer direction from launcherResumed state
-            isOpening = launcherResumed;
-            coordX = 0.5f;
-            coordY = 0.65f;
-            normalizedCoords = true;
-        }
-
-        lastPerspectiveAnimUptimeMs = SystemClock.uptimeMillis();
-        Runnable task = new Runnable() {
-            @Override
-            public void run() {
-                applyWorkspace3dPerspective(isOpening, coordX, coordY, normalizedCoords, spec);
-            }
-        };
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            task.run();
-        } else {
-            mainHandler.post(task);
-        }
-    }
-
-    private void applyWorkspace3dPerspective(boolean isOpening, float x, float y,
-                                             boolean isNormalized, MotionProfileSpec spec) {
-        if (bugGuard.isHookTripped(CIRCUIT_IOS27)) {
-            return;
-        }
-        try {
-            View ws = getPerspectiveTargetView();
-            if (ws == null || !ws.isAttachedToWindow() || ws.getWidth() <= 0 || ws.getHeight() <= 0) {
-                return;
-            }
-            float nx = isNormalized
-                    ? clamp(x * 2.0f - 1.0f, -1.0f, 1.0f)
-                    : clamp((x / (float) ws.getWidth()) * 2.0f - 1.0f, -1.0f, 1.0f);
-            float ny = isNormalized
-                    ? clamp(y * 2.0f - 1.0f, -1.0f, 1.0f)
-                    : clamp((y / (float) ws.getHeight()) * 2.0f - 1.0f, -1.0f, 1.0f);
-
-            ws.setPivotX(ws.getWidth() * 0.5f);
-            ws.setPivotY(ws.getHeight() * 0.5f);
-
-            // Guarantee a clearly felt 3D perspective angle even for center icons
-            float baseTiltX = (Math.abs(ny) < 0.25f) ? 0.55f : -ny;
-            float tiltX = baseTiltX * spec.perspectiveMaxTiltXDeg;
-            float tiltY = nx * spec.perspectiveMaxTiltYDeg;
-            float depthScale = spec.perspectiveDepthScale;
-
-            mainHandler.removeCallbacks(workspaceRestoreRunnable);
-            if (isOpening) {
-                workspaceRecededForAppOpen = true;
-                lastOpenTiltX = tiltX;
-                lastOpenTiltY = tiltY;
-                choreographer.springTo(ws, CoreSurfaceChoreographer.PROP_SCALE_XY,
-                        ws.getScaleX(), depthScale, -0.45f, 0.88f, spec.perspectiveResponseSec * 0.82f);
-                choreographer.springTo(ws, CoreSurfaceChoreographer.PROP_ROTATION_X,
-                        ws.getRotationX(), tiltX, tiltX * 2.6f, 0.88f, spec.perspectiveResponseSec * 0.82f);
-                choreographer.springTo(ws, CoreSurfaceChoreographer.PROP_ROTATION_Y,
-                        ws.getRotationY(), tiltY, tiltY * 2.6f, 0.88f, spec.perspectiveResponseSec * 0.82f);
-                mainHandler.postDelayed(workspaceRestoreRunnable, 480L);
-            } else {
-                float startScale = workspaceRecededForAppOpen ? ws.getScaleX() : depthScale;
-                float startRotX = workspaceRecededForAppOpen ? ws.getRotationX()
-                        : (Math.abs(lastOpenTiltX) > 0.3f ? lastOpenTiltX : tiltX);
-                float startRotY = workspaceRecededForAppOpen ? ws.getRotationY()
-                        : (Math.abs(lastOpenTiltY) > 0.3f ? lastOpenTiltY : tiltY);
-                workspaceRecededForAppOpen = false;
-                choreographer.springTo(ws, CoreSurfaceChoreographer.PROP_SCALE_XY,
-                        startScale, 1.0f, 0.55f, spec.perspectiveDamping, spec.perspectiveResponseSec);
-                choreographer.springTo(ws, CoreSurfaceChoreographer.PROP_ROTATION_X,
-                        startRotX, 0.0f, -startRotX * 2.8f, spec.perspectiveDamping, spec.perspectiveResponseSec);
-                choreographer.springTo(ws, CoreSurfaceChoreographer.PROP_ROTATION_Y,
-                        startRotY, 0.0f, -startRotY * 2.8f, spec.perspectiveDamping, spec.perspectiveResponseSec);
-            }
-            telemetry.incCurvesApplied();
-            if (logged3dOnce.compareAndSet(false, true)) {
-                XposedBridge.log("CoreSurfaceEngine: iOS 27 3D Perspective fired (open=" + isOpening
-                        + ", target=" + ws.getClass().getSimpleName() + ")");
-            }
-        } catch (Throwable ignored) {
-            bugGuard.recordHookFault(CIRCUIT_IOS27);
-        }
-    }
-
     private boolean tuneRectFSpringAnim(Object rectAnim, MotionProfileSpec spec) {
         CachedRectFFields cached = getOrScanRectFFields(rectAnim.getClass());
         boolean tuned = false;
@@ -667,9 +464,6 @@ public final class LauncherChoreographyHook {
         }
         ArrayList<Field> pos = new ArrayList<>();
         ArrayList<Field> scale = new ArrayList<>();
-        ArrayList<Field> anyRects = new ArrayList<>();
-        Field startRect = null;
-        Field endRect = null;
         Class<?> cur = clazz;
         while (cur != null && cur != Object.class) {
             try {
@@ -677,22 +471,11 @@ public final class LauncherChoreographyHook {
                     if (Modifier.isStatic(f.getModifiers())) {
                         continue;
                     }
-                    Class<?> fType = f.getType();
-                    String fname = f.getName().toLowerCase(Locale.ROOT);
-                    if (RectF.class.isAssignableFrom(fType)) {
-                        f.setAccessible(true);
-                        anyRects.add(f);
-                        if (startRect == null && fname.contains("start")) {
-                            startRect = f;
-                        } else if (endRect == null && (fname.contains("end") || fname.contains("target"))) {
-                            endRect = f;
-                        }
-                        continue;
-                    }
-                    String typeName = fType.getName().toLowerCase(Locale.ROOT);
+                    String typeName = f.getType().getName().toLowerCase(Locale.ROOT);
                     if (!typeName.contains("spring")) {
                         continue;
                     }
+                    String fname = f.getName().toLowerCase(Locale.ROOT);
                     if (fname.contains("alpha") || fname.contains("radius") || fname.contains("blur")) {
                         continue;
                     }
@@ -707,30 +490,11 @@ public final class LauncherChoreographyHook {
             }
             cur = cur.getSuperclass();
         }
-        // Positional fallback when RectF fields are obfuscated
-        if ((startRect == null || endRect == null) && anyRects.size() >= 2) {
-            startRect = anyRects.get(0);
-            endRect = anyRects.get(1);
-        }
         CachedRectFFields result = new CachedRectFFields(
                 pos.toArray(new Field[0]),
-                scale.toArray(new Field[0]),
-                startRect,
-                endRect);
+                scale.toArray(new Field[0]));
         fieldCache.put(clazz, result);
         return result;
-    }
-
-    private static RectF readRectField(Object owner, Field f) {
-        if (owner == null || f == null) {
-            return null;
-        }
-        try {
-            Object val = f.get(owner);
-            return (val instanceof RectF) ? (RectF) val : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
     }
 
     private boolean applyToSpringObject(Object owner, Field f, float damping, float stiffness) {
@@ -874,40 +638,8 @@ public final class LauncherChoreographyHook {
     }
 
     // -------------------------------------------------------------------------
-    // View Hierarchy Helpers (Zero-Allocation Steady State, Run Only on Events)
+    // View Hierarchy Helpers
     // -------------------------------------------------------------------------
-
-    private View getPerspectiveTargetView() {
-        View ws = workspaceViewRef.get();
-        if (ws != null && ws.isAttachedToWindow()) {
-            return ws;
-        }
-        Activity act = launcherActivityRef.get();
-        if (act == null) {
-            return null;
-        }
-        View decor = getDecorView(act);
-        ws = findViewByClassHint(decor, "workspace", true);
-        if (ws == null) {
-            ws = findViewByClassHint(decor, "draglayer", true);
-        }
-        if (ws == null) {
-            ws = act.findViewById(android.R.id.content);
-        }
-        if (ws != null) {
-            workspaceViewRef = new WeakReference<>(ws);
-        }
-        return ws;
-    }
-
-    private static boolean isKeyguardLockedSafe(Activity act) {
-        try {
-            KeyguardManager km = (KeyguardManager) act.getSystemService(Context.KEYGUARD_SERVICE);
-            return km != null && km.isKeyguardLocked();
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
 
     private static View getDecorView(Activity act) {
         if (act == null) {
@@ -983,9 +715,5 @@ public final class LauncherChoreographyHook {
         } catch (Throwable ignored) {
             return null;
         }
-    }
-
-    private static float clamp(float v, float min, float max) {
-        return Math.max(min, Math.min(max, v));
     }
 }
