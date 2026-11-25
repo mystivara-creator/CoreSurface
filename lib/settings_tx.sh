@@ -28,6 +28,7 @@ cs_settings_get() {
   _cs_sg_key=$2
   CS_SETTINGS_READ_VAL=""
   CS_SETTINGS_LAST_ERR=""
+  export CS_SETTINGS_LAST_ERR
 
   _cs_sg_out=$(settings --user 0 get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
   _cs_sg_rc=$?
