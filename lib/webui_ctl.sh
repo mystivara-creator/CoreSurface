@@ -106,7 +106,7 @@ cs_write_config_key() {
 }
 
 cs_clear_legacy_overrides() {
-  for _cs_lk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ FEAT_COLOR_EXPERT; do
+  for _cs_lk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ FEAT_COLOR_EXPERT FEAT_FLAGSHIP_AUDIO FEAT_FLAGSHIP_SUITE; do
     if [ -r "$CS_CONFIG_FILE" ]; then
       _cs_tmp="$CS_CONFIG_FILE.tmp.$$"
       awk -F '=' -v k="$_cs_lk" '$1 != k { print $0 }' "$CS_CONFIG_FILE" > "$_cs_tmp"
@@ -173,12 +173,16 @@ cs_cmd_status() {
   printf 'cfg_feat_motion_profile=%s\n' "$CFG_FEAT_MOTION_PROFILE"
   printf 'cfg_feat_surgical_guard=%s\n' "$CFG_FEAT_SURGICAL_GUARD"
   printf 'cfg_feat_aod_unlock=%s\n' "$CFG_FEAT_AOD_UNLOCK"
+  printf 'cfg_feat_flagship_audio=%s\n' "$CFG_FEAT_FLAGSHIP_AUDIO"
+  printf 'cfg_feat_flagship_suite=%s\n' "$CFG_FEAT_FLAGSHIP_SUITE"
   printf 'eff_feat_motion_profile=%s\n' "$EFF_FEAT_MOTION_PROFILE"
   printf 'eff_feat_blur=%s\n' "$EFF_FEAT_BLUR"
   printf 'eff_feat_adv_textures=%s\n' "$EFF_FEAT_ADV_TEXTURES"
   printf 'eff_feat_color_expert=%s\n' "$EFF_FEAT_COLOR_EXPERT"
   printf 'stock_has_expert_color=%s\n' "${CS_STOCK_HAS_EXPERT_COLOR:-0}"
   printf 'eff_feat_aod_unlock=%s\n' "$EFF_FEAT_AOD_UNLOCK"
+  printf 'eff_feat_flagship_audio=%s\n' "$EFF_FEAT_FLAGSHIP_AUDIO"
+  printf 'eff_feat_flagship_suite=%s\n' "$EFF_FEAT_FLAGSHIP_SUITE"
 
   printf 'xml_status=%s\n' "${_cs_xml_status:-skipped}"
   printf 'xml_source=%s\n' "${_cs_xml_source:-none}"
@@ -210,6 +214,8 @@ cs_cmd_status() {
   printf 'verify_feat_motion_profile=%s\n' "$(cs_verify_get VERIFY_FEAT_MOTION_PROFILE)"
   printf 'verify_feat_surgical_guard=%s\n' "$(cs_verify_get VERIFY_FEAT_SURGICAL_GUARD)"
   printf 'verify_feat_aod_unlock=%s\n' "$(cs_verify_get VERIFY_FEAT_AOD_UNLOCK)"
+  printf 'verify_feat_flagship_audio=%s\n' "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_AUDIO)"
+  printf 'verify_feat_flagship_suite=%s\n' "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_SUITE)"
   printf 'verify_feat_blur=%s\n' "$(cs_verify_get VERIFY_FEAT_BLUR)"
   printf 'verify_feat_color_expert=%s\n' "$(cs_verify_get VERIFY_FEAT_COLOR_EXPERT)"
   printf 'verify_xml_mount=%s\n' "$(cs_verify_get VERIFY_XML_MOUNT)"
@@ -288,7 +294,7 @@ cs_cmd_set() {
           ;;
       esac
       ;;
-    FEAT_AOD_UNLOCK|FEAT_BLUR|FEAT_ANIMATIONS|FEAT_XML_PATCHER|FEAT_RRO_OVERLAYS|FEAT_VIDEO_DEPTH|FEAT_MULTITASK|FEAT_DISPLAY_HZ|FEAT_COLOR_EXPERT)
+    FEAT_AOD_UNLOCK|FEAT_FLAGSHIP_AUDIO|FEAT_FLAGSHIP_SUITE|FEAT_BLUR|FEAT_ANIMATIONS|FEAT_XML_PATCHER|FEAT_RRO_OVERLAYS|FEAT_VIDEO_DEPTH|FEAT_MULTITASK|FEAT_DISPLAY_HZ|FEAT_COLOR_EXPERT)
       case "$_cs_set_v" in
         auto|1|0) ;;
         *)
@@ -419,6 +425,9 @@ cs_cmd_diag_report() {
     "$(cs_state_get RRO_STATUS)" "$(cs_verify_get VERIFY_RRO_ACTIVE)" \
     "$(cs_verify_get VERIFY_RRO_TOTAL)" "$(cs_verify_get VERIFY_FEAT_COLOR_EXPERT)" \
     "$(cs_verify_get VERIFY_FEAT_AOD_UNLOCK)"
+  printf 'Flagship Porting: Audio & Speaker=%s | Porting Suite=%s\n' \
+    "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_AUDIO)" \
+    "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_SUITE)"
   if [ -r "$CS_LOG_FILE" ]; then
     printf '\n--- Recent Logs ---\n'
     tail -n 15 "$CS_LOG_FILE" 2>/dev/null || true

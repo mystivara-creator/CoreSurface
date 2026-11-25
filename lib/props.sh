@@ -318,6 +318,39 @@ cs_apply_feat_display_hz() {
   cs_set_prop "FEAT_DISPLAY_HZ" "ro.vendor.fps.switch.default" "true"
 }
 
+cs_apply_feat_flagship_audio() {
+  [ "$EFF_FEAT_FLAGSHIP_AUDIO" = "1" ] || return 0
+
+  # Verified HyperOS / Xiaomi Flagship Speaker & Audio Framework pipeline flags
+  # (pure user-space audio framework/HAL props; zero kernel/sysfs coupling)
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.audiovisual" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.scenario" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.dolby.dax.support" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.soundfx.type" "mi"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.misound.bluetooth.enable" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.stereo" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.clean" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.hifi" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.voice.change.support" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.audio.spatializer_enabled" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "persist.vendor.audio.hifi.int_codec" "true"
+}
+
+cs_apply_feat_flagship_suite() {
+  [ "$EFF_FEAT_FLAGSHIP_SUITE" = "1" ] || return 0
+
+  # Verified HyperOS Flagship Porting Suite props (Dynamic Font Anim, Multi-Window Full-Decor,
+  # Live Photo v3, Power Modes, Launch Response Optimization, AI Subtitles & Voice Translation)
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.miui.ui.font.animation" "enable"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.multiwin.fulldecor_support" "true"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.product.camera.livephoto.support" "3"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.power_mode_support" "true"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.power_meter_enhanced" "true"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.launch_response_optimization.enable" "true"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.translate.state.supportAiSubtitles" "true"
+  cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.translate.state.supportVoiceTrans" "true"
+}
+
 cs_write_engine_cfg_prop() {
   _cs_we_val=$1
   cs_find_resetprop || return 0
@@ -370,9 +403,11 @@ cs_apply_all_props() {
   cs_apply_feat_blur
   cs_apply_feat_multitask
   cs_apply_feat_display_hz
+  cs_apply_feat_flagship_audio
+  cs_apply_feat_flagship_suite
 
   _cs_count=$(wc -l < "$CS_PROPS_AUDIT_FILE" 2>/dev/null | tr -d ' \t\r\n')
   cs_state_set "APPLIED_PROPS_COUNT" "${_cs_count:-0}"
-  cs_log "Applied ${_cs_count:-0} verified non-persistent props (tier=${CS_EFF_TIER:-low}, blur=${EFF_FEAT_BLUR}, advtex=${EFF_FEAT_ADV_TEXTURES:-0}, anim=${EFF_FEAT_ANIMATIONS}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ})."
+  cs_log "Applied ${_cs_count:-0} verified non-persistent props (tier=${CS_EFF_TIER:-low}, blur=${EFF_FEAT_BLUR}, advtex=${EFF_FEAT_ADV_TEXTURES:-0}, anim=${EFF_FEAT_ANIMATIONS}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ}, audio=${EFF_FEAT_FLAGSHIP_AUDIO:-0}, suite=${EFF_FEAT_FLAGSHIP_SUITE:-0})."
   return 0
 }

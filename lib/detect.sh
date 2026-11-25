@@ -288,11 +288,14 @@ cs_load_config() {
   CFG_FEAT_MULTITASK="auto"
   CFG_FEAT_DISPLAY_HZ="auto"
   CFG_FEAT_COLOR_EXPERT="1"
+  CFG_FEAT_FLAGSHIP_AUDIO="auto"
+  CFG_FEAT_FLAGSHIP_SUITE="auto"
 
   export CFG_TIER_MODE CFG_FEAT_MOTION_PROFILE CFG_FEAT_NATIVE_TIER \
     CFG_FEAT_SURGICAL_GUARD CFG_FEAT_THERMAL_LOD CFG_FEAT_AOD_UNLOCK \
     CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
-    CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ CFG_FEAT_COLOR_EXPERT
+    CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ CFG_FEAT_COLOR_EXPERT \
+    CFG_FEAT_FLAGSHIP_AUDIO CFG_FEAT_FLAGSHIP_SUITE
 
   [ -r "$_cs_cfg_file" ] || return 0
 
@@ -361,6 +364,12 @@ cs_load_config() {
       FEAT_COLOR_EXPERT)
         case "$_cs_v" in auto|1|0) CFG_FEAT_COLOR_EXPERT="$_cs_v" ;; esac
         ;;
+      FEAT_FLAGSHIP_AUDIO)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_FLAGSHIP_AUDIO="$_cs_v" ;; esac
+        ;;
+      FEAT_FLAGSHIP_SUITE)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_FLAGSHIP_SUITE="$_cs_v" ;; esac
+        ;;
     esac
   done < "$_cs_cfg_file"
 }
@@ -396,13 +405,16 @@ cs_resolve_features() {
   EFF_FEAT_MULTITASK="0"
   EFF_FEAT_DISPLAY_HZ="0"
   EFF_FEAT_COLOR_EXPERT="0"
+  EFF_FEAT_FLAGSHIP_AUDIO="0"
+  EFF_FEAT_FLAGSHIP_SUITE="0"
 
   export CS_EFF_TIER CS_EFF_TIER_LABEL \
     EFF_FEAT_MOTION_PROFILE EFF_FEAT_NATIVE_TIER \
     EFF_FEAT_SURGICAL_GUARD EFF_FEAT_THERMAL_LOD EFF_FEAT_AOD_UNLOCK \
     EFF_FEAT_BLUR EFF_FEAT_ADV_TEXTURES EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER \
     EFF_FEAT_RRO_OVERLAYS EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK \
-    EFF_FEAT_DISPLAY_HZ EFF_FEAT_COLOR_EXPERT
+    EFF_FEAT_DISPLAY_HZ EFF_FEAT_COLOR_EXPERT \
+    EFF_FEAT_FLAGSHIP_AUDIO EFF_FEAT_FLAGSHIP_SUITE
 
   # Live Motion Profile & Safety Controllers (active across ALL tiers including Native Flagship)
   case "$CFG_FEAT_MOTION_PROFILE" in
@@ -505,8 +517,24 @@ cs_resolve_features() {
       ;;
   esac
 
-  # Non-LTPO AOD Always-On Unlock (RRO + XML + MiuiAod hook)
+  # Non-LTPO AOD Always-On Unlock (RRO + XML is_only_support_keycode_goto=false + MiuiAod hook)
   case "$CFG_FEAT_AOD_UNLOCK" in
     1|auto) EFF_FEAT_AOD_UNLOCK="1" ;;
+  esac
+
+  # Flagship Audio & Speaker Enhancement: ON across all non-passthrough tiers (0 GPU/RAM penalty)
+  case "$CFG_FEAT_FLAGSHIP_AUDIO" in
+    1|auto) EFF_FEAT_FLAGSHIP_AUDIO="1" ;;
+  esac
+
+  # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Dynamic Font Anim, Wild Boost, Live Photo):
+  # ON in Balanced Pro & Max Flagship (OFF in Lite unless explicitly enabled)
+  case "$CFG_FEAT_FLAGSHIP_SUITE" in
+    1) EFF_FEAT_FLAGSHIP_SUITE="1" ;;
+    auto)
+      if [ "$CS_EFF_TIER" != "low" ]; then
+        EFF_FEAT_FLAGSHIP_SUITE="1"
+      fi
+      ;;
   esac
 }

@@ -76,10 +76,10 @@
         <div class="feat-card">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Gaya Animasi Folme (60/120 Hz)</h3>
+              <h3>Gaya Animasi Folme (60/90/120 Hz)</h3>
               <span id="verify-FEAT_MOTION_PROFILE" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">Berlaku langsung <strong>tanpa reboot</strong> via LSPosed Engine. Otomatis menyesuaikan kurva pegas untuk layar 60 Hz dan 120 Hz.</p>
+            <p class="feat-desc">Berlaku langsung <strong>tanpa reboot</strong> via LSPosed Engine. <strong>HyperOS 4</strong> = tegas &amp; gesit (0,90×); <strong>iOS · ColorOS</strong> = pegas empuk &amp; luncur panjang (1,24×).</p>
           </div>
           <div class="seg-group" data-key="FEAT_MOTION_PROFILE" role="group" aria-label="Gaya Animasi Folme">
             <button type="button" data-val="0">Stock</button>
@@ -108,9 +108,37 @@
               <h3>AOD Always-On (Non-LTPO)</h3>
               <span id="verify-FEAT_AOD_UNLOCK" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">Menghapus batas 10 detik AOD pada panel AMOLED non-LTPO via RRO + XML + hook <code>MiuiAod</code> (reboot 1× untuk RRO/XML).</p>
+            <p class="feat-desc">Membuka opsi <strong>Always</strong> &amp; <strong>Scheduled</strong> pada panel AMOLED non-LTPO via XML (<code>is_only_support_keycode_goto=false</code>) + RRO + hook <code>MiuiAod</code>.</p>
           </div>
           <div class="seg-group" data-key="FEAT_AOD_UNLOCK" role="group" aria-label="AOD Always-On Non-LTPO">
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Audio &amp; Speaker Flagship</h3>
+              <span id="verify-FEAT_FLAGSHIP_AUDIO" class="v-pill v-neutral">-</span>
+            </div>
+            <p class="feat-desc">Membuka Dolby/Mi Sound Scenario EQ, Stereo Speaker &amp; Clear Speaker, Hi-Fi Audio, Sound Assistant, Spatial Audio &amp; 24-bit Stereo Record (reboot 1×).</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_FLAGSHIP_AUDIO" role="group" aria-label="Audio dan Speaker Flagship">
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Flagship Porting Suite</h3>
+              <span id="verify-FEAT_FLAGSHIP_SUITE" class="v-pill v-neutral">-</span>
+            </div>
+            <p class="feat-desc">AI Image Engine (Super Resolution &amp; AI HDR), Video Toolbox Cinema, Dynamic Font Anim, Game Turbo Wild Boost, Live Photo v3 &amp; AI Subtitles (reboot 1×).</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_FLAGSHIP_SUITE" role="group" aria-label="Flagship Porting Suite">
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
           </div>

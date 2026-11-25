@@ -7,6 +7,7 @@ import android.hardware.display.DisplayManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Display;
+import android.view.ViewPropertyAnimator;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.PathInterpolator;
@@ -22,18 +23,19 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * Universal Physics-Formula Motion Engine (Folme + SpringForce + ValueAnimator UI Curves).
+ * Universal Physics-Formula Motion Engine (Folme + AnimConfig + SpringForce + ValueAnimator + ViewPropertyAnimator).
  *
  * Applies the analytical Damped Harmonic Oscillator equation (SpringPhysicsCurve)
  * across ALL UI interfaces in scoped processes (SystemUI, MiuiHome, MiuiAod, Settings,
- * and any user-enabled app):
+ * and any user-enabled app) with genuinely perceptible profile signatures:
  *
- * 1. Xiaomi Folme Springs (`miuix.animation.utils.EaseManager.getStyle`)
+ * 1. Xiaomi Folme Springs (`miuix.animation.utils.EaseManager.getStyle` & `AnimConfig.setEase`)
  * 2. Xiaomi Folme Interpolators (`miuix.animation.utils.EaseManager.getInterpolator`)
  * 3. Miui & Jetpack `SpringForce` (`setDampingRatio` & `setStiffness` via k = (2*pi/T)^2)
- * 4. Standard Android `ValueAnimator.setInterpolator` (safely upgrades finite UI transition
- *    interpolators while NEVER touching LinearInterpolator, progress bars, spinners,
- *    AccelerateInterpolator, or infinite animations).
+ * 4. Standard Android `ValueAnimator.setInterpolator` & `ViewPropertyAnimator.setInterpolator`
+ *    (with finite UI transition duration scaling so iOS/ColorOS 17 Silk visibly glides
+ *    and HyperOS 4 visibly whips, while strictly sparing LinearInterpolator, exit ease-in,
+ *    progress spinners, and infinite animations).
  */
 public final class FolmePhysicsHook {
     private static final int DEFAULT_SPRING_STYLE = -2;
@@ -141,7 +143,9 @@ public final class FolmePhysicsHook {
             return 0;
         }
         int hooks = 0;
-        hooks += hookEaseManager(cl);
+        int springStyle = resolveSpringStyleFromLoader(cl);
+        hooks += hookEaseManager(cl, springStyle);
+        hooks += hookAnimConfigSetEase(cl, springStyle);
         hooks += hookSpringForceClass(cl, "miuix.animation.physics.SpringForce");
         hooks += hookSpringForceClass(cl, "androidx.dynamicanimation.animation.SpringForce");
 
@@ -150,23 +154,33 @@ public final class FolmePhysicsHook {
             telemetry.recordHookBound("FolmePhysics");
         }
 
+        int uiHooks = 0;
         if (hookUniversalValueAnimator()) {
-            hooks++;
-            telemetry.addFolmeHooksBound(1);
+            uiHooks++;
+        }
+        if (hookUniversalViewPropertyAnimator()) {
+            uiHooks++;
+        }
+        if (uiHooks > 0) {
+            hooks += uiHooks;
+            telemetry.addFolmeHooksBound(uiHooks);
             telemetry.recordHookBound("UiCurvePhysics");
         }
         return hooks;
     }
 
-    private int hookEaseManager(ClassLoader cl) {
+    private int resolveSpringStyleFromLoader(ClassLoader cl) {
+        Class<?> easeClass = safeFindClass("miuix.animation.utils.EaseManager", cl);
+        return easeClass != null ? resolveSpringStyleConstant(easeClass) : DEFAULT_SPRING_STYLE;
+    }
+
+    private int hookEaseManager(ClassLoader cl, int springStyle) {
         Class<?> easeClass = safeFindClass("miuix.animation.utils.EaseManager", cl);
         if (easeClass == null) {
             return 0;
         }
 
-        final int springStyle = resolveSpringStyleConstant(easeClass);
         int hooked = 0;
-
         Method[] methods;
         try {
             methods = easeClass.getDeclaredMethods();
@@ -182,7 +196,7 @@ public final class FolmePhysicsHook {
             Class<?>[] params = m.getParameterTypes();
 
             if ("getStyle".equals(name) && params.length == 2 && params[0] == int.class) {
-                if (params[1] == float[].class && hookEaseGetStyleFloat(m, springStyle)) {
+                if (params[1] == float[].class && hookEaseGetStyleFloat(m, springStyle, "EaseStyleFloat")) {
                     hooked++;
                 } else if (params[1] == double[].class && hookEaseGetStyleDouble(m, springStyle)) {
                     hooked++;
@@ -198,12 +212,40 @@ public final class FolmePhysicsHook {
         return hooked;
     }
 
-    private boolean hookEaseGetStyleFloat(Method method, final int springStyle) {
+    /**
+     * Hooks `miuix.animation.base.AnimConfig.setEase(int style, float... factors)` used
+     * directly by HyperOS Launcher, Control Center, and SystemUI Folme transitions.
+     */
+    private int hookAnimConfigSetEase(ClassLoader cl, int springStyle) {
+        Class<?> animCfgClass = safeFindClass("miuix.animation.base.AnimConfig", cl);
+        if (animCfgClass == null) {
+            return 0;
+        }
+        int hooked = 0;
+        try {
+            Method[] methods = animCfgClass.getDeclaredMethods();
+            for (Method m : methods) {
+                if (Modifier.isAbstract(m.getModifiers()) || !"setEase".equals(m.getName())) {
+                    continue;
+                }
+                Class<?>[] params = m.getParameterTypes();
+                if (params.length == 2 && params[0] == int.class && params[1] == float[].class) {
+                    if (hookEaseGetStyleFloat(m, springStyle, "AnimConfigEase")) {
+                        hooked++;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return hooked;
+    }
+
+    private boolean hookEaseGetStyleFloat(Method method, final int springStyle, final String circuitKey) {
         try {
             XposedBridge.hookMethod(method, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (bugGuard.isHookTripped("EaseStyleFloat")) {
+                    if (bugGuard.isHookTripped(circuitKey)) {
                         return;
                     }
                     try {
@@ -226,15 +268,15 @@ public final class FolmePhysicsHook {
                         }
                         float damping = factors[0];
                         float response = factors[1];
-                        if (damping < 0.60f || damping > 1.05f || response < 0.14f || response > 0.70f) {
+                        if (damping < 0.45f || damping > 1.15f || response < 0.10f || response > 0.90f) {
                             return;
                         }
                         float[] copy = factors.clone();
-                        applyPhysicsDampingResponse(copy, damping, response, getCurveForProfile(profile));
+                        applyPhysicsDampingResponse(copy, damping, response, profile, getCurveForProfile(profile));
                         param.args[1] = copy;
                         telemetry.incSpringsTuned();
                     } catch (Throwable ignored) {
-                        bugGuard.recordHookFault("EaseStyleFloat");
+                        bugGuard.recordHookFault(circuitKey);
                     }
                 }
             });
@@ -272,11 +314,11 @@ public final class FolmePhysicsHook {
                         }
                         float damping = (float) factors[0];
                         float response = (float) factors[1];
-                        if (damping < 0.60f || damping > 1.05f || response < 0.14f || response > 0.70f) {
+                        if (damping < 0.45f || damping > 1.15f || response < 0.10f || response > 0.90f) {
                             return;
                         }
                         float[] tmp = new float[2];
-                        applyPhysicsDampingResponse(tmp, damping, response, getCurveForProfile(profile));
+                        applyPhysicsDampingResponse(tmp, damping, response, profile, getCurveForProfile(profile));
                         double[] copy = factors.clone();
                         copy[0] = tmp[0];
                         copy[1] = tmp[1];
@@ -352,12 +394,12 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         float d = (Float) param.args[0];
-                        if (d < 0.75f || d > 1.02f) {
+                        if (d < 0.65f || d > 1.05f) {
                             return;
                         }
                         SpringPhysicsCurve curve = getCurveForProfile(profile);
-                        // Blend stock damping cleanly toward physical template zeta
-                        param.args[0] = clamp(d * 0.45f + curve.getDampingRatio() * 0.55f, 0.82f, 0.96f);
+                        // Drive damping cleanly toward the chosen physical signature (80% profile / 20% stock)
+                        param.args[0] = clamp(d * 0.20f + curve.getDampingRatio() * 0.80f, 0.76f, 0.95f);
                         telemetry.incSpringsTuned();
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringDamp");
@@ -383,13 +425,13 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         float s = (Float) param.args[0];
-                        if (s < 180.0f || s > 1600.0f) {
+                        if (s < 140.0f || s > 1800.0f) {
                             return;
                         }
                         SpringPhysicsCurve curve = getCurveForProfile(profile);
-                        // Geometric blend toward analytical stiffness k = (2*pi/T)^2
-                        float targetK = (float) Math.sqrt((double) s * (double) curve.getStiffnessK());
-                        param.args[0] = clamp(targetK, 160.0f, 1450.0f);
+                        // Weighted geometric blend strongly favoring analytical k = (2*pi/T)^2
+                        double targetK = Math.pow(s, 0.25) * Math.pow(curve.getStiffnessK(), 0.75);
+                        param.args[0] = clamp((float) targetK, 145.0f, 1450.0f);
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringStiff");
                     }
@@ -405,8 +447,9 @@ public final class FolmePhysicsHook {
     /**
      * Universal UI Interface Curve Hook on ValueAnimator.setInterpolator.
      * Upgrades finite UI transitions (dialogs, panels, sheets, cards, subpages) to our
-     * analytical SpringPhysicsCurve while strictly sparing LinearInterpolator, progress
-     * spinners, AccelerateInterpolator, and infinite animations.
+     * analytical SpringPhysicsCurve AND applies subtle profile-authentic duration scaling
+     * (1.24x silky glide for iOS/ColorOS 17; 0.90x crisp whip for HyperOS 4) while strictly
+     * sparing LinearInterpolator, exit ease-in, progress spinners, and infinite animations.
      */
     private boolean hookUniversalValueAnimator() {
         try {
@@ -435,16 +478,68 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         long dur = va.getDuration();
-                        // Only apply to standard finite UI transitions (skip instant snaps & long progress bars)
                         if (dur > 0L && (dur < 110L || dur > 900L)) {
                             return;
                         }
                         if (isUpgradeableInterpolator((TimeInterpolator) raw)) {
-                            param.args[0] = getCurveForProfile(profile);
+                            SpringPhysicsCurve curve = getCurveForProfile(profile);
+                            param.args[0] = curve;
+                            if (dur >= 120L && dur <= 550L) {
+                                long scaled = Math.round(dur * curve.getDurationScale());
+                                va.setDuration(Math.max(120L, Math.min(680L, scaled)));
+                            }
                             telemetry.incCurvesApplied();
                         }
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("ValueAnimInterp");
+                    }
+                }
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Universal ViewPropertyAnimator.setInterpolator hook catching `view.animate().setInterpolator(...)`
+     * across SystemUI Control Center, Notifications, Launcher, and Settings.
+     */
+    private boolean hookUniversalViewPropertyAnimator() {
+        try {
+            Method mVpa = ViewPropertyAnimator.class.getDeclaredMethod("setInterpolator", TimeInterpolator.class);
+            XposedBridge.hookMethod(mVpa, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("VpaInterp")) {
+                        return;
+                    }
+                    try {
+                        String profile = config.getMotionProfile();
+                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()) {
+                            return;
+                        }
+                        if (!(param.thisObject instanceof ViewPropertyAnimator)
+                                || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        Object raw = param.args[0];
+                        if (!(raw instanceof TimeInterpolator) || (raw instanceof SpringPhysicsCurve)) {
+                            return;
+                        }
+                        if (isUpgradeableInterpolator((TimeInterpolator) raw)) {
+                            SpringPhysicsCurve curve = getCurveForProfile(profile);
+                            param.args[0] = curve;
+                            ViewPropertyAnimator vpa = (ViewPropertyAnimator) param.thisObject;
+                            long dur = vpa.getDuration();
+                            if (dur >= 120L && dur <= 550L) {
+                                long scaled = Math.round(dur * curve.getDurationScale());
+                                vpa.setDuration(Math.max(120L, Math.min(680L, scaled)));
+                            }
+                            telemetry.incCurvesApplied();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("VpaInterp");
                     }
                 }
             });
@@ -495,36 +590,39 @@ public final class FolmePhysicsHook {
             float y25 = interp.getInterpolation(0.25f);
             float y50 = interp.getInterpolation(0.50f);
             float y75 = interp.getInterpolation(0.75f);
-            // Must be strictly monotonic within [0, 1]
             if (y25 < 0.0f || y75 > 1.0f || !(y25 < y50 && y50 < y75)) {
                 return false;
             }
-            // Skip linear PathInterpolator(0,0,1,1)
             if (Math.abs(y25 - 0.25f) < 0.02f && Math.abs(y50 - 0.50f) < 0.02f && Math.abs(y75 - 0.75f) < 0.02f) {
                 return false;
             }
-            // Upgrade ease-out / decelerate / fast-out-slow-in; spare accelerate-only exit curves (y50 < 0.45)
             return y50 >= 0.45f;
         } catch (Throwable ignored) {
             return false;
         }
     }
 
-    private void applyPhysicsDampingResponse(float[] out, float stockDamp, float stockResp, SpringPhysicsCurve curve) {
-        // Blend stock MIUI Folme spring toward analytical (zeta, T) while preserving relative speed
+    private void applyPhysicsDampingResponse(float[] out, float stockDamp, float stockResp,
+                                             String profile, SpringPhysicsCurve curve) {
         float targetDamp = curve.getDampingRatio();
         float targetResp = curve.getResponseSec();
-        float outDamp = stockDamp;
-        if (stockDamp > targetDamp) {
-            outDamp = clamp(stockDamp * 0.45f + targetDamp * 0.55f, 0.82f, 0.96f);
-        }
-        // Physical ratio scaling anchored to template response T
-        float ratio = clamp(targetResp / 0.30f, 0.95f, 1.28f);
         float hzFactor = clamp((currentRefreshHz - 60.0f) / 60.0f, 0.0f, 1.0f);
-        float maxResp = 0.50f + 0.12f * hzFactor;
-        float outResp = clamp(stockResp * ratio, 0.17f, maxResp);
-        out[0] = outDamp;
-        out[1] = outResp;
+
+        if (EngineConfig.MOTION_SILK.equals(profile)) {
+            // iOS 18 / ColorOS 17 Silk: unmistakable buoyant damping (0.78..0.84) + silky 1.32x-1.45x glide
+            float outDamp = clamp(stockDamp * 0.20f + targetDamp * 0.80f, 0.76f, 0.86f);
+            float scale = 1.28f + 0.16f * hzFactor;
+            float outResp = clamp(Math.max(stockResp * scale, targetResp * 0.88f), 0.28f, 0.66f);
+            out[0] = outDamp;
+            out[1] = outResp;
+        } else {
+            // HyperOS 4 Flagship: crisp, agile, zero-sludge flagship spring
+            float outDamp = clamp(stockDamp * 0.25f + targetDamp * 0.75f, 0.86f, 0.94f);
+            float scale = 0.92f + 0.08f * hzFactor;
+            float outResp = clamp(stockResp * scale, 0.20f, 0.46f);
+            out[0] = outDamp;
+            out[1] = outResp;
+        }
     }
 
     private static int resolveSpringStyleConstant(Class<?> easeClass) {

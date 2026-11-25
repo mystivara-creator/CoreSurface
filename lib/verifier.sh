@@ -579,13 +579,17 @@ cs_verifier_run() {
   _cs_v_multi=$CS_VF_RESULT
   cs_verify_feature "FEAT_DISPLAY_HZ" "$CFG_FEAT_DISPLAY_HZ" "$EFF_FEAT_DISPLAY_HZ"
   _cs_v_hz=$CS_VF_RESULT
+  cs_verify_feature "FEAT_FLAGSHIP_AUDIO" "$CFG_FEAT_FLAGSHIP_AUDIO" "$EFF_FEAT_FLAGSHIP_AUDIO"
+  _cs_v_audio=$CS_VF_RESULT
+  cs_verify_feature "FEAT_FLAGSHIP_SUITE" "$CFG_FEAT_FLAGSHIP_SUITE" "$EFF_FEAT_FLAGSHIP_SUITE"
+  _cs_v_suite=$CS_VF_RESULT
 
   for _cs_s in \
     "$CS_V_MOTION_PROFILE" "$CS_V_NATIVE_TIER" \
     "$CS_V_SURGICAL_GUARD" "$CS_V_THERMAL_LOD" \
     "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
     "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" \
-    "$_cs_v_color" "$_cs_v_aod"
+    "$_cs_v_color" "$_cs_v_aod" "$_cs_v_audio" "$_cs_v_suite"
   do
     cs_score_tally "$_cs_s"
   done
@@ -626,6 +630,8 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_FEAT_DISPLAY_HZ" "$_cs_v_hz"
   cs_verify_set "VERIFY_FEAT_COLOR_EXPERT" "$_cs_v_color"
   cs_verify_set "VERIFY_FEAT_AOD_UNLOCK" "$_cs_v_aod"
+  cs_verify_set "VERIFY_FEAT_FLAGSHIP_AUDIO" "$_cs_v_audio"
+  cs_verify_set "VERIFY_FEAT_FLAGSHIP_SUITE" "$_cs_v_suite"
 
   cs_verify_set "VERIFY_XML_MOUNT" "$CS_V_XML_MOUNT"
   cs_verify_set "VERIFY_RRO_ACTIVE" "$CS_V_RRO_ACTIVE"

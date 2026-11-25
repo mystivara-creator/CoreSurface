@@ -240,10 +240,14 @@ async function refreshStatus() {
     setSegmentValue('FEAT_MOTION_PROFILE', kv.cfg_feat_motion_profile || 'hyperos4');
     setSegmentValue('FEAT_SURGICAL_GUARD', kv.cfg_feat_surgical_guard || '1');
     setSegmentValue('FEAT_AOD_UNLOCK', kv.cfg_feat_aod_unlock || '1');
+    setSegmentValue('FEAT_FLAGSHIP_AUDIO', kv.eff_feat_flagship_audio === '1' ? '1' : '0');
+    setSegmentValue('FEAT_FLAGSHIP_SUITE', kv.eff_feat_flagship_suite === '1' ? '1' : '0');
 
     renderVerifyPill('FEAT_MOTION_PROFILE', kv.verify_feat_motion_profile, false);
     renderVerifyPill('FEAT_SURGICAL_GUARD', kv.verify_feat_surgical_guard, false);
     renderVerifyPill('FEAT_AOD_UNLOCK', kv.verify_feat_aod_unlock, pendingSet.has('FEAT_AOD_UNLOCK'));
+    renderVerifyPill('FEAT_FLAGSHIP_AUDIO', kv.verify_feat_flagship_audio, pendingSet.has('FEAT_FLAGSHIP_AUDIO'));
+    renderVerifyPill('FEAT_FLAGSHIP_SUITE', kv.verify_feat_flagship_suite, pendingSet.has('FEAT_FLAGSHIP_SUITE'));
 
     // Compact Summary
     const romStr = (kv.rom_family || '').toUpperCase() + ' ' + (kv.rom_version || '') + ' · SDK ' + (kv.android_sdk || '-');
@@ -253,6 +257,8 @@ async function refreshStatus() {
     const colorMode = (kv.eff_feat_color_expert === '1' || kv.stock_has_expert_color === '1')
       ? 'Custom Color ON'
       : 'Stock Color';
+    const audioSuiteStr = 'Audio ' + (kv.eff_feat_flagship_audio === '1' ? 'Flagship ON' : 'Stock')
+      + ' · Porting Suite ' + (kv.eff_feat_flagship_suite === '1' ? 'ON' : 'OFF');
     const stats = 'Folme: ' + (kv.verify_engine_folme_hooks || '0')
       + ' · Gates: ' + (kv.verify_engine_native_gates || '0')
       + ' · Springs: ' + (kv.verify_engine_springs || '0')
@@ -265,6 +271,7 @@ async function refreshStatus() {
     summary.replaceChildren(
       makeKvRow('ROM & RAM', romStr + ' · ' + (kv.ram_mb || '0') + ' MB'),
       makeKvRow('Mode Blur & Warna', blurMode + ' · ' + colorMode),
+      makeKvRow('Audio & Porting', audioSuiteStr),
       makeKvRow('Profil Animasi', formatMotion(kv.verify_engine_motion && kv.verify_engine_motion !== 'N/A' ? kv.verify_engine_motion : kv.eff_feat_motion_profile)),
       makeKvRow('OS Bug Logic', bugSummary),
       makeKvRow('Statistik Live', active ? stats : 'Aktifkan CoreSurface Engine di LSPosed'),

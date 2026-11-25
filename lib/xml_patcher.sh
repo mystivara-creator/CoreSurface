@@ -113,6 +113,42 @@ cs_xml_build_patch_spec() {
         printf 'bool|support_aod_fullscreen|true\n'
       fi
     fi
+
+    if [ "${EFF_FEAT_FLAGSHIP_AUDIO:-0}" = "1" ]; then
+      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Assistant, Audio Share, 24-bit/Stereo Record)
+      printf 'bool|support_dolby|true\n'
+      printf 'bool|support_hifi|true\n'
+      printf 'bool|support_sound_assist|true\n'
+      printf 'bool|support_audio_share|true\n'
+      printf 'bool|support_stereo_record|true\n'
+      printf 'bool|support_24bit_record|true\n'
+      printf 'bool|support_lhdc_offload|true\n'
+      printf 'bool|support_audio_loopback|true\n'
+      printf 'bool|support_phone_call_noise_suppression|true\n'
+    fi
+
+    if [ "${EFF_FEAT_FLAGSHIP_SUITE:-0}" = "1" ]; then
+      # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost, Power Modes)
+      printf 'bool|support_AI_display|true\n'
+      printf 'bool|support_super_resolution|true\n'
+      printf 'bool|support_hdr_enhance|true\n'
+      printf 'bool|support_screen_enhance_engine|true\n'
+      printf 'bool|support_truetone|true\n'
+      printf 'bool|is_support_video_tool_box|true\n'
+      printf 'bool|support_videobox_display_effect|true\n'
+      printf 'bool|support_videobox_cinema_adapt_ce|true\n'
+      printf 'bool|support_displayfeature_gamemode|true\n'
+      printf 'bool|support_displayfeature_gamemode_HDR|true\n'
+      printf 'bool|support_wild_boost|true\n'
+      printf 'bool|support_wild_boost_bat_perf|true\n'
+      printf 'bool|support_mi_game_macro|true\n'
+      printf 'bool|support_game_gunsight|true\n'
+      printf 'bool|support_app_hiding|true\n'
+      printf 'bool|is_support_partial_screenshot|true\n'
+      printf 'bool|support_ui_orientation_v2|true\n'
+      printf 'bool|support_power_mode|true\n'
+      printf 'bool|support_power_save_new|true\n'
+    fi
   } > "$_cs_spec_file"
 }
 

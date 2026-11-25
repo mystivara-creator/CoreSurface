@@ -1316,5 +1316,99 @@ PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STA
 assert_file_contains "$SB_SETTINGS_DB" "system|deviceLevelList=v:1,c:2,g:2" "uninstall.sh restores original system/deviceLevelList cleanly"
 
 # ---------------------------------------------------------------------------
+printf '=== Test 20: Flagship Audio & Speaker Enhancement + Flagship Exclusive Porting Suite ===\n'
+setup_sandbox "t20_flagship_audio_and_porting_suite"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+# Audio & Speaker props
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Flagship Audio sets ro.vendor.audio.spk.stereo=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Flagship Audio sets ro.vendor.audio.spk.clean=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.dolby.dax.support=true" "Flagship Audio sets ro.vendor.audio.dolby.dax.support=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.scenario=true" "Flagship Audio sets ro.vendor.audio.sfx.scenario=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.hifi=true" "Flagship Audio sets ro.vendor.audio.hifi=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.vendor.audio.hifi.int_codec=true" "Flagship Audio sets persist.vendor.audio.hifi.int_codec=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.audio.spatializer_enabled=true" "Flagship Audio sets ro.audio.spatializer_enabled=true"
+# Audio XML tags
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Flagship Audio XML enables support_dolby"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hifi">true</bool>' "Flagship Audio XML enables support_hifi"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_assist">true</bool>' "Flagship Audio XML enables support_sound_assist"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_24bit_record">true</bool>' "Flagship Audio XML enables support_24bit_record"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_stereo_record">true</bool>' "Flagship Audio XML enables support_stereo_record"
+# Flagship Porting Suite props
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Flagship Suite sets ro.miui.ui.font.animation=enable"
+assert_file_contains "$SB_PROPS_LOG" "ro.multiwin.fulldecor_support=true" "Flagship Suite sets ro.multiwin.fulldecor_support=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.product.camera.livephoto.support=3" "Flagship Suite sets ro.product.camera.livephoto.support=3"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.power_mode_support=true" "Flagship Suite sets persist.sys.power_mode_support=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.launch_response_optimization.enable=true" "Flagship Suite sets persist.sys.launch_response_optimization.enable=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.translate.state.supportAiSubtitles=true" "Flagship Suite sets supportAiSubtitles=true"
+# Flagship Porting Suite XML tags
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_AI_display">true</bool>' "Flagship Suite XML enables support_AI_display"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_super_resolution">true</bool>' "Flagship Suite XML enables support_super_resolution"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hdr_enhance">true</bool>' "Flagship Suite XML enables support_hdr_enhance"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_support_video_tool_box">true</bool>' "Flagship Suite XML enables is_support_video_tool_box"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Flagship Suite XML enables support_wild_boost"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_game_gunsight">true</bool>' "Flagship Suite XML enables support_game_gunsight"
+
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_FLAGSHIP_AUDIO=verified_active" "Verifier marks FEAT_FLAGSHIP_AUDIO=verified_active"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_FLAGSHIP_SUITE=verified_active" "Verifier marks FEAT_FLAGSHIP_SUITE=verified_active"
+
+# WebUI status & set whitelist
+_t20_status=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" status)
+printf '%s\n' "$_t20_status" > "$SB/t20_status.out"
+assert_file_contains "$SB/t20_status.out" "eff_feat_flagship_audio=1" "WebUI status reports eff_feat_flagship_audio=1"
+assert_file_contains "$SB/t20_status.out" "eff_feat_flagship_suite=1" "WebUI status reports eff_feat_flagship_suite=1"
+assert_file_contains "$SB/t20_status.out" "verify_feat_flagship_audio=verified_active" "WebUI status reports verify_feat_flagship_audio=verified_active"
+assert_file_contains "$SB/t20_status.out" "verify_feat_flagship_suite=verified_active" "WebUI status reports verify_feat_flagship_suite=verified_active"
+
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_FLAGSHIP_AUDIO 0 >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_FLAGSHIP_AUDIO=0" "WebUI set accepts FEAT_FLAGSHIP_AUDIO=0"
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_FLAGSHIP_SUITE 0 >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_FLAGSHIP_SUITE=0" "WebUI set accepts FEAT_FLAGSHIP_SUITE=0"
+
+# Lite tier: Audio ON by default, Porting Suite OFF by default
+setup_sandbox "t20b_lite_audio_on_suite_off"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "5500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Lite tier keeps Flagship Audio & Speaker ON by default"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Lite tier keeps heavy Flagship Porting Suite OFF by default"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Lite tier XML enables Audio support_dolby"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Lite tier XML skips Flagship Porting Suite tags"
+
+# Native Flagship Passthrough (motion_only): skips both Audio & Porting Suite overrides
+setup_sandbox "t20c_native_flagship_skips_audio_suite"
+write_mock_getprop "OS3.0" "" "36" "1" "houji" "Xiaomi 15 Ultra"
+write_mock_meminfo "15600000"
+printf 'ro.miui.device_level=3\nro.surface_flinger.supports_background_blur=1\n' > "$SB_PROPS_DB"
+cat > "$SB_XML_DIR1/houji.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">true</bool>
+    <integer name="device_level">3</integer>
+    <bool name="support_aod">true</bool>
+</features>
+EOF
+printf 'CS_TIER_MODE=auto\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Native Flagship motion_only skips Flagship Audio prop overrides"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Native Flagship motion_only skips Flagship Suite prop overrides"
+
+# ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]
