@@ -1330,10 +1330,14 @@ EOF
 chmod +x "$SB_BIN/pidof"
 
 run_post_fs_data
-# Launcher & SurfaceFlinger blur contract (prevents -1 Screen & Folder black-blink)
+# Launcher & SurfaceFlinger blur + HyperOS 3 Advanced Textures v4 contract (prevents -1 Screen & Folder black-blink)
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.sf.disable_blurs=false" "Blur contract sets persist.sys.sf.disable_blurs=false"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.launcher_blur_supported=true" "Blur contract sets persist.sys.launcher_blur_supported=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.background_blur_setting=1" "Blur contract sets persist.sys.background_blur_setting=1"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "HyperOS 3 Flagship sets native Advanced Textures release=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=true" "HyperOS 3 Flagship sets support_window_mishadow=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_smoothcorner=true" "HyperOS 3 Flagship sets support_window_smoothcorner=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "HyperOS 3 Flagship sets add_blurnoise_supported=true"
 # Audio & Speaker props
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Flagship Audio sets ro.vendor.audio.spk.stereo=true"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Flagship Audio sets ro.vendor.audio.spk.clean=true"
@@ -1383,13 +1387,14 @@ PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STA
   CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_FLAGSHIP_SUITE 0 >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "FEAT_FLAGSHIP_SUITE=0" "WebUI set accepts FEAT_FLAGSHIP_SUITE=0"
 
-# Lite tier: Audio ON by default, Porting Suite OFF by default
+# Lite tier: Audio ON by default, Porting Suite & Advanced Textures v4 OFF by default
 setup_sandbox "t20b_lite_audio_on_suite_off"
 write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
 write_mock_meminfo "5500000"
 write_sample_xml "$SB_XML_DIR1/kunzite.xml"
 printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
 run_post_fs_data
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "Lite tier skips Advanced Textures v4 release=4"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Lite tier keeps Flagship Audio & Speaker ON by default"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Lite tier keeps heavy Flagship Porting Suite OFF by default"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Lite tier XML enables Audio support_dolby"

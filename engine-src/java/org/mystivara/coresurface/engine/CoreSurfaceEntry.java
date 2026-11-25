@@ -70,10 +70,12 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
                         .install(lpparam.classLoader);
                 XposedBridge.log("CoreSurfaceEngine: initialized Motion + Non-LTPO AOD Unlock in com.miui.aod");
             } else {
-                // Settings & any additional user-scoped UI app: universal SpringPhysicsCurve + self-unhooking bootstrap
+                // Settings & any additional user-scoped UI app: universal SpringPhysicsCurve,
+                // Toast window blur guard (protects Toasts under Advanced Textures v4), & self-unhooking bootstrap
+                blurGuard.installWindowToastGuard(lpparam.classLoader);
                 folmeHook.install(lpparam.classLoader);
                 bootstrap.install();
-                XposedBridge.log("CoreSurfaceEngine: initialized Universal UI SpringPhysicsCurve in " + pkg);
+                XposedBridge.log("CoreSurfaceEngine: initialized Universal UI SpringPhysicsCurve + ToastGuard in " + pkg);
             }
         } catch (Throwable t) {
             XposedBridge.log("CoreSurfaceEngine: safe isolation catch in " + pkg + ": " + t);

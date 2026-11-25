@@ -290,8 +290,19 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_setting" "1"
 
-  if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ] || [ "${EFF_FEAT_ADV_TEXTURES:-0}" != "1" ]; then
+  if [ "${EFF_FEAT_ADV_TEXTURES:-0}" != "1" ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
+  elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
+    # Complete HyperOS 3 Advanced Textures v4 compositor contract (strictly memory-only resetprop -n):
+    # - Uses native HyperOS 3 visual release 4 (NOT legacy HOS 2 release 3 or blur_version=2)
+    # - Completes mishadow/smoothcorner/blurnoise tokens so enabling Advanced Textures in
+    #   Settings -> Display renders -1 Screen & Folder blur without black-backdrop blinks
+    # - Keeps background_blur_status_default=false & omits enable_blurs_on_windows for Toast/Recents safety
+    cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
+    cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "4"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
   else
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_version" "2"

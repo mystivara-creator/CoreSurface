@@ -80,10 +80,10 @@ cs_os_bug_scan() {
     CS_OS_BUGS_CSV=$(cs_bug_append_csv "$CS_OS_BUGS_CSV" "VENDOR_BLUR_LOWRAM_THROTTLE")
   fi
 
-  # 7. Leaked persist.* props from legacy/third-party modules on HyperOS 3+
+  # 7. Leaked legacy persist.* props (e.g. HOS 2 release=3) from third-party/preview modules on HyperOS 3+
   if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
     _cs_leak_avr=$(cs_getprop "persist.sys.advanced_visual_release")
-    if [ -n "$_cs_leak_avr" ]; then
+    if [ -n "$_cs_leak_avr" ] && [ "$_cs_leak_avr" != "4" ]; then
       CS_OS_BUGS_DETECTED=$((CS_OS_BUGS_DETECTED + 1))
       CS_OS_BUGS_MITIGATED=$((CS_OS_BUGS_MITIGATED + 1))
       CS_OS_BUGS_CSV=$(cs_bug_append_csv "$CS_OS_BUGS_CSV" "LEAKED_PERSIST_PROPS")
