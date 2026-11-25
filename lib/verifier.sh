@@ -101,8 +101,10 @@ cs_verify_engine() {
   CS_V_ENGINE_FOLME_HOOKS=0
   CS_V_ENGINE_AOD_GATES=0
   CS_V_ENGINE_SPRINGS=0
+  CS_V_ENGINE_CURVES=0
   CS_V_ENGINE_TOASTS=0
   CS_V_ENGINE_RECENTS=0
+  CS_V_ENGINE_CIRCUITS=0
 
   # 1. Check whether CoreSurfaceEngine APK is installed
   if [ -n "${CORESURFACE_ENGINE_INSTALLED:-}" ]; then
@@ -147,7 +149,16 @@ cs_verify_engine() {
     fi
   fi
 
-  for _cs_tf in "$_cs_t_sysui" "$_cs_t_home" "$_cs_t_aod"; do
+  _cs_t_settings=${CORESURFACE_ENGINE_SETTINGS_TELEM:-}
+  if [ -z "$_cs_t_settings" ]; then
+    if [ -r /data/user/0/com.android.settings/cache/coresurface_telemetry.prop ]; then
+      _cs_t_settings=/data/user/0/com.android.settings/cache/coresurface_telemetry.prop
+    else
+      _cs_t_settings=/data/user_de/0/com.android.settings/cache/coresurface_telemetry.prop
+    fi
+  fi
+
+  for _cs_tf in "$_cs_t_sysui" "$_cs_t_home" "$_cs_t_aod" "$_cs_t_settings"; do
     [ -r "$_cs_tf" ] || continue
     _cs_act=$(cs_telem_get "$_cs_tf" "ENGINE_ACTIVE")
     [ "$_cs_act" = "1" ] || continue
@@ -183,14 +194,18 @@ cs_verify_engine() {
     _cs_fh=$(cs_telem_get "$_cs_tf" "FOLME_HOOKS")
     _cs_ag=$(cs_telem_get "$_cs_tf" "AOD_GATES")
     _cs_sp=$(cs_telem_get "$_cs_tf" "SPRINGS_TUNED")
+    _cs_cv=$(cs_telem_get "$_cs_tf" "CURVES_APPLIED")
     _cs_nt=$(cs_telem_get "$_cs_tf" "TOASTS_GUARDED")
     _cs_nr=$(cs_telem_get "$_cs_tf" "RECENTS_GUARDED")
+    _cs_ct=$(cs_telem_get "$_cs_tf" "CIRCUIT_TRIPS")
     cs_is_uint "$_cs_ng" && CS_V_ENGINE_NATIVE_GATES=$((CS_V_ENGINE_NATIVE_GATES + _cs_ng))
     cs_is_uint "$_cs_fh" && CS_V_ENGINE_FOLME_HOOKS=$((CS_V_ENGINE_FOLME_HOOKS + _cs_fh))
     cs_is_uint "$_cs_ag" && CS_V_ENGINE_AOD_GATES=$((CS_V_ENGINE_AOD_GATES + _cs_ag))
     cs_is_uint "$_cs_sp" && CS_V_ENGINE_SPRINGS=$((CS_V_ENGINE_SPRINGS + _cs_sp))
+    cs_is_uint "$_cs_cv" && CS_V_ENGINE_CURVES=$((CS_V_ENGINE_CURVES + _cs_cv))
     cs_is_uint "$_cs_nt" && CS_V_ENGINE_TOASTS=$((CS_V_ENGINE_TOASTS + _cs_nt))
     cs_is_uint "$_cs_nr" && CS_V_ENGINE_RECENTS=$((CS_V_ENGINE_RECENTS + _cs_nr))
+    cs_is_uint "$_cs_ct" && CS_V_ENGINE_CIRCUITS=$((CS_V_ENGINE_CIRCUITS + _cs_ct))
   done
 
   # 3. Map honest per-feature verification for Layer 2 Motion Engine capabilities
@@ -560,8 +575,10 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_ENGINE_FOLME_HOOKS" "$CS_V_ENGINE_FOLME_HOOKS"
   cs_verify_set "VERIFY_ENGINE_AOD_GATES" "$CS_V_ENGINE_AOD_GATES"
   cs_verify_set "VERIFY_ENGINE_SPRINGS" "$CS_V_ENGINE_SPRINGS"
+  cs_verify_set "VERIFY_ENGINE_CURVES" "$CS_V_ENGINE_CURVES"
   cs_verify_set "VERIFY_ENGINE_TOASTS" "$CS_V_ENGINE_TOASTS"
   cs_verify_set "VERIFY_ENGINE_RECENTS" "$CS_V_ENGINE_RECENTS"
+  cs_verify_set "VERIFY_ENGINE_CIRCUITS" "$CS_V_ENGINE_CIRCUITS"
 
   cs_verify_set "VERIFY_FEAT_MOTION_PROFILE" "$CS_V_MOTION_PROFILE"
   cs_verify_set "VERIFY_FEAT_NATIVE_TIER" "$CS_V_NATIVE_TIER"

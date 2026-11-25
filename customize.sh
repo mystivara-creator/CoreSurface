@@ -272,6 +272,7 @@ _cs_set_exec "$_cs_modpath/lib/xml_patcher.sh"
 _cs_set_exec "$_cs_modpath/lib/rro.sh"
 _cs_set_exec "$_cs_modpath/lib/settings_tx.sh"
 _cs_set_exec "$_cs_modpath/lib/verifier.sh"
+_cs_set_exec "$_cs_modpath/lib/os_bug_logic.sh"
 _cs_set_exec "$_cs_modpath/lib/webui_ctl.sh"
 
 _cs_ui_print "- Watchdog armed (auto safe-mode disable on 2 consecutive failed boots)"

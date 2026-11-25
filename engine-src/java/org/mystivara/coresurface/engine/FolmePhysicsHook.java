@@ -1,49 +1,66 @@
 package org.mystivara.coresurface.engine;
 
+import android.animation.TimeInterpolator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.hardware.display.DisplayManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Display;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.PathInterpolator;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * Refresh-Rate-Aware Native HyperOS Folme & Jetpack SpringForce Physics Tuner.
+ * Universal Physics-Formula Motion Engine (Folme + SpringForce + ValueAnimator UI Curves).
  *
- * Preserves 100% original HyperOS visual design with ZERO custom overlays, ZERO FBOs,
- * and ZERO competing animators. Dynamically adapts spring damping & response to BOTH
- * 60 Hz and 90/120 Hz display modes via DisplayManager.DisplayListener (zero polling):
+ * Applies the analytical Damped Harmonic Oscillator equation (SpringPhysicsCurve)
+ * across ALL UI interfaces in scoped processes (SystemUI, MiuiHome, MiuiAod, Settings,
+ * and any user-enabled app):
  *
- * - 60 Hz (16.67ms/frame): Tight, crisp damping (0.85-0.94) & controlled response (+6% to +12%)
- *   so animations stay snappy and consistent without floaty tail stutter.
- * - 90/120 Hz (8.33ms/frame): Fluid flagship settle curves (+13% HyperOS 4, +22% iOS/ColorOS Silk).
- * - Thermal-Adaptive Safety: Automatically scales curve intensity toward stock 1.0x when
- *   ThermalLodController reports MODERATE/SEVERE thermal status.
+ * 1. Xiaomi Folme Springs (`miuix.animation.utils.EaseManager.getStyle`)
+ * 2. Xiaomi Folme Interpolators (`miuix.animation.utils.EaseManager.getInterpolator`)
+ * 3. Miui & Jetpack `SpringForce` (`setDampingRatio` & `setStiffness` via k = (2*pi/T)^2)
+ * 4. Standard Android `ValueAnimator.setInterpolator` (safely upgrades finite UI transition
+ *    interpolators while NEVER touching LinearInterpolator, progress bars, spinners,
+ *    AccelerateInterpolator, or infinite animations).
  */
 public final class FolmePhysicsHook {
     private static final int DEFAULT_SPRING_STYLE = -2;
+    private static final int INTERP_SKIP = 0;
+    private static final int INTERP_UPGRADE = 1;
 
     private final EngineConfig config;
     private final ThermalLodController lodController;
+    private final DeviceBugGuard bugGuard;
     private final TelemetryReporter telemetry;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ConcurrentHashMap<Class<?>, Integer> interpClassCache = new ConcurrentHashMap<>();
 
     private volatile boolean displayAttached = false;
     private volatile float currentRefreshHz = 60.0f;
     private volatile float cachedThermalScale = 1.0f;
+    private volatile SpringPhysicsCurve activeCurve = SpringPhysicsCurve.forProfile(
+            EngineConfig.MOTION_HYPEROS4, 60.0f, 1.0f);
+    private volatile String activeCurveProfile = EngineConfig.MOTION_HYPEROS4;
 
-    public FolmePhysicsHook(EngineConfig config, ThermalLodController lodController, TelemetryReporter telemetry) {
+    public FolmePhysicsHook(EngineConfig config, ThermalLodController lodController,
+                            DeviceBugGuard bugGuard, TelemetryReporter telemetry) {
         this.config = config;
         this.lodController = lodController;
+        this.bugGuard = bugGuard;
         this.telemetry = telemetry;
-        this.lodController.addListener(this::refreshThermalScale);
+        this.lodController.addListener(this::rebuildCurveState);
+        this.config.addListener(this::rebuildCurveState);
     }
 
     public void attachContext(Context context) {
@@ -51,7 +68,7 @@ public final class FolmePhysicsHook {
             return;
         }
         displayAttached = true;
-        refreshThermalScale();
+        rebuildCurveState();
         try {
             Context appCtx = context.getApplicationContext() != null ? context.getApplicationContext() : context;
             DisplayManager dm = (DisplayManager) appCtx.getSystemService(Context.DISPLAY_SERVICE);
@@ -87,13 +104,14 @@ public final class FolmePhysicsHook {
                 if (hz >= 45.0f && hz <= 240.0f) {
                     currentRefreshHz = hz;
                     telemetry.setDisplayHz(Math.round(hz));
+                    rebuildCurveState();
                 }
             }
         } catch (Throwable ignored) {
         }
     }
 
-    private void refreshThermalScale() {
+    private void rebuildCurveState() {
         float lod = lodController.getEffectiveLod();
         if (lod <= ThermalLodController.LOD_ECO + 0.05f) {
             cachedThermalScale = 0.35f;
@@ -102,6 +120,19 @@ public final class FolmePhysicsHook {
         } else {
             cachedThermalScale = 1.0f;
         }
+        String profile = config.getMotionProfile();
+        activeCurveProfile = profile;
+        if (!EngineConfig.MOTION_OFF.equals(profile)) {
+            activeCurve = SpringPhysicsCurve.forProfile(profile, currentRefreshHz, cachedThermalScale);
+        }
+    }
+
+    private SpringPhysicsCurve getCurveForProfile(String profile) {
+        if (!profile.equals(activeCurveProfile)) {
+            activeCurveProfile = profile;
+            activeCurve = SpringPhysicsCurve.forProfile(profile, currentRefreshHz, cachedThermalScale);
+        }
+        return activeCurve;
     }
 
     public int install(ClassLoader cl) {
@@ -116,6 +147,12 @@ public final class FolmePhysicsHook {
         if (hooks > 0) {
             telemetry.addFolmeHooksBound(hooks);
             telemetry.recordHookBound("FolmePhysics");
+        }
+
+        if (hookUniversalValueAnimator()) {
+            hooks++;
+            telemetry.addFolmeHooksBound(1);
+            telemetry.recordHookBound("UiCurvePhysics");
         }
         return hooks;
     }
@@ -137,20 +174,22 @@ public final class FolmePhysicsHook {
         }
 
         for (Method m : methods) {
-            if (Modifier.isAbstract(m.getModifiers()) || !"getStyle".equals(m.getName())) {
+            if (Modifier.isAbstract(m.getModifiers())) {
                 continue;
             }
+            String name = m.getName();
             Class<?>[] params = m.getParameterTypes();
-            if (params.length != 2 || params[0] != int.class) {
-                continue;
-            }
 
-            if (params[1] == float[].class) {
-                if (hookEaseGetStyleFloat(m, springStyle)) {
+            if ("getStyle".equals(name) && params.length == 2 && params[0] == int.class) {
+                if (params[1] == float[].class && hookEaseGetStyleFloat(m, springStyle)) {
+                    hooked++;
+                } else if (params[1] == double[].class && hookEaseGetStyleDouble(m, springStyle)) {
                     hooked++;
                 }
-            } else if (params[1] == double[].class) {
-                if (hookEaseGetStyleDouble(m, springStyle)) {
+            } else if ("getInterpolator".equals(name) && params.length == 2
+                    && params[0] == int.class && params[1] == float[].class
+                    && TimeInterpolator.class.isAssignableFrom(m.getReturnType())) {
+                if (hookEaseGetInterpolator(m, springStyle)) {
                     hooked++;
                 }
             }
@@ -163,32 +202,39 @@ public final class FolmePhysicsHook {
             XposedBridge.hookMethod(method, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    String profile = config.getMotionProfile();
-                    if (EngineConfig.MOTION_OFF.equals(profile)) {
+                    if (bugGuard.isHookTripped("EaseStyleFloat")) {
                         return;
                     }
-                    if (param.args == null || param.args.length < 2) {
-                        return;
+                    try {
+                        String profile = config.getMotionProfile();
+                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()) {
+                            return;
+                        }
+                        if (param.args == null || param.args.length < 2) {
+                            return;
+                        }
+                        if (!(param.args[0] instanceof Integer) || !(param.args[1] instanceof float[])) {
+                            return;
+                        }
+                        if (((Integer) param.args[0]) != springStyle) {
+                            return;
+                        }
+                        float[] factors = (float[]) param.args[1];
+                        if (factors == null || factors.length < 2) {
+                            return;
+                        }
+                        float damping = factors[0];
+                        float response = factors[1];
+                        if (damping < 0.60f || damping > 1.05f || response < 0.14f || response > 0.70f) {
+                            return;
+                        }
+                        float[] copy = factors.clone();
+                        applyPhysicsDampingResponse(copy, damping, response, getCurveForProfile(profile));
+                        param.args[1] = copy;
+                        telemetry.incSpringsTuned();
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("EaseStyleFloat");
                     }
-                    if (!(param.args[0] instanceof Integer) || !(param.args[1] instanceof float[])) {
-                        return;
-                    }
-                    if (((Integer) param.args[0]) != springStyle) {
-                        return;
-                    }
-                    float[] factors = (float[]) param.args[1];
-                    if (factors == null || factors.length < 2) {
-                        return;
-                    }
-                    float damping = factors[0];
-                    float response = factors[1];
-                    if (damping < 0.60f || damping > 1.05f || response < 0.14f || response > 0.70f) {
-                        return;
-                    }
-                    float[] copy = factors.clone();
-                    applyTunedCurve(copy, damping, response, profile);
-                    param.args[1] = copy;
-                    telemetry.incSpringsTuned();
                 }
             });
             return true;
@@ -202,32 +248,79 @@ public final class FolmePhysicsHook {
             XposedBridge.hookMethod(method, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    String profile = config.getMotionProfile();
-                    if (EngineConfig.MOTION_OFF.equals(profile)) {
+                    if (bugGuard.isHookTripped("EaseStyleDouble")) {
                         return;
                     }
-                    if (param.args == null || param.args.length < 2) {
+                    try {
+                        String profile = config.getMotionProfile();
+                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()) {
+                            return;
+                        }
+                        if (param.args == null || param.args.length < 2) {
+                            return;
+                        }
+                        if (!(param.args[0] instanceof Integer) || !(param.args[1] instanceof double[])) {
+                            return;
+                        }
+                        if (((Integer) param.args[0]) != springStyle) {
+                            return;
+                        }
+                        double[] factors = (double[]) param.args[1];
+                        if (factors == null || factors.length < 2) {
+                            return;
+                        }
+                        float damping = (float) factors[0];
+                        float response = (float) factors[1];
+                        if (damping < 0.60f || damping > 1.05f || response < 0.14f || response > 0.70f) {
+                            return;
+                        }
+                        float[] tmp = new float[2];
+                        applyPhysicsDampingResponse(tmp, damping, response, getCurveForProfile(profile));
+                        double[] copy = factors.clone();
+                        copy[0] = tmp[0];
+                        copy[1] = tmp[1];
+                        param.args[1] = copy;
+                        telemetry.incSpringsTuned();
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("EaseStyleDouble");
+                    }
+                }
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private boolean hookEaseGetInterpolator(Method method, final int springStyle) {
+        try {
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("EaseInterp")) {
                         return;
                     }
-                    if (!(param.args[0] instanceof Integer) || !(param.args[1] instanceof double[])) {
-                        return;
+                    try {
+                        String profile = config.getMotionProfile();
+                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()) {
+                            return;
+                        }
+                        if (param.args == null || param.args.length < 1 || !(param.args[0] instanceof Integer)) {
+                            return;
+                        }
+                        int style = (Integer) param.args[0];
+                        // Skip linear (style == 0 / 1) and custom spring style (already handled)
+                        if (style == 0 || style == 1 || style == springStyle) {
+                            return;
+                        }
+                        Object res = param.getResult();
+                        if (res instanceof TimeInterpolator && isUpgradeableInterpolator((TimeInterpolator) res)) {
+                            param.setResult(getCurveForProfile(profile));
+                            telemetry.incCurvesApplied();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("EaseInterp");
                     }
-                    if (((Integer) param.args[0]) != springStyle) {
-                        return;
-                    }
-                    double[] factors = (double[]) param.args[1];
-                    if (factors == null || factors.length < 2) {
-                        return;
-                    }
-                    float damping = (float) factors[0];
-                    float response = (float) factors[1];
-                    if (damping < 0.60f || damping > 1.05f || response < 0.14f || response > 0.70f) {
-                        return;
-                    }
-                    double[] copy = factors.clone();
-                    applyTunedCurveDouble(copy, damping, response, profile);
-                    param.args[1] = copy;
-                    telemetry.incSpringsTuned();
                 }
             });
             return true;
@@ -248,28 +341,26 @@ public final class FolmePhysicsHook {
             XposedBridge.hookMethod(mDamp, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    String profile = config.getMotionProfile();
-                    if (EngineConfig.MOTION_OFF.equals(profile) || param.args == null || param.args.length < 1) {
+                    if (bugGuard.isHookTripped("SpringDamp")) {
                         return;
                     }
-                    float d = (Float) param.args[0];
-                    if (d < 0.75f || d > 1.02f) {
-                        return;
+                    try {
+                        String profile = config.getMotionProfile();
+                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()
+                                || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        float d = (Float) param.args[0];
+                        if (d < 0.75f || d > 1.02f) {
+                            return;
+                        }
+                        SpringPhysicsCurve curve = getCurveForProfile(profile);
+                        // Blend stock damping cleanly toward physical template zeta
+                        param.args[0] = clamp(d * 0.45f + curve.getDampingRatio() * 0.55f, 0.82f, 0.96f);
+                        telemetry.incSpringsTuned();
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("SpringDamp");
                     }
-                    boolean highHz = currentRefreshHz > 75.0f;
-                    float w = cachedThermalScale;
-                    float target;
-                    if (EngineConfig.MOTION_SILK.equals(profile)) {
-                        target = highHz
-                                ? clamp(d * (1.0f - 0.08f * w), 0.82f, 0.90f)
-                                : clamp(d * (1.0f - 0.05f * w), 0.85f, 0.92f);
-                    } else {
-                        target = highHz
-                                ? clamp(d * (1.0f - 0.05f * w), 0.85f, 0.93f)
-                                : clamp(d * (1.0f - 0.03f * w), 0.88f, 0.94f);
-                    }
-                    param.args[0] = target;
-                    telemetry.incSpringsTuned();
                 }
             });
             hooked++;
@@ -281,23 +372,26 @@ public final class FolmePhysicsHook {
             XposedBridge.hookMethod(mStiff, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    String profile = config.getMotionProfile();
-                    if (EngineConfig.MOTION_OFF.equals(profile) || param.args == null || param.args.length < 1) {
+                    if (bugGuard.isHookTripped("SpringStiff")) {
                         return;
                     }
-                    float s = (Float) param.args[0];
-                    if (s < 180.0f || s > 1600.0f) {
-                        return;
+                    try {
+                        String profile = config.getMotionProfile();
+                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()
+                                || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        float s = (Float) param.args[0];
+                        if (s < 180.0f || s > 1600.0f) {
+                            return;
+                        }
+                        SpringPhysicsCurve curve = getCurveForProfile(profile);
+                        // Geometric blend toward analytical stiffness k = (2*pi/T)^2
+                        float targetK = (float) Math.sqrt((double) s * (double) curve.getStiffnessK());
+                        param.args[0] = clamp(targetK, 160.0f, 1450.0f);
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("SpringStiff");
                     }
-                    boolean highHz = currentRefreshHz > 75.0f;
-                    float w = cachedThermalScale;
-                    float reduction;
-                    if (EngineConfig.MOTION_SILK.equals(profile)) {
-                        reduction = (highHz ? 0.22f : 0.12f) * w;
-                    } else {
-                        reduction = (highHz ? 0.13f : 0.07f) * w;
-                    }
-                    param.args[0] = clamp(s * (1.0f - reduction), 160.0f, 1450.0f);
                 }
             });
             hooked++;
@@ -307,48 +401,102 @@ public final class FolmePhysicsHook {
         return hooked;
     }
 
-    private void applyTunedCurve(float[] out, float damping, float response, String profile) {
-        boolean highHz = currentRefreshHz > 75.0f;
-        float w = cachedThermalScale;
-        float outDamp = damping;
-        float outResp;
-
-        if (EngineConfig.MOTION_SILK.equals(profile)) {
-            if (highHz) {
-                if (damping > 0.84f) {
-                    outDamp = clamp(damping - (damping - 0.84f) * (0.55f * w), 0.82f, 0.90f);
+    /**
+     * Universal UI Interface Curve Hook on ValueAnimator.setInterpolator.
+     * Upgrades finite UI transitions (dialogs, panels, sheets, cards, subpages) to our
+     * analytical SpringPhysicsCurve while strictly sparing LinearInterpolator, progress
+     * spinners, AccelerateInterpolator, and infinite animations.
+     */
+    private boolean hookUniversalValueAnimator() {
+        try {
+            Method mSetInterp = ValueAnimator.class.getDeclaredMethod("setInterpolator", TimeInterpolator.class);
+            XposedBridge.hookMethod(mSetInterp, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("ValueAnimInterp")) {
+                        return;
+                    }
+                    try {
+                        String profile = config.getMotionProfile();
+                        if (EngineConfig.MOTION_OFF.equals(profile) || bugGuard.isAnimationDisabledByUser()) {
+                            return;
+                        }
+                        if (!(param.thisObject instanceof ValueAnimator)
+                                || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        Object raw = param.args[0];
+                        if (!(raw instanceof TimeInterpolator) || (raw instanceof SpringPhysicsCurve)) {
+                            return;
+                        }
+                        ValueAnimator va = (ValueAnimator) param.thisObject;
+                        if (va.getRepeatCount() == ValueAnimator.INFINITE || va.getRepeatCount() > 0) {
+                            return;
+                        }
+                        long dur = va.getDuration();
+                        // Only apply to standard finite UI transitions (skip instant snaps & long progress bars)
+                        if (dur > 0L && (dur < 110L || dur > 900L)) {
+                            return;
+                        }
+                        if (isUpgradeableInterpolator((TimeInterpolator) raw)) {
+                            param.args[0] = getCurveForProfile(profile);
+                            telemetry.incCurvesApplied();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("ValueAnimInterp");
+                    }
                 }
-                outResp = clamp(response * (1.0f + 0.22f * w), 0.20f, 0.62f);
-            } else {
-                // 60 Hz Silk: controlled smooth settle without sluggish tail frames
-                if (damping > 0.86f) {
-                    outDamp = clamp(damping - (damping - 0.86f) * (0.40f * w), 0.85f, 0.92f);
-                }
-                outResp = clamp(response * (1.0f + 0.12f * w), 0.19f, 0.52f);
-            }
-        } else {
-            if (highHz) {
-                if (damping > 0.88f) {
-                    outDamp = clamp(damping - (damping - 0.88f) * (0.45f * w), 0.85f, 0.93f);
-                }
-                outResp = clamp(response * (1.0f + 0.13f * w), 0.18f, 0.54f);
-            } else {
-                // 60 Hz HyperOS 4: crisp, immediate response with clean frame landing
-                if (damping > 0.90f) {
-                    outDamp = clamp(damping - (damping - 0.90f) * (0.35f * w), 0.88f, 0.94f);
-                }
-                outResp = clamp(response * (1.0f + 0.06f * w), 0.17f, 0.46f);
-            }
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
         }
-        out[0] = outDamp;
-        out[1] = outResp;
     }
 
-    private void applyTunedCurveDouble(double[] out, float damping, float response, String profile) {
-        float[] tmp = new float[2];
-        applyTunedCurve(tmp, damping, response, profile);
-        out[0] = tmp[0];
-        out[1] = tmp[1];
+    private boolean isUpgradeableInterpolator(TimeInterpolator interp) {
+        Class<?> clazz = interp.getClass();
+        Integer cached = interpClassCache.get(clazz);
+        if (cached != null) {
+            return cached == INTERP_UPGRADE;
+        }
+        int decision = INTERP_SKIP;
+        if (interp instanceof PathInterpolator
+                || interp instanceof DecelerateInterpolator
+                || interp instanceof AccelerateDecelerateInterpolator) {
+            decision = INTERP_UPGRADE;
+        } else {
+            String name = clazz.getName().toLowerCase();
+            if (!name.contains("linear") && !name.contains("bounce") && !name.contains("cycle")
+                    && !name.contains("overshoot") && !name.contains("anticipate")
+                    && (name.contains("fastoutslowin")
+                    || name.contains("easeout")
+                    || name.contains("decelerate")
+                    || name.contains("cubicease")
+                    || name.contains("quartease")
+                    || name.contains("quintease")
+                    || name.contains("sineease")
+                    || name.contains("miuix.view.animation"))) {
+                decision = INTERP_UPGRADE;
+            }
+        }
+        interpClassCache.put(clazz, decision);
+        return decision == INTERP_UPGRADE;
+    }
+
+    private void applyPhysicsDampingResponse(float[] out, float stockDamp, float stockResp, SpringPhysicsCurve curve) {
+        // Blend stock MIUI Folme spring toward analytical (zeta, T) while preserving relative speed
+        float targetDamp = curve.getDampingRatio();
+        float targetResp = curve.getResponseSec();
+        float outDamp = stockDamp;
+        if (stockDamp > targetDamp) {
+            outDamp = clamp(stockDamp * 0.45f + targetDamp * 0.55f, 0.82f, 0.96f);
+        }
+        // Physical ratio scaling anchored to template response T
+        float ratio = clamp(targetResp / 0.30f, 0.95f, 1.28f);
+        float maxResp = currentRefreshHz > 75.0f ? 0.62f : 0.50f;
+        float outResp = clamp(stockResp * ratio, 0.17f, maxResp);
+        out[0] = outDamp;
+        out[1] = outResp;
     }
 
     private static int resolveSpringStyleConstant(Class<?> easeClass) {

@@ -70,6 +70,7 @@ chmod 0755 \
   "$STAGE_DIR/lib/rro.sh" \
   "$STAGE_DIR/lib/settings_tx.sh" \
   "$STAGE_DIR/lib/verifier.sh" \
+  "$STAGE_DIR/lib/os_bug_logic.sh" \
   "$STAGE_DIR/lib/webui_ctl.sh"
 
 (

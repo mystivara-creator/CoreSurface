@@ -19,6 +19,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(dirname -- "$SCRIPT_DIR")}
 . "$MODDIR/lib/settings_tx.sh"
 # shellcheck source=lib/verifier.sh
 . "$MODDIR/lib/verifier.sh"
+# shellcheck source=lib/os_bug_logic.sh
+. "$MODDIR/lib/os_bug_logic.sh"
 
 CS_CONFIG_FILE="$CS_STATE_DIR/config.prop"
 CS_COREFLOW_DIR=${CORESURFACE_COREFLOW_DIR:-/data/adb/modules/cfae_framework}
@@ -164,8 +166,14 @@ cs_cmd_status() {
   printf 'verify_engine_folme_hooks=%s\n' "$(cs_verify_get VERIFY_ENGINE_FOLME_HOOKS)"
   printf 'verify_engine_aod_gates=%s\n' "$(cs_verify_get VERIFY_ENGINE_AOD_GATES)"
   printf 'verify_engine_springs=%s\n' "$(cs_verify_get VERIFY_ENGINE_SPRINGS)"
+  printf 'verify_engine_curves=%s\n' "$(cs_verify_get VERIFY_ENGINE_CURVES)"
   printf 'verify_engine_toasts=%s\n' "$(cs_verify_get VERIFY_ENGINE_TOASTS)"
   printf 'verify_engine_recents=%s\n' "$(cs_verify_get VERIFY_ENGINE_RECENTS)"
+  printf 'verify_engine_circuits=%s\n' "$(cs_verify_get VERIFY_ENGINE_CIRCUITS)"
+
+  printf 'os_bugs_detected=%s\n' "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_DETECTED)"
+  printf 'os_bugs_mitigated=%s\n' "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_MITIGATED)"
+  printf 'os_bugs_csv=%s\n' "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_CSV)"
 
   printf 'verify_feat_motion_profile=%s\n' "$(cs_verify_get VERIFY_FEAT_MOTION_PROFILE)"
   printf 'verify_feat_surgical_guard=%s\n' "$(cs_verify_get VERIFY_FEAT_SURGICAL_GUARD)"
@@ -309,6 +317,7 @@ cs_cmd_hot_sync() {
   cs_resolve_features
   cs_sync_engine_live_prop || true
   cs_settings_sync_all || true
+  cs_os_bug_scan "late" "$MODDIR" || true
   cs_verifier_run || true
   cs_log "WebUI triggered instant Motion Engine + settings hot-sync & re-verification."
   printf 'Hot-Apply & verifikasi ulang selesai tanpa reboot.\n'
@@ -385,7 +394,7 @@ cs_cmd_install_engine() {
   if [ "$_cs_rc" -eq 0 ]; then
     cs_verifier_run || true
     cs_log "WebUI installed/updated CoreSurfaceEngine.apk."
-    printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod).\n'
+    printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod, Settings).\n'
     return 0
   fi
 
@@ -411,13 +420,18 @@ cs_cmd_diag_report() {
     "$(cs_verify_get COMPAT_SCORE_PCT)" \
     "$(cs_verify_get VERIFY_FEAT_VERIFIED)" "$(cs_verify_get VERIFY_FEAT_EVALUATED)" \
     "$(cs_verify_get VERIFY_PROPS_MATCHED)" "$(cs_verify_get VERIFY_PROPS_TOTAL)"
-  printf 'Motion Engine: installed=%s active=%s profile=%s hz=%s lod=%s hooks=%s gates=%s folme=%s aod_gates=%s springs=%s toasts=%s recents=%s\n' \
+  printf 'Motion Engine: installed=%s active=%s profile=%s hz=%s lod=%s hooks=%s gates=%s folme=%s aod_gates=%s springs=%s curves=%s toasts=%s recents=%s circuits=%s\n' \
     "$(cs_verify_get VERIFY_ENGINE_INSTALLED)" "$(cs_verify_get VERIFY_ENGINE_ACTIVE)" \
     "$(cs_verify_get VERIFY_ENGINE_MOTION)" "$(cs_verify_get VERIFY_ENGINE_HZ)" \
     "$(cs_verify_get VERIFY_ENGINE_LOD)" "$(cs_verify_get VERIFY_ENGINE_HOOKS)" \
     "$(cs_verify_get VERIFY_ENGINE_NATIVE_GATES)" "$(cs_verify_get VERIFY_ENGINE_FOLME_HOOKS)" \
     "$(cs_verify_get VERIFY_ENGINE_AOD_GATES)" "$(cs_verify_get VERIFY_ENGINE_SPRINGS)" \
-    "$(cs_verify_get VERIFY_ENGINE_TOASTS)" "$(cs_verify_get VERIFY_ENGINE_RECENTS)"
+    "$(cs_verify_get VERIFY_ENGINE_CURVES)" "$(cs_verify_get VERIFY_ENGINE_TOASTS)" \
+    "$(cs_verify_get VERIFY_ENGINE_RECENTS)" "$(cs_verify_get VERIFY_ENGINE_CIRCUITS)"
+  printf 'OS Bug Logic: detected=%s mitigated=%s list=%s\n' \
+    "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_DETECTED)" \
+    "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_MITIGATED)" \
+    "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_CSV)"
   printf 'XML Patcher: status=%s mount=%s tags=%s source=%s\n' \
     "$(cs_state_get XML_STATUS)" "$(cs_verify_get VERIFY_XML_MOUNT)" \
     "$(cs_state_get XML_PATCHED_TAGS)" "$(cs_state_get XML_SOURCE)"

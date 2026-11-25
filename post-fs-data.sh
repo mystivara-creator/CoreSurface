@@ -14,6 +14,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 . "$MODDIR/lib/xml_patcher.sh"
 # shellcheck source=lib/rro.sh
 . "$MODDIR/lib/rro.sh"
+# shellcheck source=lib/os_bug_logic.sh
+. "$MODDIR/lib/os_bug_logic.sh"
 
 CS_CONFIG_FILE="$CS_STATE_DIR/config.prop"
 
@@ -68,6 +70,9 @@ cs_state_set "EFF_TIER" "$CS_EFF_TIER"
 cs_state_set "PENDING_KEYS" ""
 
 cs_log "Detected ${CS_ROM_FAMILY} (${CS_ROM_VERSION}) SDK=${CS_ANDROID_SDK} RAM=${CS_RAM_MB}MB | Tier=${CS_EFF_TIER} (cfg=${CFG_TIER_MODE}, detected=${CS_DETECTED_TIER})."
+
+# Layer 2b: Device Logic & OS/System Bug Detector (early scan before mount/props)
+cs_os_bug_scan "early" "$MODDIR" || true
 
 # Layer 4a: Apply Granular Non-Persistent Properties (resetprop -n + system.prop sync)
 cs_apply_all_props "$MODDIR" || true

@@ -234,13 +234,17 @@ async function refreshStatus() {
     const stats = 'Folme: ' + (kv.verify_engine_folme_hooks || '0')
       + ' · Gates: ' + (kv.verify_engine_native_gates || '0')
       + ' · Springs: ' + (kv.verify_engine_springs || '0')
+      + ' · UI Curves: ' + (kv.verify_engine_curves || '0')
       + ' · Recents Fix: ' + (kv.verify_engine_recents || '0')
       + ' · AOD Gates: ' + (kv.verify_engine_aod_gates || '0');
+    const bugSummary = (kv.os_bugs_mitigated || '0') + '/' + (kv.os_bugs_detected || '0') + ' termitigasi'
+      + (kv.os_bugs_csv ? (' (' + kv.os_bugs_csv.split(',').slice(0, 3).join(', ') + ')') : '');
 
     summary.replaceChildren(
       makeKvRow('ROM & RAM', romStr + ' · ' + (kv.ram_mb || '0') + ' MB'),
       makeKvRow('Mode Blur & Warna', blurMode + ' · Custom Color ON'),
       makeKvRow('Profil Animasi', formatMotion(kv.verify_engine_motion && kv.verify_engine_motion !== 'N/A' ? kv.verify_engine_motion : kv.eff_feat_motion_profile)),
+      makeKvRow('OS Bug Logic', bugSummary),
       makeKvRow('Statistik Live', active ? stats : 'Aktifkan CoreSurface Engine di LSPosed'),
       makeKvRow('Base Layer 1', 'Props ' + (kv.verify_props_matched || '0') + '/' + (kv.verify_props_total || '0')
         + ' · XML ' + (kv.verify_xml_mount || kv.xml_status || '-')

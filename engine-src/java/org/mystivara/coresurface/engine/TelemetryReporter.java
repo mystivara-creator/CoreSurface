@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Zero-gimmick live runtime telemetry writer (background daemon thread, zero UI I/O).
  * Uses two-tier flush throttling: 500ms for state changes and 5000ms for high-frequency
- * counters (springs tuned, etc.) to keep scrolling/swiping 100% free of disk churn.
+ * counters (springs/curves tuned) to keep scrolling/swiping 100% free of disk churn.
  */
 public final class TelemetryReporter {
     public static final String TELEMETRY_FILENAME = "coresurface_telemetry.prop";
@@ -32,12 +32,15 @@ public final class TelemetryReporter {
     private volatile String lastConfig = "default";
 
     private final Set<String> boundHooks = new LinkedHashSet<>();
+    private final Set<String> mitigatedBugs = new LinkedHashSet<>();
     private final AtomicInteger nativeGatesHooked = new AtomicInteger(0);
     private final AtomicInteger folmeHooksBound = new AtomicInteger(0);
     private final AtomicInteger aodGatesHooked = new AtomicInteger(0);
     private final AtomicInteger springsTuned = new AtomicInteger(0);
+    private final AtomicInteger curvesApplied = new AtomicInteger(0);
     private final AtomicInteger toastsGuarded = new AtomicInteger(0);
     private final AtomicInteger recentsGuarded = new AtomicInteger(0);
+    private final AtomicInteger circuitTrips = new AtomicInteger(0);
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -70,6 +73,13 @@ public final class TelemetryReporter {
     public synchronized void recordHookBound(String hookName) {
         if (hookName != null && !hookName.isEmpty()) {
             boundHooks.add(hookName);
+            scheduleFlush(FAST_FLUSH_MS);
+        }
+    }
+
+    public synchronized void recordOsBugMitigated(String bugId) {
+        if (bugId != null && !bugId.isEmpty()) {
+            mitigatedBugs.add(bugId);
             scheduleFlush(FAST_FLUSH_MS);
         }
     }
@@ -123,6 +133,11 @@ public final class TelemetryReporter {
         scheduleFlush(LAZY_FLUSH_MS);
     }
 
+    public void incCurvesApplied() {
+        curvesApplied.incrementAndGet();
+        scheduleFlush(LAZY_FLUSH_MS);
+    }
+
     public void incToastsGuarded() {
         toastsGuarded.incrementAndGet();
         scheduleFlush(LAZY_FLUSH_MS);
@@ -131,6 +146,11 @@ public final class TelemetryReporter {
     public void incRecentsGuarded() {
         recentsGuarded.incrementAndGet();
         scheduleFlush(LAZY_FLUSH_MS);
+    }
+
+    public void incCircuitTrips() {
+        circuitTrips.incrementAndGet();
+        scheduleFlush(FAST_FLUSH_MS);
     }
 
     public void scheduleFlush() {
@@ -153,6 +173,7 @@ public final class TelemetryReporter {
         }
         try {
             StringBuilder hooksCsv = new StringBuilder();
+            StringBuilder bugsCsv = new StringBuilder();
             synchronized (this) {
                 for (String h : boundHooks) {
                     if (hooksCsv.length() > 0) {
@@ -160,9 +181,15 @@ public final class TelemetryReporter {
                     }
                     hooksCsv.append(h);
                 }
+                for (String b : mitigatedBugs) {
+                    if (bugsCsv.length() > 0) {
+                        bugsCsv.append(',');
+                    }
+                    bugsCsv.append(b);
+                }
             }
 
-            StringBuilder sb = new StringBuilder(300);
+            StringBuilder sb = new StringBuilder(360);
             sb.append("ENGINE_ACTIVE=1\n");
             sb.append("ENGINE_VERSION=1.0.0\n");
             sb.append("PROCESS=").append(processName).append('\n');
@@ -172,12 +199,15 @@ public final class TelemetryReporter {
             sb.append("LOD_TIER=").append(lodTier).append('\n');
             sb.append("THERMAL_STATUS=").append(thermalStatus).append('\n');
             sb.append("HOOKS_BOUND=").append(hooksCsv).append('\n');
+            sb.append("BUGS_MITIGATED=").append(bugsCsv).append('\n');
             sb.append("NATIVE_GATES=").append(nativeGatesHooked.get()).append('\n');
             sb.append("FOLME_HOOKS=").append(folmeHooksBound.get()).append('\n');
             sb.append("AOD_GATES=").append(aodGatesHooked.get()).append('\n');
             sb.append("SPRINGS_TUNED=").append(springsTuned.get()).append('\n');
+            sb.append("CURVES_APPLIED=").append(curvesApplied.get()).append('\n');
             sb.append("TOASTS_GUARDED=").append(toastsGuarded.get()).append('\n');
             sb.append("RECENTS_GUARDED=").append(recentsGuarded.get()).append('\n');
+            sb.append("CIRCUIT_TRIPS=").append(circuitTrips.get()).append('\n');
             sb.append("LAST_CONFIG=").append(lastConfig).append('\n');
             sb.append("UPDATED_MS=").append(System.currentTimeMillis()).append('\n');
 

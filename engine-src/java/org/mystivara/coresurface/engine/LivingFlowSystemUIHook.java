@@ -20,6 +20,7 @@ import de.robv.android.xposed.XposedBridge;
 public final class LivingFlowSystemUIHook {
     private final EngineConfig config;
     private final ThermalLodController lodController;
+    private final DeviceBugGuard bugGuard;
     private final FolmePhysicsHook folmeHook;
     private final SurgicalBlurGuardHook blurGuard;
     private final DeviceLevelUnlockHook deviceLevelHook;
@@ -28,10 +29,12 @@ public final class LivingFlowSystemUIHook {
     private volatile boolean contextBootstrapped = false;
 
     public LivingFlowSystemUIHook(EngineConfig config, ThermalLodController lodController,
-                                  FolmePhysicsHook folmeHook, SurgicalBlurGuardHook blurGuard,
-                                  DeviceLevelUnlockHook deviceLevelHook, TelemetryReporter telemetry) {
+                                  DeviceBugGuard bugGuard, FolmePhysicsHook folmeHook,
+                                  SurgicalBlurGuardHook blurGuard, DeviceLevelUnlockHook deviceLevelHook,
+                                  TelemetryReporter telemetry) {
         this.config = config;
         this.lodController = lodController;
+        this.bugGuard = bugGuard;
         this.folmeHook = folmeHook;
         this.blurGuard = blurGuard;
         this.deviceLevelHook = deviceLevelHook;
@@ -83,6 +86,7 @@ public final class LivingFlowSystemUIHook {
         config.attachContext(appCtx);
         telemetry.attachContext(appCtx);
         lodController.attachContext(appCtx);
+        bugGuard.attachContext(appCtx);
         folmeHook.attachContext(appCtx);
         telemetry.setMotionProfile(config.getMotionProfile());
         telemetry.setLastConfig(config.getRawConfig());

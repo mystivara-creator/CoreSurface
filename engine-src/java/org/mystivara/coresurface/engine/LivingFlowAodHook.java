@@ -30,16 +30,18 @@ public final class LivingFlowAodHook {
 
     private final EngineConfig config;
     private final ThermalLodController lodController;
+    private final DeviceBugGuard bugGuard;
     private final FolmePhysicsHook folmeHook;
     private final DeviceLevelUnlockHook deviceLevelHook;
     private final TelemetryReporter telemetry;
     private volatile boolean contextBootstrapped = false;
 
     public LivingFlowAodHook(EngineConfig config, ThermalLodController lodController,
-                             FolmePhysicsHook folmeHook, DeviceLevelUnlockHook deviceLevelHook,
-                             TelemetryReporter telemetry) {
+                             DeviceBugGuard bugGuard, FolmePhysicsHook folmeHook,
+                             DeviceLevelUnlockHook deviceLevelHook, TelemetryReporter telemetry) {
         this.config = config;
         this.lodController = lodController;
+        this.bugGuard = bugGuard;
         this.folmeHook = folmeHook;
         this.deviceLevelHook = deviceLevelHook;
         this.telemetry = telemetry;
@@ -169,6 +171,7 @@ public final class LivingFlowAodHook {
         config.attachContext(appCtx);
         telemetry.attachContext(appCtx);
         lodController.attachContext(appCtx);
+        bugGuard.attachContext(appCtx);
         folmeHook.attachContext(appCtx);
         telemetry.setMotionProfile(config.getMotionProfile());
         telemetry.setLastConfig(config.getRawConfig());

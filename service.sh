@@ -14,6 +14,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 . "$MODDIR/lib/settings_tx.sh"
 # shellcheck source=lib/verifier.sh
 . "$MODDIR/lib/verifier.sh"
+# shellcheck source=lib/os_bug_logic.sh
+. "$MODDIR/lib/os_bug_logic.sh"
 
 CS_CONFIG_FILE="$CS_STATE_DIR/config.prop"
 
@@ -145,6 +147,7 @@ if cs_watchdog_monitor_systemui; then
 
   cs_install_engine_if_needed || true
   cs_settings_sync_all || true
+  cs_os_bug_scan "late" "$MODDIR" || true
   cs_verifier_run || true
 fi
 

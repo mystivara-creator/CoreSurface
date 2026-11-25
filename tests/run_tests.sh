@@ -226,6 +226,7 @@ run_post_fs_data() {
   CORESURFACE_MODDIR="$SB_MOD" \
   CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_PROC_MOUNTS="$SB_PROC_MOUNTS" \
   CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
   sh "$SB_MOD/post-fs-data.sh"
 }
@@ -1008,6 +1009,64 @@ write_mock_meminfo "7500000"
 PATH="$SB_BIN:$PATH" MODPATH="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   CORESURFACE_NONINTERACTIVE=1 sh "$SB_MOD/customize.sh" >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=auto" "Non-interactive install preserves default CS_TIER_MODE=auto cleanly"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 15: Device Logic & OS/System Bug Detector + Universal UI Curve Telemetry ===\n'
+setup_sandbox "t15_os_bug_logic"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+# Seed pre-existing stale XML mount + leaked persist prop + vendor blur throttle
+printf '/dev/block/dm-0 /product/etc/device_features/kunzite.xml ext4 ro 0 0\n' > "$SB_PROC_MOUNTS"
+printf 'persist.sys.advanced_visual_release=3\nro.sf.blurs_are_expensive=1\n' > "$SB_PROPS_DB"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+assert_file_contains "$SB_STATE/os_bugs.state" "HOS3_ADVTEX_TOAST_RECENTS" "Device Logic detects HyperOS 3 Advanced Textures Toast/Recents bug"
+assert_file_contains "$SB_STATE/os_bugs.state" "HOS3_AOD_FULLSCREEN_CRASH" "Device Logic detects HyperOS 3 fullscreen AOD crash risk"
+assert_file_contains "$SB_STATE/os_bugs.state" "SDK35_ROOT_BINDER_GUARD" "Device Logic detects Android 16 root Binder restriction"
+assert_file_contains "$SB_STATE/os_bugs.state" "SOFT_REBOOT_STALE_XML" "Device Logic detects stale soft-reboot XML mount"
+assert_file_contains "$SB_STATE/os_bugs.state" "NON_LTPO_AOD_10S_CAP" "Device Logic detects Non-LTPO 10s AOD cap"
+assert_file_contains "$SB_STATE/os_bugs.state" "VENDOR_BLUR_LOWRAM_THROTTLE" "Device Logic detects vendor blurs_are_expensive throttle"
+assert_file_contains "$SB_STATE/os_bugs.state" "LEAKED_PERSIST_PROPS" "Device Logic detects leaked persist.sys.advanced_visual_release"
+
+# Post-boot late scan detects missing meta-overlayfs when staged APK is absent from live overlay dir,
+# and aggregates universal UI Curves telemetry from com.android.settings
+cat > "$SB/settings_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=silk
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=FolmePhysics,UiCurvePhysics
+NATIVE_GATES=0
+FOLME_HOOKS=3
+AOD_GATES=0
+SPRINGS_TUNED=10
+CURVES_APPLIED=64
+TOASTS_GUARDED=0
+RECENTS_GUARDED=0
+CIRCUIT_TRIPS=0
+EOF
+
+CORESURFACE_LIVE_OVERLAY_DIR="$SB/empty_live_overlay" \
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/missing_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+CORESURFACE_ENGINE_SETTINGS_TELEM="$SB/settings_telem.prop" \
+  run_service
+assert_file_contains "$SB_STATE/os_bugs.state" "MISSING_META_OVERLAYFS" "Late Device Logic detects missing meta-overlayfs metamodule"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_CURVES=64" "Verifier aggregates universal UI SpringPhysicsCurve count from Settings"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=FolmePhysics,UiCurvePhysics" "Verifier records UiCurvePhysics universal ValueAnimator hook"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_CIRCUITS=0" "DeviceBugGuard reports 0 circuit breaker trips"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
