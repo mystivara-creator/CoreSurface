@@ -1259,5 +1259,62 @@ assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;g
 assert_file_contains "$SB_PM_UNINST_LOG" "uninstall org.mystivara.coresurface.engine" "uninstall.sh cleanly uninstalls CoreSurfaceEngine APK"
 
 # ---------------------------------------------------------------------------
+printf '=== Test 19: Flagship Computility (Level 6/4) Re-Assertion, system/deviceLevelList & Non-LTPO AOD Keycode-Goto Flip ===\n'
+setup_sandbox "t19_computility_and_aod_always"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+cat > "$SB_XML_DIR1/kunzite.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">false</bool>
+    <integer name="device_level">1</integer>
+    <bool name="support_aod">true</bool>
+    <bool name="is_only_support_keycode_goto">true</bool>
+    <bool name="support_screen_effect">true</bool>
+</features>
+EOF
+printf 'CS_TIER_MODE=flagship\nFEAT_AOD_UNLOCK=1\n' > "$SB_STATE/config.prop"
+printf 'persist.sys.computility.cpulevel=2\npersist.sys.computility.gpulevel=2\n' > "$SB_PROPS_DB"
+printf 'system|deviceLevelList=v:1,c:2,g:2\n' > "$SB_SETTINGS_DB"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.cpulevel=6" "Flagship sets persist.sys.computility.cpulevel=6"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.gpulevel=6" "Flagship sets persist.sys.computility.gpulevel=6"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.version=2025" "Flagship sets persist.sys.computility.version=2025"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.cpulevel=4" "Flagship sets persist.sys.computilityV2.cpulevel=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.gpulevel=4" "Flagship sets persist.sys.computilityV2.gpulevel=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.computilityV2.devicelevel=4" "Flagship sets persist.sys.computilityV2.devicelevel=4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyper_transition_v=3" "Flagship sets persist.sys.hyper_transition_v=3"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.shell_anim_enable_fcb=true" "Flagship sets ro.miui.shell_anim_enable_fcb=true"
+assert_file_contains "$SB_PROPS_LOG" "persist.hyper.barfollow_anim=true" "Flagship sets persist.hyper.barfollow_anim=true"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_only_support_keycode_goto">false</bool>' "Non-LTPO AOD flips is_only_support_keycode_goto true -> false to unlock Always/Scheduled"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_video_screen">true</bool>' "Non-LTPO AOD enables is_video_screen=true"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "Protected stock display tag remains untouched"
+
+# Simulate HyperOS ComputilityService resetting cpulevel & gpulevel back to 2 during boot
+tmp_db="$SB_PROPS_DB.reverted"
+awk -F '=' '$1 != "persist.sys.computility.cpulevel" && $1 != "persist.sys.computility.gpulevel" { print $0 }' "$SB_PROPS_DB" > "$tmp_db"
+printf 'persist.sys.computility.cpulevel=2\npersist.sys.computility.gpulevel=2\n' >> "$tmp_db"
+mv -f "$tmp_db" "$SB_PROPS_DB"
+
+run_service
+assert_file_contains "$SB_PROPS_DB" "persist.sys.computility.cpulevel=6" "service.sh re-asserts persist.sys.computility.cpulevel=6 after ComputilityService boot overwrite"
+assert_file_contains "$SB_PROPS_DB" "persist.sys.computility.gpulevel=6" "service.sh re-asserts persist.sys.computility.gpulevel=6 after ComputilityService boot overwrite"
+assert_file_contains "$SB_SETTINGS_DB" "system|deviceLevelList=v:1,c:3,g:3" "service.sh syncs settings system/deviceLevelList=v:1,c:3,g:3 for Control Center"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_ANIMATIONS=verified_active" "Verifier confirms FEAT_ANIMATIONS verified_active with computility level 6"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_AOD_UNLOCK=verified_active" "Verifier confirms FEAT_AOD_UNLOCK verified_active via is_only_support_keycode_goto=false"
+
+# Verify uninstall cleanly restores original system/deviceLevelList=v:1,c:2,g:2
+PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
+  sh "$SB_MOD/uninstall.sh"
+assert_file_contains "$SB_SETTINGS_DB" "system|deviceLevelList=v:1,c:2,g:2" "uninstall.sh restores original system/deviceLevelList cleanly"
+
+# ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

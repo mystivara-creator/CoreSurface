@@ -72,26 +72,12 @@ cs_purge_leaked_persist_props() {
     persist.sys.support_window_smoothcorner \
     persist.sys.support_view_smoothcorner \
     persist.sys.add_blurnoise_supported \
-    persist.sys.multi_task.mask_blur_enable \
     persist.sys.background_blur_setting \
     persist.sys.background_blur_status_default \
     persist.sys.background_blur_version \
     persist.sys.advanced_visual_release \
     persist.sys.launcher_blur_supported \
     persist.sys.sf.disable_blurs \
-    persist.sys.computility.cpulevel \
-    persist.sys.computility.gpulevel \
-    persist.sys.computility.version \
-    persist.sys.computilityV2.cpulevel \
-    persist.sys.computilityV2.gpulevel \
-    persist.sys.computilityV2.devicelevel \
-    persist.sys.computilityV2.version \
-    persist.sys.hyper_transition \
-    persist.sys.hyper_transition_v \
-    persist.sys.element_transition_supported \
-    persist.sys.enable_parallel_sweep \
-    persist.hyper.barfollow_anim \
-    persist.sys.sf_charge_anim_supported \
     persist.sys.feature.island \
     persist.sys.feature.island.animation \
     persist.sys.feature.island.shader \
@@ -140,6 +126,28 @@ cs_set_prop() {
   return 0
 }
 
+cs_set_prop_mem_only() {
+  _cs_sm_key=$1
+  _cs_sm_val=$2
+  [ -n "$_cs_sm_key" ] && [ -n "$_cs_sm_val" ] || return 0
+  cs_find_resetprop || return 0
+  if [ "$CS_RESETPROP_MODE" = "magisk" ]; then
+    "$CS_RESETPROP_BIN" resetprop -n "$_cs_sm_key" "$_cs_sm_val" 2>/dev/null || true
+  else
+    "$CS_RESETPROP_BIN" -n "$_cs_sm_key" "$_cs_sm_val" 2>/dev/null || true
+  fi
+}
+
+cs_max_uint() {
+  _cs_mu_a=${1:-0}
+  _cs_mu_b=${2:-0}
+  if [ "$_cs_mu_a" -gt "$_cs_mu_b" ] 2>/dev/null; then
+    printf '%s' "$_cs_mu_a"
+  else
+    printf '%s' "$_cs_mu_b"
+  fi
+}
+
 cs_resolve_never_downgrade_level_list() {
   _cs_nd_want_c=$1
   _cs_nd_want_g=$2
@@ -167,27 +175,52 @@ cs_resolve_never_downgrade_level_list() {
 cs_apply_feat_animations() {
   [ "$EFF_FEAT_ANIMATIONS" = "1" ] || return 0
 
-  # Verified HyperOS/MIUI animation & split Control Center flags scaled by resolved tier
-  # Never-Downgrade: never lower ro.miui.device_level or deviceLevelList below stock factory level
+  # Verified HyperOS/MIUI Control Center, Computility V1/V2 & HyperTransition flags
+  # scaled by resolved tier with strict Never-Downgrade protection.
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
   case "${CS_EFF_TIER:-low}" in
     flagship)
+      _cs_cpu=$(cs_max_uint 6 "${CS_STOCK_CPU_LEVEL:-0}")
+      _cs_gpu=$(cs_max_uint 6 "${CS_STOCK_GPU_LEVEL:-0}")
       if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -le 3 ]; then
         cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "3"
       fi
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 3 3)"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.cpulevel" "$_cs_cpu"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.gpulevel" "$_cs_gpu"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.version" "2025"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.cpulevel" "4"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.gpulevel" "4"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.devicelevel" "4"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.version" "2026"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition_v" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.sf_charge_anim_supported" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
     balanced_pro)
+      _cs_cpu=$(cs_max_uint 4 "${CS_STOCK_CPU_LEVEL:-0}")
+      _cs_gpu=$(cs_max_uint 4 "${CS_STOCK_GPU_LEVEL:-0}")
       if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
         cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
       fi
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 2 3)"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.cpulevel" "$_cs_cpu"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.gpulevel" "$_cs_gpu"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computility.version" "2025"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.cpulevel" "3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.gpulevel" "3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.devicelevel" "3"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.computilityV2.version" "2026"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition_v" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
     *)
       if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
@@ -196,6 +229,47 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 2 2)"
       ;;
   esac
+}
+
+# Late-boot re-assertion (strictly memory-only resetprop -n):
+# HyperOS's ComputilityService can reset persist.sys.computility.cpulevel/gpulevel back to 2
+# during boot after post-fs-data. Re-applying them after boot_completed keeps Control Center
+# flagship animations & computility levels intact without writing /data/property.
+cs_reassert_computility_props() {
+  [ "$EFF_FEAT_ANIMATIONS" = "1" ] || return 0
+  case "${CS_EFF_TIER:-low}" in
+    flagship)
+      _cs_rcpu=$(cs_max_uint 6 "${CS_STOCK_CPU_LEVEL:-0}")
+      _cs_rgpu=$(cs_max_uint 6 "${CS_STOCK_GPU_LEVEL:-0}")
+      cs_set_prop_mem_only "persist.sys.computility.cpulevel" "$_cs_rcpu"
+      cs_set_prop_mem_only "persist.sys.computility.gpulevel" "$_cs_rgpu"
+      cs_set_prop_mem_only "persist.sys.computility.version" "2025"
+      cs_set_prop_mem_only "persist.sys.computilityV2.cpulevel" "4"
+      cs_set_prop_mem_only "persist.sys.computilityV2.gpulevel" "4"
+      cs_set_prop_mem_only "persist.sys.computilityV2.devicelevel" "4"
+      cs_set_prop_mem_only "persist.sys.computilityV2.version" "2026"
+      cs_set_prop_mem_only "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 3 3)"
+      cs_set_prop_mem_only "persist.sys.hyper_transition_v" "3"
+      cs_set_prop_mem_only "persist.hyper.barfollow_anim" "true"
+      cs_log "Re-asserted flagship computility (cpu=${_cs_rcpu}, gpu=${_cs_rgpu}, V2=4) via resetprop -n."
+      ;;
+    balanced_pro)
+      _cs_rcpu=$(cs_max_uint 4 "${CS_STOCK_CPU_LEVEL:-0}")
+      _cs_rgpu=$(cs_max_uint 4 "${CS_STOCK_GPU_LEVEL:-0}")
+      cs_set_prop_mem_only "persist.sys.computility.cpulevel" "$_cs_rcpu"
+      cs_set_prop_mem_only "persist.sys.computility.gpulevel" "$_cs_rgpu"
+      cs_set_prop_mem_only "persist.sys.computility.version" "2025"
+      cs_set_prop_mem_only "persist.sys.computilityV2.cpulevel" "3"
+      cs_set_prop_mem_only "persist.sys.computilityV2.gpulevel" "3"
+      cs_set_prop_mem_only "persist.sys.computilityV2.devicelevel" "3"
+      cs_set_prop_mem_only "persist.sys.computilityV2.version" "2026"
+      cs_set_prop_mem_only "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 2 3)"
+      cs_set_prop_mem_only "persist.sys.hyper_transition_v" "3"
+      cs_set_prop_mem_only "persist.hyper.barfollow_anim" "true"
+      cs_log "Re-asserted balanced_pro computility (cpu=${_cs_rcpu}, gpu=${_cs_rgpu}, V2=3) via resetprop -n."
+      ;;
+  esac
+  return 0
 }
 
 cs_apply_feat_blur() {

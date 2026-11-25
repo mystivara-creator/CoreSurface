@@ -69,8 +69,11 @@ cs_probe_stock_capabilities() {
   CS_STOCK_BLURS_EXPENSIVE="0"
   CS_STOCK_LOW_RAM="0"
   CS_STOCK_DEVICE_LEVEL_LIST=""
+  CS_STOCK_CPU_LEVEL="0"
+  CS_STOCK_GPU_LEVEL="0"
   export CS_STOCK_DEVICE_LEVEL CS_STOCK_HAS_BLUR CS_STOCK_HAS_EXPERT_COLOR \
-    CS_STOCK_BLURS_EXPENSIVE CS_STOCK_LOW_RAM CS_STOCK_DEVICE_LEVEL_LIST
+    CS_STOCK_BLURS_EXPENSIVE CS_STOCK_LOW_RAM CS_STOCK_DEVICE_LEVEL_LIST \
+    CS_STOCK_CPU_LEVEL CS_STOCK_GPU_LEVEL
 
   _cs_sdir=${CS_STATE_DIR:-${CORESURFACE_STATE_DIR:-/data/adb/coresurface}}
   _cs_snap_file="${_cs_sdir}/stock_caps.prop"
@@ -92,6 +95,8 @@ cs_probe_stock_capabilities() {
           STOCK_BLURS_EXPENSIVE) [ "$_cs_sv" = "1" ] && CS_STOCK_BLURS_EXPENSIVE="1" ;;
           STOCK_LOW_RAM) [ "$_cs_sv" = "1" ] && CS_STOCK_LOW_RAM="1" ;;
           STOCK_DEVICE_LEVEL_LIST) CS_STOCK_DEVICE_LEVEL_LIST="$_cs_sv" ;;
+          STOCK_CPU_LEVEL) cs_is_uint "$_cs_sv" && CS_STOCK_CPU_LEVEL="$_cs_sv" ;;
+          STOCK_GPU_LEVEL) cs_is_uint "$_cs_sv" && CS_STOCK_GPU_LEVEL="$_cs_sv" ;;
         esac
       done < "$_cs_snap_file"
       return 0
@@ -101,6 +106,14 @@ cs_probe_stock_capabilities() {
   _cs_sp_lvl=$(cs_getprop "ro.miui.device_level")
   if cs_is_uint "$_cs_sp_lvl"; then
     CS_STOCK_DEVICE_LEVEL="$_cs_sp_lvl"
+  fi
+  _cs_scpu=$(cs_getprop "persist.sys.computility.cpulevel")
+  if cs_is_uint "$_cs_scpu"; then
+    CS_STOCK_CPU_LEVEL="$_cs_scpu"
+  fi
+  _cs_sgpu=$(cs_getprop "persist.sys.computility.gpulevel")
+  if cs_is_uint "$_cs_sgpu"; then
+    CS_STOCK_GPU_LEVEL="$_cs_sgpu"
   fi
   if [ "$(cs_getprop "ro.sf.blurs_are_expensive")" = "1" ]; then
     CS_STOCK_BLURS_EXPENSIVE="1"
@@ -150,6 +163,8 @@ cs_probe_stock_capabilities() {
       printf 'STOCK_BLURS_EXPENSIVE=%s\n' "$CS_STOCK_BLURS_EXPENSIVE"
       printf 'STOCK_LOW_RAM=%s\n' "$CS_STOCK_LOW_RAM"
       printf 'STOCK_DEVICE_LEVEL_LIST=%s\n' "$CS_STOCK_DEVICE_LEVEL_LIST"
+      printf 'STOCK_CPU_LEVEL=%s\n' "$CS_STOCK_CPU_LEVEL"
+      printf 'STOCK_GPU_LEVEL=%s\n' "$CS_STOCK_GPU_LEVEL"
     } > "$_cs_snap_tmp" 2>/dev/null; then
       mv -f "$_cs_snap_tmp" "$_cs_snap_file" 2>/dev/null || rm -f "$_cs_snap_tmp" 2>/dev/null || true
     else

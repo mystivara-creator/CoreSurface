@@ -104,6 +104,10 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_aod|true\n'
       printf 'bool|support_aod_aon|true\n'
       printf 'bool|aod_support_keycode_goto_dismiss|true\n'
+      printf 'bool|is_video_screen|true\n'
+      # Critical non-LTPO AOD unlock (verified from HyperOS MiuiAod & HyperUnlocked):
+      # Stock non-LTPO XML ships is_only_support_keycode_goto=true which hides "Always" & "Scheduled".
+      printf 'bool|is_only_support_keycode_goto|false\n'
       # HyperOS 3 dynamic safety gate: avoid support_aod_fullscreen on HOS 3+
       if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
         printf 'bool|support_aod_fullscreen|true\n'
@@ -112,9 +116,10 @@ cs_xml_build_patch_spec() {
   } > "$_cs_spec_file"
 }
 
-# Non-destructive / Add-Only XML patcher using POSIX awk:
+# Non-destructive XML patcher using POSIX awk:
 # - Protected tags (fpsList, color/screen_effect, double_tap) are never modified.
-# - <bool>: only upgrades false -> true; never downgrades true -> false.
+# - Capability <bool>: only upgrades false -> true; never downgrades true -> false.
+# - Whitelisted restriction-removal <bool> (is_only_support_keycode_goto): flips true -> false.
 # - <integer>: only upgrades when desired > existing; never lowers an existing higher value.
 # - Missing whitelisted tags are appended cleanly before </features>.
 cs_xml_patch_file() {
@@ -128,6 +133,9 @@ cs_xml_patch_file() {
         return 1
       }
       return 0
+    }
+    function is_restriction_bool(name) {
+      return (name == "is_only_support_keycode_goto")
     }
     NR == FNR {
       if (NF == 3 && !is_protected($2)) {
@@ -169,9 +177,11 @@ cs_xml_patch_file() {
             indent = substr(line, 1, RLENGTH)
           }
           if (t == "bool") {
-            # Add-only: only change false -> true
+            # Add-only for capabilities (false -> true), plus explicit restriction removal (true -> false)
             if (cur == "false" && pval[k] == "true") {
               printf "%s<bool name=\"%s\">true</bool>\n", indent, k
+            } else if (cur == "true" && pval[k] == "false" && is_restriction_bool(k)) {
+              printf "%s<bool name=\"%s\">false</bool>\n", indent, k
             } else {
               print line
             }

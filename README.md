@@ -17,8 +17,8 @@ Saat flash melalui KernelSU-Next / Magisk / APatch, gunakan **`[Vol+]` = Ganti M
 | :--- | :--- | :--- | :--- | :---: |
 | **`auto`** | Deteksi cerdas RAM + *Immutable Factory Stock Snapshot*: Entry/Mid Non-Pro → `Lite`, Mid Pro/Pro+ → `Balanced Pro`, High-RAM non-flagship → `Max Flagship`, **Native Flagship asli (`device_level ≥ 3` + blur pabrik) → `Motion-Only Passthrough`** (tuning pabrik utuh!) | Sesuai kelas terdeteksi (0 overwrite pada Flagship asli) | Otomatis + prinsip *Never-Downgrade* | **ON** |
 | **`low` (`Lite`)** | Entry & Mid-Range Non-Pro (mis. Redmi Note 15 5G) atau prioritas ringan/60 Hz | **Blur Standar ON** (CC/Shade/Folder), **TANPA Advanced Textures** | `device_level=2`, `v:1,c:2,g:2`, RRO ringan (`SystemUI` + `ThemeManager` + `MiuiAod`), tanpa Video Depth / Freeform berat | **ON** |
-| **`balanced_pro` (`Balanced Pro`)** | Mid-Range Pro / Pro+ (mis. Poco X8 Pro, Redmi Note 15 Pro / Pro+ 5G) atau user Non-Pro yang ingin suite harian lengkap | Blur penuh (HOS 3 default tetap aman dari bug Toast/Recents) | `device_level=2`, `v:1,c:2,g:3`, `HyperTransition`, RRO penuh, Video Depth, Multitask & High Hz | **ON** |
-| **`flagship` (`Max Flagship`)** | Enthusiast / Mid Pro+ yang ingin pembukaan kapabilitas flagship penuh | Blur penuh (HOS 3 safe default + Surgical Guard) | `device_level=3`, `v:1,c:3,g:3`, `HyperTransition`, `parallel_sweep`, RRO & XML penuh, Silk Folme | **ON** |
+| **`balanced_pro` (`Balanced Pro`)** | Mid-Range Pro / Pro+ (mis. Poco X8 Pro, Redmi Note 15 Pro / Pro+ 5G) atau user Non-Pro yang ingin suite harian lengkap | Blur penuh (HOS 3 default tetap aman dari bug Toast/Recents) | `device_level=2`, `v:1,c:2,g:3`, `computility=4/4` (V2 `3`), `HyperTransition v3`, `barfollow_anim`, RRO penuh, Video Depth, Multitask & High Hz | **ON** |
+| **`flagship` (`Max Flagship`)** | Enthusiast / Mid Pro+ yang ingin pembukaan kapabilitas flagship penuh | Blur penuh (HOS 3 safe default + Surgical Guard) | `device_level=3`, `v:1,c:3,g:3` (prop + `settings`), `computility=6/6` (V2 `4`) + post-boot re-assert, `HyperTransition v3`, `barfollow_anim`, `parallel_sweep`, RRO & XML penuh, Silk Folme | **ON** |
 
 ---
 
@@ -26,12 +26,12 @@ Saat flash melalui KernelSU-Next / Magisk / APatch, gunakan **`[Vol+]` = Ganti M
 
 | Aspek | `ukriu/HyperUnlocked` | **CoreSurface v1.0.0** |
 | :--- | :--- | :--- |
-| **Capability Suite (Blur, Anim, XML, RRO, Video Depth, Multitask, Hz)** | Pembukaan kapabilitas statis | **Setara 100% pada seluruh fitur nyata** + **Custom Color Expert di semua mode** + **0 properti plasebo** |
-| **Keamanan Properti & Bootloop** | Menulis `system.prop` / prop persisten | **Strict `resetprop -n`** (memori saja, 0 polusi `/data/property`) + **Watchdog 2-Strike Auto Safe-Mode & Engine Kill-Switch** + **Transactional Rollback** |
+| **Capability Suite (Blur, Anim, Computility 6/4, XML, RRO, Video Depth, Multitask, Hz)** | Pembukaan kapabilitas statis | **Setara 100% pada seluruh fitur nyata** (termasuk `computility=6/6`, V2 `4`, `system/deviceLevelList`, `is_only_support_keycode_goto=false`) + **Custom Color Expert di semua mode** + **0 properti plasebo** |
+| **Keamanan Properti & Bootloop** | Menulis `system.prop` / prop persisten | **Strict `resetprop -n`** (memori saja, 0 polusi `/data/property`) + **Post-Boot Computility Re-Assertion** + **Watchdog 2-Strike Auto Safe-Mode & Engine Kill-Switch** + **Transactional Rollback** |
 | **Native Flagship & Never-Downgrade** | Menimpa konfigurasi secara seragam | **Native Flagship Passthrough (`motion_only`)** + **Immutable Stock Snapshot** + proteksi *Never-Downgrade* di prop, XML, & runtime Java |
 | **Fix Bug HyperOS 3 (Toast Melebar & Recent Apps Hitam)** | Belum ada perbaikan runtime | **`SurgicalBlurGuardHook`** di `com.miui.home` (`BlurUtils` + `MiBackgroundBlur`) & Toast Window Guard dengan *circuit breaker* |
 | **60/90/120 Hz Flagship Motion (iOS / ColorOS 17 / HyperOS 4)** | Kurva bawaan Xiaomi saja | **Continuous Refresh-Rate-Aware Folme, SpringForce & Smart PathInterpolator Tuner** (live tanpa reboot) + **Thermal-Adaptive Motion Safety** |
-| **Non-LTPO AOD 10s-Cap Unlock** | RRO/XML saja | **3-Layer Unlock** (RRO + XML + `aod_mode_time=0` + hook runtime `com.miui.aod`) |
+| **Non-LTPO AOD 10s-Cap Unlock ("Always" & "Scheduled")** | XML (`is_only_support_keycode_goto=false`) | **4-Layer Unlock** (XML `is_only_support_keycode_goto=false` + `is_video_screen=true` + RRO + `aod_mode_time=0` + hook `FeatureParser` & `MiuiAod`) |
 | **Kontrol Pengguna & Verifikasi** | Instalasi standar | **Volume Up/Down 4-Tier Installer** + **`action.sh`** + **WebUI Ringkas** + **Stale-Boot-Proof Runtime Verifier (`BOOT_ID`)** |
 
 ---

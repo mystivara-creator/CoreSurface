@@ -249,12 +249,13 @@ cs_cmd_tier() {
   esac
 
   cs_sync_rro_for_next_boot || true
+  cs_reassert_computility_props || true
   cs_sync_engine_live_prop || true
   cs_settings_sync_all || true
   cs_verifier_run || true
   cs_add_pending_key "CS_TIER_MODE"
-  cs_log "WebUI set CS_TIER_MODE=${_cs_tm} (eff=${CS_EFF_TIER}; Motion live-synced, reboot for early-boot props/XML/RRO)."
-  printf 'Mode Tier "%s" disimpan (Motion aktif LIVE; reboot 1x untuk prop/XML/RRO).\n' "$_cs_tm"
+  cs_log "WebUI set CS_TIER_MODE=${_cs_tm} (eff=${CS_EFF_TIER}; Motion & Computility live-synced, reboot for early-boot props/XML/RRO)."
+  printf 'Mode Tier "%s" disimpan (Motion & Computility aktif LIVE; reboot 1x untuk prop/XML/RRO).\n' "$_cs_tm"
 }
 
 cs_cmd_set() {
@@ -347,11 +348,12 @@ cs_cmd_hot_sync() {
   cs_detect_ram_tier
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
+  cs_reassert_computility_props || true
   cs_sync_engine_live_prop || true
   cs_settings_sync_all || true
   cs_os_bug_scan "late" "$MODDIR" || true
   cs_verifier_run || true
-  cs_log "WebUI triggered instant Motion Engine + settings hot-sync & re-verification."
+  cs_log "WebUI triggered instant Motion Engine + Computility + settings hot-sync & re-verification."
   printf 'Hot-Apply & verifikasi ulang selesai tanpa reboot.\n'
 }
 

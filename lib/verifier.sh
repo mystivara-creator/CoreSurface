@@ -563,7 +563,7 @@ cs_verifier_run() {
 
   cs_verify_xml_tag_feature "$CFG_FEAT_COLOR_EXPERT" "$EFF_FEAT_COLOR_EXPERT" '<bool name="support_display_expert_mode">true</bool>'
   _cs_v_color=$CS_XT_RESULT
-  cs_verify_xml_tag_feature "$CFG_FEAT_AOD_UNLOCK" "$EFF_FEAT_AOD_UNLOCK" '<bool name="support_aod_aon">true</bool>'
+  cs_verify_xml_tag_feature "$CFG_FEAT_AOD_UNLOCK" "$EFF_FEAT_AOD_UNLOCK" '<bool name="is_only_support_keycode_goto">false</bool>'
   _cs_v_aod=$CS_XT_RESULT
   if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ] && [ "$_cs_v_aod" != "verified_active" ] && [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
     case ",$CS_V_ENGINE_HOOKS," in

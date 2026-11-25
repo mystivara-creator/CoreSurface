@@ -52,6 +52,7 @@ if cs_watchdog_monitor_systemui; then
   cs_resolve_features
 
   cs_install_engine_if_needed "$MODDIR" || true
+  cs_reassert_computility_props || true
   cs_settings_sync_all || true
   cs_os_bug_scan "late" "$MODDIR" || true
   cs_verifier_run || true

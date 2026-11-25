@@ -2,27 +2,35 @@ package org.mystivara.coresurface.engine;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Locale;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * Native HyperOS / MIUI Flagship DeviceLevel & Animation Gate Unlocker.
+ * Native HyperOS / MIUI Flagship DeviceLevel, Computility V1/V2 & Control Center Gate Unlocker.
  *
  * Cleanly unlocks Xiaomi's NATIVE flagship animation and blur code paths already
  * compiled inside com.android.systemui, com.miui.home, and com.miui.aod with
- * strict Never-Downgrade protection (never lowers an existing higher int level)
- * and DeviceBugGuard fault circuit-breakers.
+ * strict Never-Downgrade protection and DeviceBugGuard fault circuit-breakers:
+ *   - DeviceUtils / DeviceLevel (0=LOW, 1=MID, 2=HIGH) -> min 2
+ *   - ComputilityUtils V1 (cpulevel/gpulevel 1..6)     -> min 6
+ *   - ComputilityUtils V2 (level 1..4)                 -> min 4
  */
 public final class DeviceLevelUnlockHook {
-    // Standard HyperOS / MIUIX high-end device tier constant (0=LOW, 1=MIDDLE, 2=HIGH)
     private static final int LEVEL_HIGH = 2;
+    private static final int COMPUTILITY_V1_FLAGSHIP = 6;
+    private static final int COMPUTILITY_V2_FLAGSHIP = 4;
 
     private static final String[] TARGET_CLASSES = new String[] {
             "miuix.device.DeviceUtils",
             "miui.util.DeviceLevel",
             "com.miui.utils.DeviceLevel",
+            "miui.util.ComputilityUtils",
+            "com.miui.utils.ComputilityUtils",
+            "com.miui.systemui.util.ComputilityUtils",
+            "com.android.systemui.controlcenter.utils.ControlCenterUtils",
             "com.miui.home.launcher.common.DeviceLevelUtils",
             "com.miui.home.launcher.DeviceConfig",
             "com.miui.home.launcher.common.CpuLevelUtils",
@@ -53,7 +61,7 @@ public final class DeviceLevelUnlockHook {
             if (clazz == null) {
                 continue;
             }
-            int count = hookClassGates(clazz);
+            int count = hookClassGates(clazz, className.toLowerCase(Locale.ROOT).contains("computility"));
             totalHooked += count;
         }
 
@@ -72,7 +80,7 @@ public final class DeviceLevelUnlockHook {
         }
     }
 
-    private int hookClassGates(Class<?> clazz) {
+    private int hookClassGates(Class<?> clazz, boolean isComputilityClass) {
         int hooked = 0;
         Method[] methods;
         try {
@@ -99,14 +107,37 @@ public final class DeviceLevelUnlockHook {
                     }
                 }
             } else if (ret == int.class) {
-                if (isDeviceTierIntMethod(name)) {
-                    if (hookMinDeviceTier(m, LEVEL_HIGH)) {
-                        hooked++;
-                    }
+                int targetLevel = resolveMinIntLevel(name, isComputilityClass);
+                if (targetLevel > 0 && hookMinDeviceTier(m, targetLevel)) {
+                    hooked++;
                 }
             }
         }
         return hooked;
+    }
+
+    private static int resolveMinIntLevel(String name, boolean isComputilityClass) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (isComputilityClass) {
+            if (lower.contains("v2") || "getcomputilitylevel".equals(lower)) {
+                return COMPUTILITY_V2_FLAGSHIP;
+            }
+            if (lower.contains("cpulevel") || lower.contains("gpulevel")) {
+                return COMPUTILITY_V1_FLAGSHIP;
+            }
+            if (lower.contains("devicelevel")) {
+                return COMPUTILITY_V2_FLAGSHIP;
+            }
+            return 0;
+        }
+        if ("getDeviceLevel".equals(name)
+                || "getCpuLevel".equals(name)
+                || "getGpuLevel".equals(name)
+                || "getQualcommCpuLevel".equals(name)
+                || "getMtkCpuLevel".equals(name)) {
+            return LEVEL_HIGH;
+        }
+        return 0;
     }
 
     private boolean hookReturnConstant(Method method, final Object constantValue) {
@@ -133,7 +164,7 @@ public final class DeviceLevelUnlockHook {
     }
 
     /**
-     * Never-Downgrade int tier gate: upgrades levels below minLevel (e.g. LOW/MIDDLE -> HIGH)
+     * Never-Downgrade int tier gate: upgrades levels below minLevel
      * while preserving any higher factory tier (>= minLevel) untouched.
      */
     private boolean hookMinDeviceTier(Method method, final int minLevel) {
@@ -172,7 +203,8 @@ public final class DeviceLevelUnlockHook {
                 || "isMiuiLiteRom".equals(name)
                 || "isLiteV1StockPlus".equals(name)
                 || "isMiddleLevelDevice".equals(name)
-                || "isLowMemoryDevices".equals(name);
+                || "isLowMemoryDevices".equals(name)
+                || "isForceShadeLowEndAnim".equals(name);
     }
 
     private static boolean isEnableHighTierMethod(String name) {
@@ -184,14 +216,8 @@ public final class DeviceLevelUnlockHook {
                 || "isSupportAppAnimation".equals(name)
                 || "isSupportRecentsAndFsGesture".equals(name)
                 || "isBlurSupported".equals(name)
-                || "isSupportSmoothAnimation".equals(name);
-    }
-
-    private static boolean isDeviceTierIntMethod(String name) {
-        return "getDeviceLevel".equals(name)
-                || "getCpuLevel".equals(name)
-                || "getGpuLevel".equals(name)
-                || "getQualcommCpuLevel".equals(name)
-                || "getMtkCpuLevel".equals(name);
+                || "isSupportSmoothAnimation".equals(name)
+                || "isSupportSpringAnim".equals(name)
+                || "isSupportControlCenterAnim".equals(name);
     }
 }

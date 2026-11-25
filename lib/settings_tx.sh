@@ -246,6 +246,22 @@ cs_settings_sync_all() {
   # Push Live Engine IPC config (instant hot-reload in SystemUI / MiuiHome / MiuiAod)
   cs_settings_sync_engine_ipc || true
 
+  if [ "$EFF_FEAT_ANIMATIONS" = "1" ]; then
+    case "${CS_EFF_TIER:-low}" in
+      flagship)     _cs_dll_c=3; _cs_dll_g=3 ;;
+      balanced_pro) _cs_dll_c=2; _cs_dll_g=3 ;;
+      *)            _cs_dll_c=2; _cs_dll_g=2 ;;
+    esac
+    if command -v cs_resolve_never_downgrade_level_list >/dev/null 2>&1; then
+      _cs_dll_val=$(cs_resolve_never_downgrade_level_list "$_cs_dll_c" "$_cs_dll_g")
+    else
+      _cs_dll_val="v:1,c:${_cs_dll_c},g:${_cs_dll_g}"
+    fi
+    cs_settings_apply_key "FEAT_ANIMATIONS" "system" "deviceLevelList" "$_cs_dll_val" || true
+  else
+    cs_settings_rollback_key "system" "deviceLevelList" || true
+  fi
+
   if [ "$EFF_FEAT_BLUR" = "1" ]; then
     cs_settings_apply_key "FEAT_BLUR" "global" "disable_window_blurs" "0" || true
   else

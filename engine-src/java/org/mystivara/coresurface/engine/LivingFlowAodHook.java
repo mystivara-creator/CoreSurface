@@ -11,18 +11,23 @@ import de.robv.android.xposed.XposedHelpers;
 /**
  * CoreSurface Native Flagship, Motion & Non-LTPO AOD Unlock Hook for com.miui.aod.
  *
- * Safely removes Xiaomi's software 10-second AOD cap on non-LTPO AMOLED panels by
- * hooking MiuiAod utility capability gates (without ever touching HyperOS 3's unstable
- * mFullAodHideEase private field) with DeviceBugGuard fault circuit breakers and
- * self-unhooking ProcessBootstrap.
+ * Safely removes Xiaomi's software 10-second AOD cap ("For 10 seconds after tapping") on
+ * non-LTPO AMOLED panels so "Always" and "Scheduled" appear in Display items:
+ *   1. Hooks miui.util.FeatureParser.getBoolean("is_only_support_keycode_goto", ...) -> false
+ *      and AOD capability keys -> true.
+ *   2. Hooks MiuiAod utility & settings capability gates (including keycode-goto restriction
+ *      and 10s-cap methods) without ever touching HyperOS 3's unstable mFullAodHideEase field.
  */
 public final class LivingFlowAodHook {
     private static final String[] AOD_UTIL_CLASSES = new String[] {
             "com.miui.aod.utils.CommonUtils",
             "com.miui.aod.utils.MiuiAodUtils",
             "com.miui.aod.utils.DeviceUtils",
+            "com.miui.aod.utils.AodConfig",
             "com.miui.aod.AODApplication",
             "com.miui.aod.settings.AodShowModePreference",
+            "com.miui.aod.settings.AodShowModeSettingsActivity",
+            "com.miui.aod.settings.AodShowModeFragment",
             "com.miui.aod.settings.AodStyleCategoriesActivity"
     };
 
@@ -48,7 +53,8 @@ public final class LivingFlowAodHook {
         int nativeGates = deviceLevelHook.install(cl);
         folmeHook.install(cl);
 
-        int aodGates = installNonLtpoAodGates(cl);
+        int aodGates = installFeatureParserAodHook(cl);
+        aodGates += installNonLtpoAodGates(cl);
         if (aodGates > 0) {
             telemetry.addAodGatesHooked(aodGates);
             telemetry.recordHookBound("AodNonLtpoUnlock");
@@ -58,6 +64,52 @@ public final class LivingFlowAodHook {
         }
 
         bootstrap.install();
+    }
+
+    /**
+     * Hooks miui.util.FeatureParser.getBoolean(String, boolean) inside com.miui.aod so
+     * is_only_support_keycode_goto ALWAYS evaluates to false (unlocking "Always" & "Scheduled")
+     * even if the ROM caches device_features XML.
+     */
+    private int installFeatureParserAodHook(ClassLoader cl) {
+        if (cl == null) {
+            return 0;
+        }
+        try {
+            Class<?> fpClass = XposedHelpers.findClassIfExists("miui.util.FeatureParser", cl);
+            if (fpClass == null) {
+                return 0;
+            }
+            Method getBool = fpClass.getDeclaredMethod("getBoolean", String.class, boolean.class);
+            XposedBridge.hookMethod(getBool, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("AodFeatureParser")) {
+                        return;
+                    }
+                    try {
+                        if (!config.isAodUnlockEnabled() || param.args == null || param.args.length < 1
+                                || !(param.args[0] instanceof String)) {
+                            return;
+                        }
+                        String key = (String) param.args[0];
+                        if ("is_only_support_keycode_goto".equals(key)) {
+                            param.setResult(Boolean.FALSE);
+                        } else if ("support_aod".equals(key)
+                                || "support_aod_aon".equals(key)
+                                || "aod_support_keycode_goto_dismiss".equals(key)
+                                || "is_video_screen".equals(key)) {
+                            param.setResult(Boolean.TRUE);
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("AodFeatureParser");
+                    }
+                }
+            });
+            return 1;
+        } catch (Throwable ignored) {
+            return 0;
+        }
     }
 
     private int installNonLtpoAodGates(ClassLoader cl) {
@@ -141,6 +193,10 @@ public final class LivingFlowAodHook {
                 || lower.contains("onlytaptoshow")
                 || lower.contains("support10smode")
                 || lower.contains("need10slimit")
-                || lower.contains("isonly10s");
+                || lower.contains("isonly10s")
+                || lower.contains("onlysupportkeycodegoto")
+                || lower.contains("supportkeycodegotoonly")
+                || lower.contains("isonlykeycodegoto")
+                || lower.contains("onlykeycodegoto");
     }
 }
