@@ -75,14 +75,15 @@ fi
 cs_load_config "$CS_CONFIG_FILE"
 cs_resolve_features
 
-cs_state_set "ROM_FAMILY" "$CS_ROM_FAMILY"
-cs_state_set "ROM_VERSION" "$CS_ROM_VERSION"
-cs_state_set "ANDROID_SDK" "$CS_ANDROID_SDK"
-cs_state_set "RAM_MB" "$CS_RAM_MB"
-cs_state_set "RAM_TIER" "$CS_RAM_TIER"
-cs_state_set "DETECTED_TIER" "$CS_DETECTED_TIER"
-cs_state_set "EFF_TIER" "$CS_EFF_TIER"
-cs_state_set "PENDING_KEYS" ""
+cs_state_set_batch \
+  "ROM_FAMILY=$CS_ROM_FAMILY" \
+  "ROM_VERSION=$CS_ROM_VERSION" \
+  "ANDROID_SDK=$CS_ANDROID_SDK" \
+  "RAM_MB=$CS_RAM_MB" \
+  "RAM_TIER=$CS_RAM_TIER" \
+  "DETECTED_TIER=$CS_DETECTED_TIER" \
+  "EFF_TIER=$CS_EFF_TIER" \
+  "PENDING_KEYS="
 
 cs_log "Detected ${CS_ROM_FAMILY} (${CS_ROM_VERSION}) SDK=${CS_ANDROID_SDK} RAM=${CS_RAM_MB}MB | Tier=${CS_EFF_TIER} (cfg=${CFG_TIER_MODE}, detected=${CS_DETECTED_TIER})."
 

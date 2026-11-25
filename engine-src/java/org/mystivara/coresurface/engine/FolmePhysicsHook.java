@@ -17,7 +17,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Locale;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -29,19 +28,21 @@ import de.robv.android.xposed.XposedHelpers;
  *
  * Applies the analytical Damped Harmonic Oscillator equation (SpringPhysicsCurve)
  * across ALL UI interfaces in scoped processes (SystemUI, MiuiHome, MiuiAod, Settings,
- * and any user-enabled app) with genuinely perceptible profile signatures:
+ * and any user-enabled app) with zero-allocation, lock-free hot paths:
  *
  * 1. Xiaomi Folme Springs (`miuix.animation.utils.EaseManager.getStyle` & `AnimConfig.setEase`)
  * 2. Xiaomi Folme Interpolators (`miuix.animation.utils.EaseManager.getInterpolator`)
  * 3. Miui & Jetpack `SpringForce` (`setDampingRatio` & `setStiffness` via k = (2*pi/T)^2)
  * 4. Standard Android `ValueAnimator.setInterpolator` & `ViewPropertyAnimator.setInterpolator`
- *    (with one-shot spatial duration scaling on ObjectAnimator/ViewPropertyAnimator while
+ *    (with lock-free one-shot spatial duration scaling on ObjectAnimator/ViewPropertyAnimator while
  *    keeping raw blur/alpha ValueAnimators strictly duration-synced to prevent window blinks).
  */
 public final class FolmePhysicsHook {
     private static final int DEFAULT_SPRING_STYLE = -2;
     private static final int INTERP_SKIP = 0;
     private static final int INTERP_UPGRADE = 1;
+    private static final int DURATION_RING_SIZE = 64;
+    private static final int DURATION_RING_MASK = DURATION_RING_SIZE - 1;
 
     private final EngineConfig config;
     private final ThermalLodController lodController;
@@ -49,7 +50,9 @@ public final class FolmePhysicsHook {
     private final TelemetryReporter telemetry;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ConcurrentHashMap<Class<?>, Integer> interpClassCache = new ConcurrentHashMap<>();
-    private final WeakHashMap<Object, Long> scaledDurations = new WeakHashMap<>();
+    // Lock-free, zero-allocation identity ring for non-compounding duration scaling
+    private final int[] scaledAnimIds = new int[DURATION_RING_SIZE];
+    private final long[] scaledAnimDurs = new long[DURATION_RING_SIZE];
 
     private volatile boolean displayAttached = false;
     private volatile float currentRefreshHz = 60.0f;
@@ -106,7 +109,7 @@ public final class FolmePhysicsHook {
             Display d = dm.getDisplay(Display.DEFAULT_DISPLAY);
             if (d != null) {
                 float hz = d.getRefreshRate();
-                if (hz >= 45.0f && hz <= 240.0f) {
+                if (hz >= 45.0f && hz <= 240.0f && Math.abs(hz - currentRefreshHz) >= 0.5f) {
                     currentRefreshHz = hz;
                     telemetry.setDisplayHz(Math.round(hz));
                     rebuildCurveState();
@@ -319,11 +322,8 @@ public final class FolmePhysicsHook {
                         if (damping < 0.45f || damping > 1.15f || response < 0.10f || response > 0.90f) {
                             return;
                         }
-                        float[] tmp = new float[2];
-                        applyPhysicsDampingResponse(tmp, damping, response, profile, getCurveForProfile(profile));
                         double[] copy = factors.clone();
-                        copy[0] = tmp[0];
-                        copy[1] = tmp[1];
+                        applyPhysicsDampingResponseDouble(copy, damping, response, profile, getCurveForProfile(profile));
                         param.args[1] = copy;
                         telemetry.incSpringsTuned();
                     } catch (Throwable ignored) {
@@ -566,24 +566,49 @@ public final class FolmePhysicsHook {
         if (prop == null) {
             return false;
         }
-        String lower = prop.toLowerCase(Locale.ROOT);
-        // Never stretch opacity/blur/dim/color fades past surface detach lifecycles
-        return !lower.contains("alpha")
-                && !lower.contains("blur")
-                && !lower.contains("dim")
-                && !lower.contains("color");
+        // Zero-allocation ASCII check: never stretch opacity/blur/dim/color fades past surface detach lifecycles
+        return !containsIgnoreCaseAscii(prop, "alpha")
+                && !containsIgnoreCaseAscii(prop, "blur")
+                && !containsIgnoreCaseAscii(prop, "dim")
+                && !containsIgnoreCaseAscii(prop, "color");
+    }
+
+    private static boolean containsIgnoreCaseAscii(String haystack, String lowerNeedle) {
+        int hLen = haystack.length();
+        int nLen = lowerNeedle.length();
+        if (nLen > hLen) {
+            return false;
+        }
+        int limit = hLen - nLen;
+        for (int i = 0; i <= limit; i++) {
+            int j = 0;
+            while (j < nLen) {
+                char c = haystack.charAt(i + j);
+                if (c >= 'A' && c <= 'Z') {
+                    c = (char) (c + 32);
+                }
+                if (c != lowerNeedle.charAt(j)) {
+                    break;
+                }
+                j++;
+            }
+            if (j == nLen) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private long computeNonCompoundingDuration(Object anim, long currentDur, float scale) {
-        synchronized (scaledDurations) {
-            Long prev = scaledDurations.get(anim);
-            if (prev != null && prev.longValue() == currentDur) {
-                return currentDur;
-            }
-            long scaled = Math.max(120L, Math.min(680L, Math.round(currentDur * scale)));
-            scaledDurations.put(anim, scaled);
-            return scaled;
+        int id = System.identityHashCode(anim);
+        int slot = id & DURATION_RING_MASK;
+        if (scaledAnimIds[slot] == id && scaledAnimDurs[slot] == currentDur) {
+            return currentDur;
         }
+        long scaled = Math.max(120L, Math.min(680L, Math.round(currentDur * scale)));
+        scaledAnimIds[slot] = id;
+        scaledAnimDurs[slot] = scaled;
+        return scaled;
     }
 
     private boolean isUpgradeableInterpolator(TimeInterpolator interp) {
@@ -659,6 +684,23 @@ public final class FolmePhysicsHook {
             float outResp = clamp(stockResp * scale, 0.20f, 0.46f);
             out[0] = outDamp;
             out[1] = outResp;
+        }
+    }
+
+    private void applyPhysicsDampingResponseDouble(double[] out, float stockDamp, float stockResp,
+                                                   String profile, SpringPhysicsCurve curve) {
+        float targetDamp = curve.getDampingRatio();
+        float targetResp = curve.getResponseSec();
+        float hzFactor = clamp((currentRefreshHz - 60.0f) / 60.0f, 0.0f, 1.0f);
+
+        if (EngineConfig.MOTION_SILK.equals(profile)) {
+            out[0] = clamp(stockDamp * 0.20f + targetDamp * 0.80f, 0.76f, 0.86f);
+            float scale = 1.28f + 0.16f * hzFactor;
+            out[1] = clamp(Math.max(stockResp * scale, targetResp * 0.88f), 0.28f, 0.66f);
+        } else {
+            out[0] = clamp(stockDamp * 0.25f + targetDamp * 0.75f, 0.86f, 0.94f);
+            float scale = 0.92f + 0.08f * hzFactor;
+            out[1] = clamp(stockResp * scale, 0.20f, 0.46f);
         }
     }
 

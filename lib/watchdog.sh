@@ -69,6 +69,26 @@ cs_state_set() {
   mv -f "$_cs_tmp" "$CS_STATE_FILE"
 }
 
+# Batch atomic state update: writes multiple KEY=VAL pairs in 1 awk + 1 mv pass.
+cs_state_set_batch() {
+  cs_watchdog_init_dir || return 1
+  _cs_btmp="$CS_STATE_FILE.tmp.$$"
+  _cs_bkeys="|"
+  for _cs_bkv in "$@"; do
+    _cs_bk=${_cs_bkv%%=*}
+    _cs_bkeys="${_cs_bkeys}${_cs_bk}|"
+  done
+  if [ -r "$CS_STATE_FILE" ]; then
+    awk -F '=' -v ks="$_cs_bkeys" 'index(ks, "|" $1 "|") == 0 { print $0 }' "$CS_STATE_FILE" > "$_cs_btmp" 2>/dev/null || : > "$_cs_btmp"
+  else
+    : > "$_cs_btmp"
+  fi
+  for _cs_bkv in "$@"; do
+    printf '%s\n' "$_cs_bkv" >> "$_cs_btmp"
+  done
+  mv -f "$_cs_btmp" "$CS_STATE_FILE"
+}
+
 cs_state_get() {
   _cs_gk=$1
   if [ -r "$CS_STATE_FILE" ]; then

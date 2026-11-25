@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class TelemetryReporter {
     public static final String TELEMETRY_FILENAME = "coresurface_telemetry.prop";
     private static final long FAST_FLUSH_MS = 500L;
-    private static final long LAZY_FLUSH_MS = 5000L;
+    private static final long LAZY_FLUSH_MS = 15000L;
 
     private final String processName;
     private final String bootId;
@@ -81,22 +81,23 @@ public final class TelemetryReporter {
     }
 
     public synchronized void recordHookBound(String hookName) {
-        if (hookName != null && !hookName.isEmpty()) {
-            boundHooks.add(hookName);
+        if (hookName != null && !hookName.isEmpty() && boundHooks.add(hookName)) {
             scheduleFlush(true);
         }
     }
 
     public synchronized void recordOsBugMitigated(String bugId) {
-        if (bugId != null && !bugId.isEmpty()) {
-            mitigatedBugs.add(bugId);
+        if (bugId != null && !bugId.isEmpty() && mitigatedBugs.add(bugId)) {
             scheduleFlush(true);
         }
     }
 
     public void setMotionProfile(String profile) {
-        this.motionProfile = profile != null ? profile : EngineConfig.MOTION_OFF;
-        scheduleFlush(true);
+        String next = profile != null ? profile : EngineConfig.MOTION_OFF;
+        if (!next.equals(this.motionProfile)) {
+            this.motionProfile = next;
+            scheduleFlush(true);
+        }
     }
 
     public void setDisplayHz(int hz) {
@@ -107,14 +108,20 @@ public final class TelemetryReporter {
     }
 
     public void setThermalState(String lodTier, int thermalStatus) {
-        this.lodTier = lodTier != null ? lodTier : "FULL";
-        this.thermalStatus = thermalStatus;
-        scheduleFlush(true);
+        String nextTier = lodTier != null ? lodTier : "FULL";
+        if (!nextTier.equals(this.lodTier) || thermalStatus != this.thermalStatus) {
+            this.lodTier = nextTier;
+            this.thermalStatus = thermalStatus;
+            scheduleFlush(true);
+        }
     }
 
     public void setLastConfig(String cfg) {
-        this.lastConfig = cfg != null ? cfg : "default";
-        scheduleFlush(true);
+        String next = cfg != null ? cfg : "default";
+        if (!next.equals(this.lastConfig)) {
+            this.lastConfig = next;
+            scheduleFlush(true);
+        }
     }
 
     public void addNativeGatesHooked(int delta) {

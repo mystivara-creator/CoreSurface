@@ -2,8 +2,10 @@ package org.mystivara.coresurface.engine;
 
 import android.content.ContentResolver;
 import android.content.Context;
+import android.database.ContentObserver;
 import android.os.Build;
-import android.os.SystemClock;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.View;
 
@@ -11,26 +13,25 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Runtime Device Logic & OS Anomaly Self-Healing Guard.
+ * Runtime Device Logic & OS Anomaly Self-Healing Guard (Zero-Overhead Hot Path).
  *
- * 1. Probes OS/ROM capabilities & anomalies at runtime (HyperOS blur API presence,
- *    Android SDK level, accessibility animator duration scale == 0).
- * 2. Provides per-hook fault circuit-breakers: if any OEM/HyperOS update causes a hook
- *    to throw >= MAX_HOOK_FAULTS exceptions, that hook disarms itself cleanly without
- *    ever crashing SystemUI, MiuiHome, Settings, or MiuiAod.
+ * 1. Probes OS/ROM capabilities once at startup and observes Settings.Global.ANIMATOR_DURATION_SCALE
+ *    via an event-driven ContentObserver (ZERO Binder IPC & ZERO syscalls on UI animation frames).
+ * 2. Provides per-hook fault circuit-breakers with a single volatile boolean fast-path
+ *    (0 ConcurrentHashMap lookups while healthy; auto-disarms any hook after >= MAX_HOOK_FAULTS).
  */
 public final class DeviceBugGuard {
     private static final int MAX_HOOK_FAULTS = 3;
-    private static final long SCALE_CHECK_INTERVAL_MS = 5000L;
 
     private final TelemetryReporter telemetry;
     private final ConcurrentHashMap<String, AtomicInteger> faultCounts = new ConcurrentHashMap<>();
 
     private volatile ContentResolver contentResolver;
     private volatile boolean animationsDisabledByUser = false;
-    private volatile long lastScaleCheckMs = 0L;
+    private volatile boolean anyFaultRecorded = false;
     private volatile boolean miBlurApiPresent = false;
     private volatile boolean probed = false;
+    private volatile boolean observerRegistered = false;
 
     public DeviceBugGuard(TelemetryReporter telemetry) {
         this.telemetry = telemetry;
@@ -45,7 +46,8 @@ public final class DeviceBugGuard {
             contentResolver = app.getContentResolver();
         }
         probeOnce();
-        refreshAnimatorScaleIfStale();
+        readAnimatorScaleNow();
+        registerScaleObserverOnce();
     }
 
     private void probeOnce() {
@@ -65,12 +67,37 @@ public final class DeviceBugGuard {
         }
     }
 
+    private void registerScaleObserverOnce() {
+        if (observerRegistered) {
+            return;
+        }
+        ContentResolver cr = contentResolver;
+        if (cr == null) {
+            return;
+        }
+        observerRegistered = true;
+        try {
+            cr.registerContentObserver(
+                    Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE),
+                    false,
+                    new ContentObserver(new Handler(Looper.getMainLooper())) {
+                        @Override
+                        public void onChange(boolean selfChange) {
+                            readAnimatorScaleNow();
+                        }
+                    });
+        } catch (Throwable ignored) {
+        }
+    }
+
     public boolean isAnimationDisabledByUser() {
-        refreshAnimatorScaleIfStale();
         return animationsDisabledByUser;
     }
 
     public boolean isHookTripped(String hookId) {
+        if (!anyFaultRecorded) {
+            return false;
+        }
         AtomicInteger cnt = faultCounts.get(hookId);
         return cnt != null && cnt.get() >= MAX_HOOK_FAULTS;
     }
@@ -79,6 +106,7 @@ public final class DeviceBugGuard {
         if (hookId == null) {
             return;
         }
+        anyFaultRecorded = true;
         AtomicInteger cnt = faultCounts.get(hookId);
         if (cnt == null) {
             AtomicInteger created = new AtomicInteger(0);
@@ -96,12 +124,7 @@ public final class DeviceBugGuard {
         return miBlurApiPresent;
     }
 
-    private void refreshAnimatorScaleIfStale() {
-        long now = SystemClock.uptimeMillis();
-        if (now - lastScaleCheckMs < SCALE_CHECK_INTERVAL_MS) {
-            return;
-        }
-        lastScaleCheckMs = now;
+    private void readAnimatorScaleNow() {
         ContentResolver cr = contentResolver;
         if (cr == null) {
             return;

@@ -5,18 +5,25 @@ import android.view.View;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
+import de.robv.android.xposed.XposedHelpers;
 
 /**
  * CoreSurface Pure Flagship Motion & Surgical Recents Hook for com.miui.home (HyperOS Launcher).
  *
- * Zero-conflict, 100% original UI architecture:
- * - NEVER mutates desktop icon alpha/scale/translation externally and NEVER attaches custom
- *   glass overlays to folders (preserves 100% authentic HyperOS Launcher visuals).
+ * Ultra-lightweight, 100% original UI architecture:
+ * - ZERO global View.onAttachedToWindow / onVisibilityChanged hooks (hooks ONLY Recents
+ *   container classes so icons, folders, widgets, and workspace scrolls incur 0 hook overhead).
  * - Unlocks Xiaomi's native flagship launcher tier via DeviceLevelUnlockHook.
- * - Refines Xiaomi's native 60/90/120 Hz Folme & SpringForce curves via FolmePhysicsHook.
- * - Runs fast class-cached Surgical Recents Guard with DeviceBugGuard circuit breakers.
+ * - Refines Xiaomi's native 60/90/120/144 Hz Folme & SpringForce curves via FolmePhysicsHook.
+ * - Runs Surgical Recents Guard with DeviceBugGuard circuit breakers.
  */
 public final class LivingFlowHomeHook {
+    private static final String[] RECENTS_VIEW_CLASSES = new String[] {
+            "com.miui.home.recents.views.RecentsContainer",
+            "com.miui.home.recents.views.RecentsView",
+            "com.miui.home.recents.NavStubView"
+    };
+
     private final ProcessBootstrap bootstrap;
     private final DeviceBugGuard bugGuard;
     private final FolmePhysicsHook folmeHook;
@@ -42,45 +49,36 @@ public final class LivingFlowHomeHook {
         folmeHook.install(cl);
         bootstrap.install();
 
-        try {
-            XposedBridge.hookAllMethods(View.class, "onAttachedToWindow", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (bugGuard.isHookTripped("HomeRecentsAttach")
-                            || !isMainThread() || !(param.thisObject instanceof View)) {
-                        return;
-                    }
-                    try {
-                        View view = (View) param.thisObject;
-                        if (blurGuard.isRecentsClass(view.getClass())) {
-                            blurGuard.sanitizeRecentsViewIfNeeded(view);
-                        }
-                    } catch (Throwable ignored) {
-                        bugGuard.recordHookFault("HomeRecentsAttach");
-                    }
+        XC_MethodHook sanitizeHook = new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) {
+                if (bugGuard.isHookTripped("HomeRecentsSanitize")
+                        || !isMainThread() || !(param.thisObject instanceof View)) {
+                    return;
                 }
-            });
-
-            XposedBridge.hookAllMethods(View.class, "onVisibilityChanged", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (bugGuard.isHookTripped("HomeRecentsVis")
-                            || !isMainThread() || !(param.thisObject instanceof View)) {
-                        return;
-                    }
-                    try {
-                        View view = (View) param.thisObject;
-                        if (blurGuard.isRecentsClass(view.getClass())) {
-                            blurGuard.sanitizeRecentsViewIfNeeded(view);
-                        }
-                    } catch (Throwable ignored) {
-                        bugGuard.recordHookFault("HomeRecentsVis");
-                    }
+                try {
+                    blurGuard.sanitizeRecentsViewIfNeeded((View) param.thisObject);
+                } catch (Throwable ignored) {
+                    bugGuard.recordHookFault("HomeRecentsSanitize");
                 }
-            });
+            }
+        };
 
+        int hookedTargets = 0;
+        for (String clsName : RECENTS_VIEW_CLASSES) {
+            try {
+                Class<?> cls = XposedHelpers.findClassIfExists(clsName, cl);
+                if (cls == null) {
+                    continue;
+                }
+                XposedBridge.hookAllMethods(cls, "onAttachedToWindow", sanitizeHook);
+                XposedBridge.hookAllMethods(cls, "onVisibilityChanged", sanitizeHook);
+                hookedTargets++;
+            } catch (Throwable ignored) {
+            }
+        }
+        if (hookedTargets > 0) {
             telemetry.recordHookBound("RecentsGuard");
-        } catch (Throwable ignored) {
         }
     }
 

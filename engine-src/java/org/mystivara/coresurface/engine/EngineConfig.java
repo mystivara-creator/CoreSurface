@@ -7,9 +7,10 @@ import android.provider.Settings;
 
 import java.lang.reflect.Method;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Zero-Binder Live Configuration Bridge (optimized hot-path).
+ * Zero-Binder Live Configuration Bridge (ultra-lightweight hot-path).
  * Reads non-persistent memory property `debug.coresurface.cfg` set via `resetprop -n`
  * (~2 microseconds, zero Binder calls, 100% SELinux-safe on Android 16 KernelSU-Next).
  *
@@ -23,7 +24,7 @@ public final class EngineConfig {
     public static final String MOTION_HYPEROS4 = "hyperos4";
     public static final String MOTION_SILK = "silk";
 
-    private static final long REFRESH_INTERVAL_MS = 2000L;
+    private static final long REFRESH_INTERVAL_MS = 3000L;
 
     private volatile String motionProfile = MOTION_HYPEROS4;
     private volatile boolean nativeTier = true;
@@ -33,8 +34,10 @@ public final class EngineConfig {
     private volatile String rawConfig = "default";
 
     private final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean refreshing = new AtomicBoolean(false);
     private volatile Method sysPropGetMethod;
     private volatile boolean sysPropResolved = false;
+    private volatile boolean propBridgeConfirmed = false;
     private volatile ContentResolver contentResolver;
     private volatile long lastRefreshMs = -REFRESH_INTERVAL_MS;
 
@@ -60,13 +63,27 @@ public final class EngineConfig {
         if (now - lastRefreshMs < REFRESH_INTERVAL_MS) {
             return;
         }
-        refreshNow(false);
+        if (!refreshing.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            refreshNowInternal(false, now);
+        } finally {
+            refreshing.set(false);
+        }
     }
 
     public void refreshNow(boolean forceNotify) {
-        lastRefreshMs = SystemClock.uptimeMillis();
+        refreshNowInternal(forceNotify, SystemClock.uptimeMillis());
+    }
+
+    private void refreshNowInternal(boolean forceNotify, long now) {
+        lastRefreshMs = now;
         String next = readSystemProperty();
-        if (next == null || next.isEmpty()) {
+        if (next != null && !next.isEmpty()) {
+            propBridgeConfirmed = true;
+        } else if (!propBridgeConfirmed) {
+            // Only query Settings.Global Binder fallback if zero-Binder prop bridge was never seen
             next = readSettingsFallback();
         }
         if (next == null || next.isEmpty()) {
@@ -126,45 +143,55 @@ public final class EngineConfig {
     }
 
     public void parse(String encoded) {
-        if (encoded == null || encoded.trim().isEmpty()) {
+        if (encoded == null) {
             return;
         }
-        rawConfig = encoded.trim();
-        String[] pairs = rawConfig.split(";");
-        for (String pair : pairs) {
-            int eq = pair.indexOf('=');
-            if (eq <= 0 || eq >= pair.length() - 1) {
-                continue;
+        String trimmed = encoded.trim();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+        rawConfig = trimmed;
+        int len = trimmed.length();
+        int start = 0;
+        while (start < len) {
+            int semi = trimmed.indexOf(';', start);
+            int end = semi < 0 ? len : semi;
+            int eq = trimmed.indexOf('=', start);
+            if (eq > start && eq < end - 1) {
+                String k = trimmed.substring(start, eq).trim();
+                String v = trimmed.substring(eq + 1, end).trim();
+                boolean on = "1".equals(v) || "true".equalsIgnoreCase(v);
+                switch (k) {
+                    case "motion":
+                        if (MOTION_SILK.equals(v)) {
+                            motionProfile = MOTION_SILK;
+                        } else if (MOTION_HYPEROS4.equals(v)) {
+                            motionProfile = MOTION_HYPEROS4;
+                        } else {
+                            motionProfile = MOTION_OFF;
+                        }
+                        break;
+                    case "native":
+                    case "livingflow":
+                        nativeTier = on;
+                        break;
+                    case "guard":
+                        surgicalGuard = on;
+                        break;
+                    case "thermallod":
+                        thermalLod = on;
+                        break;
+                    case "aod":
+                        aodUnlock = on;
+                        break;
+                    default:
+                        break;
+                }
             }
-            String k = pair.substring(0, eq).trim();
-            String v = pair.substring(eq + 1).trim();
-            boolean on = "1".equals(v) || "true".equalsIgnoreCase(v);
-            switch (k) {
-                case "motion":
-                    if (MOTION_SILK.equals(v)) {
-                        motionProfile = MOTION_SILK;
-                    } else if (MOTION_HYPEROS4.equals(v)) {
-                        motionProfile = MOTION_HYPEROS4;
-                    } else {
-                        motionProfile = MOTION_OFF;
-                    }
-                    break;
-                case "native":
-                case "livingflow":
-                    nativeTier = on;
-                    break;
-                case "guard":
-                    surgicalGuard = on;
-                    break;
-                case "thermallod":
-                    thermalLod = on;
-                    break;
-                case "aod":
-                    aodUnlock = on;
-                    break;
-                default:
-                    break;
+            if (semi < 0) {
+                break;
             }
+            start = semi + 1;
         }
     }
 
