@@ -102,11 +102,11 @@ cs_xml_build_patch_spec() {
 
     if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
       printf 'bool|support_aod|true\n'
-      printf 'bool|support_aod_aon|true\n'
       printf 'bool|aod_support_keycode_goto_dismiss|true\n'
-      printf 'bool|is_video_screen|true\n'
       # Critical non-LTPO AOD unlock (verified from HyperOS MiuiAod & HyperUnlocked):
       # Stock non-LTPO XML ships is_only_support_keycode_goto=true which hides "Always" & "Scheduled".
+      # NOTE: Deliberately omit support_aod_aon and is_video_screen so non-LTPO optical-FOD panels
+      # do not trigger AON/fullscreen Doze state transitions (which cause white flashes when the FOD ring fades out).
       printf 'bool|is_only_support_keycode_goto|false\n'
       # HyperOS 3 dynamic safety gate: avoid support_aod_fullscreen on HOS 3+
       if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
@@ -131,7 +131,9 @@ cs_xml_build_patch_spec() {
 
     if [ "${EFF_FEAT_FLAGSHIP_SUITE:-0}" = "1" ]; then
       # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost,
-      # Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP Record, HDR HBM Boost, Power Modes)
+      # Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP Record, Power Modes)
+      # NOTE: Deliberately omit panel-specific HBM brighten flags (support_hdr_hbm_brighten /
+      # support_manual_brightness_boost / support_dolby_version_brighten) to avoid FOD HBM white flashes on AOD.
       printf 'bool|support_AI_display|true\n'
       printf 'bool|support_super_resolution|true\n'
       printf 'bool|support_hdr_enhance|true\n'
@@ -159,9 +161,6 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_conversation_toolbox_voiprecord|true\n'
       printf 'bool|support_new_silentmode|true\n'
       printf 'bool|support_dark_mode_notify|true\n'
-      printf 'bool|support_manual_brightness_boost|true\n'
-      printf 'bool|support_dolby_version_brighten|true\n'
-      printf 'bool|support_hdr_hbm_brighten|true\n'
       printf 'bool|support_autobrightness_optimize|true\n'
       printf 'bool|support_autobrightness_by_application_category|true\n'
       printf 'bool|support_app_hiding|true\n'

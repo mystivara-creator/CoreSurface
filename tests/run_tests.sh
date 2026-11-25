@@ -1296,7 +1296,9 @@ assert_file_contains "$SB_PROPS_LOG" "persist.sys.hyper_transition_v=3" "Flagshi
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.shell_anim_enable_fcb=true" "Flagship sets ro.miui.shell_anim_enable_fcb=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.hyper.barfollow_anim=true" "Flagship sets persist.hyper.barfollow_anim=true"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_only_support_keycode_goto">false</bool>' "Non-LTPO AOD flips is_only_support_keycode_goto true -> false to unlock Always/Scheduled"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_video_screen">true</bool>' "Non-LTPO AOD enables is_video_screen=true"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'is_video_screen' "Non-LTPO AOD omits is_video_screen to prevent FOD fade-out white flash"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_aod_aon' "Non-LTPO AOD omits support_aod_aon to prevent AON Doze blink"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_hdr_hbm_brighten' "Flagship Suite omits panel HBM brighten override to prevent FOD white flash"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "Protected stock display tag remains untouched"
 
 # Simulate HyperOS ComputilityService resetting cpulevel & gpulevel back to 2 during boot

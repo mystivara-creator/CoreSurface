@@ -66,9 +66,9 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
                         .install(lpparam.classLoader);
                 XposedBridge.log("CoreSurfaceEngine: initialized Universal Motion + RecentsGuard in com.miui.home");
             } else if (PKG_AOD.equals(pkg)) {
-                new LivingFlowAodHook(config, bootstrap, bugGuard, folmeHook, deviceLevelHook, telemetry)
+                new LivingFlowAodHook(config, bootstrap, bugGuard, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Motion + Non-LTPO AOD Unlock in com.miui.aod");
+                XposedBridge.log("CoreSurfaceEngine: initialized Non-LTPO AOD Unlock (native Doze timing) in com.miui.aod");
             } else {
                 // Settings & any additional user-scoped UI app: universal SpringPhysicsCurve,
                 // Toast window blur guard (protects Toasts under Advanced Textures v4), & self-unhooking bootstrap
