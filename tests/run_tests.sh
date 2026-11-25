@@ -382,6 +382,29 @@ assert_file_contains "$SB_PROPS_LOG" "ro.config.low_ram=false" "Flagship: enable
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.support_high_refresh_rate=true" "Flagship: enables high refresh rate"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.hyperai_enabled=true" "Zero-gimmick: never emits placebo hyperai prop"
 
+# 5d: Genuine Native Flagship (stock XML already has device_level=3 + support_background_blur=true) -> motion_only passthrough
+setup_sandbox "t5_native_flagship_passthrough"
+write_mock_getprop "OS3.0" "" "36" "1" "xuanyuan" "Xiaomi 15 Ultra"
+write_mock_meminfo "15600000"
+mkdir -p "$SB_MOD/overlays"
+printf 'apk' > "$SB_MOD/overlays/CoreSurfaceSystemUI.apk"
+cat > "$SB_XML_DIR1/xuanyuan.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <integer name="device_level">3</integer>
+    <bool name="support_background_blur">true</bool>
+    <bool name="support_display_expert_mode">true</bool>
+</features>
+EOF
+run_post_fs_data
+assert_file_contains "$SB_STATE/state.prop" "DETECTED_TIER=motion_only" "Genuine Native Flagship auto-detects motion_only passthrough"
+assert_file_contains "$SB_STATE/state.prop" "EFF_TIER=motion_only" "Native Flagship effective tier is motion_only"
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=hyperos4;native=0;guard=1;thermallod=1;aod=0" "Native Flagship still syncs live Folme Motion IPC"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.device_level=" "Native Flagship skips redundant device_level prop override"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.has_blur=1" "Native Flagship skips redundant blur prop overrides"
+assert_eq "$(wc -l < "$SB_MOUNT_LOG" | tr -d ' ')" "0" "Native Flagship skips XML bind-mount when factory XML already has expert color"
+assert_eq "$( [ -d "$SB_MOD/system/product/overlay" ] && printf 'exists' || printf 'cleared' )" "cleared" "Native Flagship skips staging RRO overlays"
+
 # ---------------------------------------------------------------------------
 printf '=== Test 6: Dynamic device_features XML Patcher (Non-Destructive, SELinux, Fail-Closed) ===\n'
 # 6a: Runtime ro.product.device auto-discovery + non-destructive patch + SELinux + bind-mount

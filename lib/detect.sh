@@ -1,6 +1,7 @@
 #!/system/bin/sh
 # CoreSurface - Layer 1 (ROM & SDK Gate) & Layer 2 (Dynamic Hardware & 4-Tier Classification)
 # Pure POSIX sh. Zero hardcoded device codenames.
+# Includes Native Flagship Passthrough (motion_only) & Never-Downgrade intelligence.
 
 cs_getprop() {
   _cs_gp_key=$1
@@ -53,18 +54,65 @@ cs_detect_rom() {
   return 1
 }
 
+# Inspect stock unmodified device_features XML & ro.miui.device_level (read-only)
+# so CoreSurface can detect genuine Native Flagships (already unlocked from factory)
+# and never downgrade stock factory capabilities.
+# Sets: CS_STOCK_DEVICE_LEVEL, CS_STOCK_HAS_BLUR, CS_STOCK_HAS_EXPERT_COLOR
+cs_probe_stock_capabilities() {
+  CS_STOCK_DEVICE_LEVEL="0"
+  CS_STOCK_HAS_BLUR="0"
+  CS_STOCK_HAS_EXPERT_COLOR="0"
+  export CS_STOCK_DEVICE_LEVEL CS_STOCK_HAS_BLUR CS_STOCK_HAS_EXPERT_COLOR
+
+  _cs_sp_lvl=$(cs_getprop "ro.miui.device_level")
+  if cs_is_uint "$_cs_sp_lvl"; then
+    CS_STOCK_DEVICE_LEVEL="$_cs_sp_lvl"
+  fi
+
+  _cs_dev=$(cs_getprop "ro.product.device")
+  _cs_dirs=${CORESURFACE_XML_SEARCH_DIRS:-/mi_ext/product/etc/device_features:/product/etc/device_features:/system/etc/device_features:/vendor/etc/device_features}
+  _cs_stock_xml=""
+
+  if [ -n "$_cs_dev" ]; then
+    _cs_old_ifs=$IFS
+    IFS=':'
+    for _cs_dir in $_cs_dirs; do
+      IFS=$_cs_old_ifs
+      if [ -r "${_cs_dir}/${_cs_dev}.xml" ]; then
+        _cs_stock_xml="${_cs_dir}/${_cs_dev}.xml"
+        break
+      fi
+    done
+    IFS=$_cs_old_ifs
+  fi
+
+  if [ -n "$_cs_stock_xml" ]; then
+    _cs_xlvl=$(sed -n 's/.*<integer name="device_level">\([0-9][0-9]*\)<\/integer>.*/\1/p' "$_cs_stock_xml" 2>/dev/null | head -n 1 || true)
+    if cs_is_uint "$_cs_xlvl" && [ "$_cs_xlvl" -gt "$CS_STOCK_DEVICE_LEVEL" ]; then
+      CS_STOCK_DEVICE_LEVEL="$_cs_xlvl"
+    fi
+    if grep -F -q '<bool name="support_background_blur">true</bool>' "$_cs_stock_xml" 2>/dev/null; then
+      CS_STOCK_HAS_BLUR="1"
+    fi
+    if grep -F -q '<bool name="support_display_expert_mode">true</bool>' "$_cs_stock_xml" 2>/dev/null; then
+      CS_STOCK_HAS_EXPERT_COLOR="1"
+    fi
+  fi
+}
+
 # Read MemTotal from /proc/meminfo (or CORESURFACE_MEMINFO override) in MB
 # and classify hardware class dynamically (distinguishing Entry/Mid Non-Pro,
-# Mid-Range Pro/Pro+, and Flagship without hardcoding any device codenames).
+# Mid-Range Pro/Pro+, High-RAM Enthusiast, and Native Flagship Passthrough
+# without hardcoding any device codenames).
 # Sets: CS_RAM_MB, CS_RAM_TIER (low | mid | high), CS_RAM_TIER_LABEL,
-#       CS_DETECTED_TIER (low | balanced_pro | flagship), CS_DETECTED_TIER_LABEL
+#       CS_DETECTED_TIER (low | balanced_pro | flagship | motion_only), CS_DETECTED_TIER_LABEL
 cs_detect_ram_tier() {
   _cs_meminfo=${CORESURFACE_MEMINFO:-/proc/meminfo}
   CS_RAM_MB="0"
   CS_RAM_TIER="low"
   CS_RAM_TIER_LABEL="< 6 GB"
   CS_DETECTED_TIER="low"
-  CS_DETECTED_TIER_LABEL="Low (Entry / Mid Non-Pro)"
+  CS_DETECTED_TIER_LABEL="Lite (Entry / Mid Non-Pro)"
   export CS_RAM_MB CS_RAM_TIER CS_RAM_TIER_LABEL CS_DETECTED_TIER CS_DETECTED_TIER_LABEL
 
   if [ -r "$_cs_meminfo" ]; then
@@ -86,60 +134,65 @@ cs_detect_ram_tier() {
     CS_RAM_TIER_LABEL="< 6 GB"
   fi
 
+  cs_probe_stock_capabilities
+
   _cs_mkt=$(cs_getprop "ro.product.marketname")
   if [ -z "$_cs_mkt" ]; then
     _cs_mkt=$(cs_getprop "ro.product.model")
   fi
   _cs_mkt_lc=$(printf '%s' "$_cs_mkt" | tr '[:upper:]' '[:lower:]')
-  _cs_stock_lvl=$(cs_getprop "ro.miui.device_level")
 
-  # Dynamic hardware class classification (zero hardcoded codenames):
-  # - Flagship: >= 12 GB RAM, stock device_level >= 3, or Ultra/Fold/Flip/Mix tier
-  # - Balance Pro/Pro+: >= 6 GB RAM + Pro/Pro+/Turbo/GT tier (e.g., Redmi Note Pro/Pro+, POCO X Pro)
-  # - Low (Entry / Mid Non-Pro): < 6 GB RAM OR non-Pro mid-range (e.g., Redmi Note 15 5G)
+  # 1. Genuine Native Flagship Passthrough:
+  #    Device ALREADY ships with factory device_level >= 3 AND factory background blur.
+  #    Do not redundantly overwrite factory flagship Layer 1 props/RRO; run Motion-Only!
+  if [ "$CS_STOCK_DEVICE_LEVEL" -ge 3 ] && [ "$CS_STOCK_HAS_BLUR" = "1" ]; then
+    CS_DETECTED_TIER="motion_only"
+    CS_DETECTED_TIER_LABEL="Native Flagship (Motion-Only Passthrough)"
+    return 0
+  fi
+
+  # 2. High-RAM Enthusiast / Flagship-Killer (>= 12 GB RAM or Ultra/Fold/Mix without factory unlock)
   if [ "$CS_RAM_MB" -ge 10240 ]; then
     CS_DETECTED_TIER="flagship"
-    CS_DETECTED_TIER_LABEL="Flagship Tier"
-  elif cs_is_uint "$_cs_stock_lvl" && [ "$_cs_stock_lvl" -ge 3 ]; then
-    CS_DETECTED_TIER="flagship"
-    CS_DETECTED_TIER_LABEL="Flagship Tier"
-  else
-    case "$_cs_mkt_lc" in
-      *ultra*|*fold*|*flip*|*mix*)
-        if [ "$CS_RAM_MB" -ge 7168 ]; then
-          CS_DETECTED_TIER="flagship"
-          CS_DETECTED_TIER_LABEL="Flagship Tier"
-        else
-          CS_DETECTED_TIER="balanced_pro"
-          CS_DETECTED_TIER_LABEL="Balance Pro / Pro+"
-        fi
-        ;;
-      *pro*|*turbo*|*gt*)
-        if [ "$CS_RAM_MB" -ge 5632 ]; then
-          CS_DETECTED_TIER="balanced_pro"
-          CS_DETECTED_TIER_LABEL="Balance Pro / Pro+"
-        else
-          CS_DETECTED_TIER="low"
-          CS_DETECTED_TIER_LABEL="Low (Entry / Mid Non-Pro)"
-        fi
-        ;;
-      '')
-        # Fallback when marketname/model is not exposed: use RAM tier
-        if [ "$CS_RAM_MB" -ge 7168 ]; then
-          CS_DETECTED_TIER="balanced_pro"
-          CS_DETECTED_TIER_LABEL="Balance Pro / Pro+"
-        else
-          CS_DETECTED_TIER="low"
-          CS_DETECTED_TIER_LABEL="Low (Entry / Mid Non-Pro)"
-        fi
-        ;;
-      *)
-        # Named non-Pro mid-range / entry device (e.g., Redmi Note 15 5G) -> Low (Blur ON, no Advanced Textures)
-        CS_DETECTED_TIER="low"
-        CS_DETECTED_TIER_LABEL="Low (Entry / Mid Non-Pro)"
-        ;;
-    esac
+    CS_DETECTED_TIER_LABEL="Max Flagship"
+    return 0
   fi
+
+  case "$_cs_mkt_lc" in
+    *ultra*|*fold*|*flip*|*mix*)
+      if [ "$CS_RAM_MB" -ge 7168 ]; then
+        CS_DETECTED_TIER="flagship"
+        CS_DETECTED_TIER_LABEL="Max Flagship"
+      else
+        CS_DETECTED_TIER="balanced_pro"
+        CS_DETECTED_TIER_LABEL="Balanced Pro / Pro+"
+      fi
+      ;;
+    *pro*|*turbo*|*gt*)
+      if [ "$CS_RAM_MB" -ge 5632 ]; then
+        CS_DETECTED_TIER="balanced_pro"
+        CS_DETECTED_TIER_LABEL="Balanced Pro / Pro+"
+      else
+        CS_DETECTED_TIER="low"
+        CS_DETECTED_TIER_LABEL="Lite (Entry / Mid Non-Pro)"
+      fi
+      ;;
+    '')
+      # Fallback when marketname/model is not exposed: use RAM tier
+      if [ "$CS_RAM_MB" -ge 7168 ]; then
+        CS_DETECTED_TIER="balanced_pro"
+        CS_DETECTED_TIER_LABEL="Balanced Pro / Pro+"
+      else
+        CS_DETECTED_TIER="low"
+        CS_DETECTED_TIER_LABEL="Lite (Entry / Mid Non-Pro)"
+      fi
+      ;;
+    *)
+      # Named non-Pro mid-range / entry device (e.g., Redmi Note 15 5G) -> Lite (Blur ON, no Advanced Textures)
+      CS_DETECTED_TIER="low"
+      CS_DETECTED_TIER_LABEL="Lite (Entry / Mid Non-Pro)"
+      ;;
+  esac
 }
 
 # Load user config safely without executing arbitrary shell code.
@@ -179,6 +232,8 @@ cs_load_config() {
       CS_TIER_MODE)
         case "$_cs_v" in
           auto|low|balanced_pro|flagship) CFG_TIER_MODE="$_cs_v" ;;
+          lite)         CFG_TIER_MODE="low" ;;
+          max_flagship) CFG_TIER_MODE="flagship" ;;
         esac
         ;;
       FEAT_MOTION_PROFILE)
@@ -237,7 +292,7 @@ cs_load_config() {
   done < "$_cs_cfg_file"
 }
 
-# Resolve effective tier (low | balanced_pro | flagship) and per-feature flags.
+# Resolve effective tier (low | balanced_pro | flagship | motion_only) and per-feature flags.
 cs_resolve_features() {
   case "$CFG_TIER_MODE" in
     low)          CS_EFF_TIER="low" ;;
@@ -247,9 +302,10 @@ cs_resolve_features() {
   esac
 
   case "$CS_EFF_TIER" in
-    flagship)     CS_EFF_TIER_LABEL="Flagship Tier" ;;
-    balanced_pro) CS_EFF_TIER_LABEL="Balance Pro / Pro+" ;;
-    *)            CS_EFF_TIER_LABEL="Low (Blur Standar, Tanpa Advanced Textures)" ;;
+    motion_only)  CS_EFF_TIER_LABEL="Native Flagship (Motion-Only Passthrough)" ;;
+    flagship)     CS_EFF_TIER_LABEL="Max Flagship" ;;
+    balanced_pro) CS_EFF_TIER_LABEL="Balanced Pro / Pro+" ;;
+    *)            CS_EFF_TIER_LABEL="Lite (Blur Standar, Tanpa Advanced Textures)" ;;
   esac
 
   EFF_FEAT_MOTION_PROFILE="off"
@@ -275,16 +331,11 @@ cs_resolve_features() {
     EFF_FEAT_RRO_OVERLAYS EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK \
     EFF_FEAT_DISPLAY_HZ EFF_FEAT_COLOR_EXPERT
 
-  # Live Motion Profile
+  # Live Motion Profile & Safety Controllers (active across ALL tiers including Native Flagship)
   case "$CFG_FEAT_MOTION_PROFILE" in
     hyperos4) EFF_FEAT_MOTION_PROFILE="hyperos4" ;;
     silk)     EFF_FEAT_MOTION_PROFILE="silk" ;;
     *)        EFF_FEAT_MOTION_PROFILE="off" ;;
-  esac
-
-  # Native Flagship Tier Unlock, Surgical Guard & Thermal-Adaptive Motion
-  case "$CFG_FEAT_NATIVE_TIER" in
-    1|auto) EFF_FEAT_NATIVE_TIER="1" ;;
   esac
   case "$CFG_FEAT_SURGICAL_GUARD" in
     1|auto) EFF_FEAT_SURGICAL_GUARD="1" ;;
@@ -293,8 +344,24 @@ cs_resolve_features() {
     1|auto) EFF_FEAT_THERMAL_LOD="1" ;;
   esac
 
-  # Standard Blur is ON in ALL tiers (including Low!), but Advanced Textures XML
-  # is NEVER enabled in Low mode.
+  # Native Flagship Passthrough (motion_only):
+  # Factory ROM already has device_level >= 3 + blur -> skip Layer 1 overrides cleanly!
+  if [ "$CS_EFF_TIER" = "motion_only" ]; then
+    # Only patch XML if stock flagship XML doesn't already expose Custom Color Expert
+    if [ "$CFG_FEAT_COLOR_EXPERT" != "0" ] && [ "${CS_STOCK_HAS_EXPERT_COLOR:-0}" != "1" ]; then
+      EFF_FEAT_XML_PATCHER="1"
+      EFF_FEAT_COLOR_EXPERT="1"
+    fi
+    return 0
+  fi
+
+  # Native Flagship Tier Unlock (Layer 2 DeviceLevelUtils hooks for non-flagship ROMs)
+  case "$CFG_FEAT_NATIVE_TIER" in
+    1|auto) EFF_FEAT_NATIVE_TIER="1" ;;
+  esac
+
+  # Standard Blur is ON in ALL non-passthrough tiers (including Lite!),
+  # but Advanced Textures XML is NEVER enabled in Lite mode.
   case "$CFG_FEAT_BLUR" in
     1|auto)
       EFF_FEAT_BLUR="1"
@@ -308,7 +375,7 @@ cs_resolve_features() {
       ;;
   esac
 
-  # Animations: ON across all tiers (scaled by CS_EFF_TIER: low=Lvl2, balanced_pro=Lvl2+, flagship=Lvl3)
+  # Animations: ON across all tiers (scaled by CS_EFF_TIER, never downgrades stock level)
   case "$CFG_FEAT_ANIMATIONS" in
     1|auto) EFF_FEAT_ANIMATIONS="1" ;;
   esac
@@ -327,12 +394,12 @@ cs_resolve_features() {
       ;;
   esac
 
-  # Clean-Room RRO Overlays: ON across all tiers (Low skips heavy MiWallpaper)
+  # Clean-Room RRO Overlays: ON across all tiers (Lite skips heavy MiWallpaper)
   case "$CFG_FEAT_RRO_OVERLAYS" in
     1|auto) EFF_FEAT_RRO_OVERLAYS="1" ;;
   esac
 
-  # Lockscreen Video Depth: ON in Balance Pro/Pro+ & Flagship on HyperOS (OFF in Low)
+  # Lockscreen Video Depth: ON in Balanced Pro & Max Flagship on HyperOS (OFF in Lite)
   case "$CFG_FEAT_VIDEO_DEPTH" in
     1)
       if [ "$CS_ROM_FAMILY" = "hyperos" ]; then
@@ -346,7 +413,7 @@ cs_resolve_features() {
       ;;
   esac
 
-  # Multitasking & High Refresh Rate: ON in Balance Pro/Pro+ & Flagship (OFF in Low for lightness)
+  # Multitasking & High Refresh Rate: ON in Balanced Pro & Max Flagship (OFF in Lite)
   case "$CFG_FEAT_MULTITASK" in
     1) EFF_FEAT_MULTITASK="1" ;;
     auto)

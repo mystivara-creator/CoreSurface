@@ -228,7 +228,9 @@ async function refreshStatus() {
 
     // Compact Summary
     const romStr = (kv.rom_family || '').toUpperCase() + ' ' + (kv.rom_version || '') + ' · SDK ' + (kv.android_sdk || '-');
-    const blurMode = kv.eff_feat_adv_textures === '1' ? 'Blur Penuh (HOS3 Safe)' : 'Blur Standar (No Adv. Textures)';
+    const blurMode = kv.eff_tier === 'motion_only'
+      ? 'Factory Flagship (Passthrough Utuh)'
+      : (kv.eff_feat_adv_textures === '1' ? 'Blur Penuh (HOS3 Safe)' : 'Blur Standar (No Adv. Textures)');
     const stats = 'Folme: ' + (kv.verify_engine_folme_hooks || '0')
       + ' · Gates: ' + (kv.verify_engine_native_gates || '0')
       + ' · Springs: ' + (kv.verify_engine_springs || '0')

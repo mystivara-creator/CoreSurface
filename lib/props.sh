@@ -138,6 +138,7 @@ cs_apply_feat_animations() {
   [ "$EFF_FEAT_ANIMATIONS" = "1" ] || return 0
 
   # Verified HyperOS/MIUI animation & split Control Center flags scaled by resolved tier
+  # Never-Downgrade: never lower ro.miui.device_level below stock factory level
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
   case "${CS_EFF_TIER:-low}" in
     flagship)
@@ -149,13 +150,17 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.sf_charge_anim_supported" "true"
       ;;
     balanced_pro)
-      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
+      if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
+        cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
+      fi
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:2,g:3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       ;;
     *)
-      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
+      if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
+        cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
+      fi
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:2,g:2"
       ;;
   esac

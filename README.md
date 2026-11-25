@@ -9,16 +9,30 @@ Dirancang sebagai *sister module* (pendamping terpisah) dari **CoreFlow-Engine**
 
 ---
 
-## 4 Mode Tier (Volume Up/Down saat Instalasi & WebUI Ringkas)
+## 4 Mode Tier + Native Flagship Passthrough (Volume Up/Down & WebUI)
 
 Saat flash melalui KernelSU-Next / Magisk, gunakan **`[Vol+]` = Ganti Mode** dan **`[Vol-]` = Pilih** (atau diam 10 detik untuk otomatis memakai `Auto`):
 
 | Mode Tier | Target Perangkat | Blur & Advanced Textures | Animasi & Base Layer 1 | Custom Color Expert |
 | :--- | :--- | :--- | :--- | :---: |
-| **`auto`** | Deteksi otomatis RAM + kelas perangkat (membedakan Mid Non-Pro vs Mid Pro/Pro+ vs Flagship tanpa hardcode codename) | Sesuai kelas terdeteksi | Otomatis mengikuti kelas perangkat | **ON** |
-| **`low`** | Entry & Mid-Range Non-Pro (mis. Redmi Note 15 5G) atau ingin paling ringan | **Blur Standar ON** (CC/Shade/Folder), **TANPA Advanced Textures** | `device_level=2`, `v:1,c:2,g:2`, RRO ringan (`SystemUI` + `ThemeManager`), tanpa Video Depth / Freeform berat | **ON** |
-| **`balanced_pro`** | Mid-Range Pro / Pro+ (mis. Poco X8 Pro, Redmi Note 15 Pro / Pro+ 5G) | Blur penuh (HOS 3 default tetap aman dari bug Toast/Recents) | `device_level=2`, `v:1,c:2,g:3`, `HyperTransition`, RRO penuh, Video Depth, Multitask & High Hz | **ON** |
-| **`flagship`** | Flagship Tier (RAM ≥ 12 GB / Ultra / pengguna yang ingin tier penuh namun tetap ringan) | Blur penuh (HOS 3 safe default + Surgical Guard) | `device_level=3`, `v:1,c:3,g:3`, `HyperTransition`, `parallel_sweep`, RRO & XML penuh, Silk Folme | **ON** |
+| **`auto`** | Deteksi cerdas RAM + kemampuan XML/ROM bawaan: Entry/Mid Non-Pro → `Lite`, Mid Pro/Pro+ → `Balanced Pro`, High-RAM non-flagship → `Max Flagship`, **Native Flagship asli (`device_level ≥ 3` + blur pabrik) → `Motion-Only Passthrough`** (tuning pabrik utuh!) | Sesuai kelas terdeteksi (0 overwrite pada Flagship asli) | Otomatis + prinsip *Never-Downgrade* | **ON** |
+| **`low` (`Lite`)** | Entry & Mid-Range Non-Pro (mis. Redmi Note 15 5G) atau prioritas ringan/60 Hz | **Blur Standar ON** (CC/Shade/Folder), **TANPA Advanced Textures** | `device_level=2`, `v:1,c:2,g:2`, RRO ringan (`SystemUI` + `ThemeManager` + `MiuiAod`), tanpa Video Depth / Freeform berat | **ON** |
+| **`balanced_pro` (`Balanced Pro`)** | Mid-Range Pro / Pro+ (mis. Poco X8 Pro, Redmi Note 15 Pro / Pro+ 5G) atau user Non-Pro yang ingin suite harian lengkap | Blur penuh (HOS 3 default tetap aman dari bug Toast/Recents) | `device_level=2`, `v:1,c:2,g:3`, `HyperTransition`, RRO penuh, Video Depth, Multitask & High Hz | **ON** |
+| **`flagship` (`Max Flagship`)** | Enthusiast / Mid Pro+ yang ingin pembukaan kapabilitas flagship penuh | Blur penuh (HOS 3 safe default + Surgical Guard) | `device_level=3`, `v:1,c:3,g:3`, `HyperTransition`, `parallel_sweep`, RRO & XML penuh, Silk Folme | **ON** |
+
+---
+
+## Perbandingan: CoreSurface v1.0.0 vs `ukriu/HyperUnlocked`
+
+| Aspek | `ukriu/HyperUnlocked` | **CoreSurface v1.0.0** |
+| :--- | :--- | :--- |
+| **Capability Suite (Blur, Anim, XML, RRO, Video Depth, Multitask, Hz)** | Pembukaan kapabilitas statis | **Setara 100% pada seluruh fitur nyata** + **Custom Color Expert di semua mode** + **0 properti plasebo** |
+| **Keamanan Properti & Bootloop** | Menulis `system.prop` / prop persisten | **Strict `resetprop -n`** (memori saja, 0 polusi `/data/property`) + **Watchdog 2-Strike Auto Safe-Mode** + **Transactional Rollback** |
+| **Native Flagship & Never-Downgrade** | Menimpa konfigurasi secara seragam | **Native Flagship Passthrough (`motion_only`)** + proteksi *Never-Downgrade* di prop & XML |
+| **Fix Bug HyperOS 3 (Toast Melebar & Recent Apps Hitam)** | Belum ada perbaikan runtime | **`SurgicalBlurGuardHook`** di `com.miui.home` (`BlurUtils` + `MiBackgroundBlur`) & Toast Window Guard |
+| **60/120 Hz Flagship Motion (iOS / ColorOS 17 / HyperOS 4)** | Kurva bawaan Xiaomi saja | **Refresh-Rate-Aware Folme & SpringForce Tuner** (live tanpa reboot) + **Thermal-Adaptive Motion Safety** |
+| **Non-LTPO AOD 10s-Cap Unlock** | RRO/XML saja | **3-Layer Unlock** (RRO + XML + `aod_mode_time=0` + hook runtime `com.miui.aod`) |
+| **Kontrol Pengguna & Verifikasi** | Instalasi standar | **Volume Up/Down 4-Tier Installer** + **WebUI 6,4 KB** + **Zero-Gimmick Runtime Verifier** |
 
 ---
 

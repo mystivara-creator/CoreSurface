@@ -61,10 +61,10 @@ _cs_read_vol_key() {
 
 _cs_tier_label() {
   case "$1" in
-    1) printf 'Auto (Deteksi RAM & Kelas HP: %s)' "${CS_DETECTED_TIER_LABEL:-Auto}" ;;
-    2) printf 'Low (Mid Non-Pro / Entry — Blur Standar, Tanpa Advanced Textures)' ;;
-    3) printf 'Balance Pro / Pro+ (Mid-Range Pro/Pro+ — Seimbang & Responsif)' ;;
-    4) printf 'Flagship Tier (Pengalaman Flagship Penuh — Tetap Ringan)' ;;
+    1) printf 'Auto (Rekomendasi Cerdas: %s)' "${CS_DETECTED_TIER_LABEL:-Auto}" ;;
+    2) printf 'Lite (Entry / Mid Non-Pro — Blur Standar, Tanpa Advanced Textures)' ;;
+    3) printf 'Balanced Pro (Mid Pro/Pro+ Feel — Full Suite Harian)' ;;
+    4) printf 'Max Flagship (Full Capability Suite + Silk Physics)' ;;
   esac
 }
 
