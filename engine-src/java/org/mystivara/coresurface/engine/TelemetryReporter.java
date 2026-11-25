@@ -15,15 +15,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Zero-gimmick live runtime telemetry writer (background daemon thread, zero UI I/O).
- * Reports genuine runtime metrics: hooked native HyperOS gates, hooked Folme/SpringForce
- * methods, tuned spring animations count, guarded Toasts/Recents, and live Thermal LOD.
+ * Uses two-tier flush throttling: 500ms for state changes and 5000ms for high-frequency
+ * counters (springs tuned, etc.) to keep scrolling/swiping 100% free of disk churn.
  */
 public final class TelemetryReporter {
     public static final String TELEMETRY_FILENAME = "coresurface_telemetry.prop";
+    private static final long FAST_FLUSH_MS = 500L;
+    private static final long LAZY_FLUSH_MS = 5000L;
 
     private final String processName;
     private volatile File cacheDir;
     private volatile String motionProfile = EngineConfig.MOTION_HYPEROS4;
+    private volatile int displayHz = 60;
     private volatile String lodTier = "FULL";
     private volatile int thermalStatus = 0;
     private volatile String lastConfig = "default";
@@ -31,6 +34,7 @@ public final class TelemetryReporter {
     private final Set<String> boundHooks = new LinkedHashSet<>();
     private final AtomicInteger nativeGatesHooked = new AtomicInteger(0);
     private final AtomicInteger folmeHooksBound = new AtomicInteger(0);
+    private final AtomicInteger aodGatesHooked = new AtomicInteger(0);
     private final AtomicInteger springsTuned = new AtomicInteger(0);
     private final AtomicInteger toastsGuarded = new AtomicInteger(0);
     private final AtomicInteger recentsGuarded = new AtomicInteger(0);
@@ -57,7 +61,7 @@ public final class TelemetryReporter {
             File dir = target.getCacheDir();
             if (dir != null) {
                 cacheDir = dir;
-                scheduleFlush();
+                scheduleFlush(FAST_FLUSH_MS);
             }
         } catch (Throwable ignored) {
         }
@@ -66,61 +70,79 @@ public final class TelemetryReporter {
     public synchronized void recordHookBound(String hookName) {
         if (hookName != null && !hookName.isEmpty()) {
             boundHooks.add(hookName);
-            scheduleFlush();
+            scheduleFlush(FAST_FLUSH_MS);
         }
     }
 
     public void setMotionProfile(String profile) {
         this.motionProfile = profile != null ? profile : EngineConfig.MOTION_OFF;
-        scheduleFlush();
+        scheduleFlush(FAST_FLUSH_MS);
+    }
+
+    public void setDisplayHz(int hz) {
+        if (hz > 0 && hz != this.displayHz) {
+            this.displayHz = hz;
+            scheduleFlush(FAST_FLUSH_MS);
+        }
     }
 
     public void setThermalState(String lodTier, int thermalStatus) {
         this.lodTier = lodTier != null ? lodTier : "FULL";
         this.thermalStatus = thermalStatus;
-        scheduleFlush();
+        scheduleFlush(FAST_FLUSH_MS);
     }
 
     public void setLastConfig(String cfg) {
         this.lastConfig = cfg != null ? cfg : "default";
-        scheduleFlush();
+        scheduleFlush(FAST_FLUSH_MS);
     }
 
     public void addNativeGatesHooked(int delta) {
         if (delta > 0) {
             nativeGatesHooked.addAndGet(delta);
-            scheduleFlush();
+            scheduleFlush(FAST_FLUSH_MS);
         }
     }
 
     public void addFolmeHooksBound(int delta) {
         if (delta > 0) {
             folmeHooksBound.addAndGet(delta);
-            scheduleFlush();
+            scheduleFlush(FAST_FLUSH_MS);
+        }
+    }
+
+    public void addAodGatesHooked(int delta) {
+        if (delta > 0) {
+            aodGatesHooked.addAndGet(delta);
+            scheduleFlush(FAST_FLUSH_MS);
         }
     }
 
     public void incSpringsTuned() {
         springsTuned.incrementAndGet();
-        scheduleFlush();
+        scheduleFlush(LAZY_FLUSH_MS);
     }
 
     public void incToastsGuarded() {
         toastsGuarded.incrementAndGet();
-        scheduleFlush();
+        scheduleFlush(LAZY_FLUSH_MS);
     }
 
     public void incRecentsGuarded() {
         recentsGuarded.incrementAndGet();
-        scheduleFlush();
+        scheduleFlush(LAZY_FLUSH_MS);
     }
 
     public void scheduleFlush() {
+        scheduleFlush(FAST_FLUSH_MS);
+    }
+
+    private void scheduleFlush(long delayMs) {
         if (cacheDir == null || flushScheduled) {
             return;
         }
         flushScheduled = true;
-        mainHandler.postDelayed(() -> ioExecutor.execute(this::flushNow), 600L);
+        mainHandler.postDelayed(() -> ioExecutor.execute(this::flushNow), delayMs);
     }
 
     public void flushNow() {
@@ -140,17 +162,19 @@ public final class TelemetryReporter {
                 }
             }
 
-            StringBuilder sb = new StringBuilder(256);
+            StringBuilder sb = new StringBuilder(300);
             sb.append("ENGINE_ACTIVE=1\n");
             sb.append("ENGINE_VERSION=1.0.0\n");
             sb.append("PROCESS=").append(processName).append('\n');
             sb.append("ENGINE_MODE=NATIVE_MOTION\n");
             sb.append("MOTION_PROFILE=").append(motionProfile).append('\n');
+            sb.append("DISPLAY_HZ=").append(displayHz).append('\n');
             sb.append("LOD_TIER=").append(lodTier).append('\n');
             sb.append("THERMAL_STATUS=").append(thermalStatus).append('\n');
             sb.append("HOOKS_BOUND=").append(hooksCsv).append('\n');
             sb.append("NATIVE_GATES=").append(nativeGatesHooked.get()).append('\n');
             sb.append("FOLME_HOOKS=").append(folmeHooksBound.get()).append('\n');
+            sb.append("AOD_GATES=").append(aodGatesHooked.get()).append('\n');
             sb.append("SPRINGS_TUNED=").append(springsTuned.get()).append('\n');
             sb.append("TOASTS_GUARDED=").append(toastsGuarded.get()).append('\n');
             sb.append("RECENTS_GUARDED=").append(recentsGuarded.get()).append('\n');

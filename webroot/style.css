@@ -388,24 +388,24 @@ code {
   align-self: flex-start;
 }
 
-.preset-grid {
+.tier-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
 }
 
-@media (max-width: 460px) {
-  .preset-grid {
+@media (max-width: 360px) {
+  .tier-grid {
     grid-template-columns: 1fr;
   }
 }
 
-.btn-preset {
+.btn-tier {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 10px 11px;
+  gap: 3px;
+  padding: 11px 12px;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface-alt);
@@ -414,18 +414,22 @@ code {
   cursor: pointer;
 }
 
-.btn-preset strong {
+.btn-tier strong {
   font-size: 13px;
 }
 
-.btn-preset span {
+.btn-tier span {
   font-size: 11px;
   color: var(--muted);
 }
 
-.btn-preset:active {
+.btn-tier.active {
   border-color: var(--accent);
   background: var(--accent-bg);
+}
+
+.btn-tier.active strong {
+  color: var(--accent);
 }
 
 .quick-actions {

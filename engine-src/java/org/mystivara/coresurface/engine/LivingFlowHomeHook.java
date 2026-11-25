@@ -42,6 +42,7 @@ public final class LivingFlowHomeHook {
 
     public void install(ClassLoader cl) {
         blurGuard.installWindowToastGuard(cl);
+        blurGuard.installHomeRecentsGuard(cl);
         deviceLevelHook.install(cl);
         folmeHook.install(cl);
 
@@ -102,6 +103,7 @@ public final class LivingFlowHomeHook {
         config.attachContext(appCtx);
         telemetry.attachContext(appCtx);
         lodController.attachContext(appCtx);
+        folmeHook.attachContext(appCtx);
         telemetry.setMotionProfile(config.getMotionProfile());
         telemetry.setLastConfig(config.getRawConfig());
         config.addListener(() -> {

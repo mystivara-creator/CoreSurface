@@ -9,6 +9,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -18,17 +19,25 @@ import de.robv.android.xposed.XposedHelpers;
 /**
  * Surgical HyperOS 3 Toast Pop-up & Black Recent Apps Guard.
  *
- * Production hardening:
- * - Caches MIUI reflection Method handles (zero repeated reflection lookups).
- * - Strips BOTH standard Android blurBehindRadius/FLAG_BLUR_BEHIND AND proprietary
- *   HyperOS View blur setters (setMiBackgroundBlurMode / setMiBackgroundBlurRadius /
- *   setMiViewBlurMode) both at WindowManagerGlobal.addView/updateViewLayout AND
- *   via post-attach runnable so MiuiToast cannot re-enable blur 1 frame later.
- * - Class-caches Recents view detection so visibility callbacks cost ~5ns.
+ * Root-cause fix for HyperOS 3 black Recent Apps when Advanced Textures is enabled:
+ * - In com.miui.home, Advanced Textures switches BlurUtils to "complete / pass-window"
+ *   real-time blur (isUseCompleteBlurOnDev / getBlurType >= 2 / MiBackgroundBlur on
+ *   RecentsContainer/NavStubView), which fails to sample the wallpaper on mid-range GPUs
+ *   and renders a solid black surface.
+ * - installHomeRecentsGuard() surgically steers MiuiHome's Recents back to Xiaomi's stable
+ *   standard wallpaper blur WITHOUT breaking Folder blur or Control Center blur.
+ * - installWindowToastGuard() strips broken Toast window blur & MIUI View blur setters.
  */
 public final class SurgicalBlurGuardHook {
     private static final int RECENTS_NO = 0;
     private static final int RECENTS_YES = 1;
+
+    private static final String[] HOME_BLUR_UTILS_CLASSES = new String[] {
+            "com.miui.home.launcher.common.BlurUtils",
+            "com.miui.home.recents.util.BlurUtils",
+            "com.miui.home.recents.views.RecentsContainer",
+            "com.miui.home.recents.NavStubView"
+    };
 
     private final EngineConfig config;
     private final TelemetryReporter telemetry;
@@ -82,13 +91,169 @@ public final class SurgicalBlurGuardHook {
         }
     }
 
+    /**
+     * Installed strictly inside com.miui.home to fix HyperOS 3 black Recent Apps under
+     * Advanced Textures while leaving Control Center & Folder blur completely untouched.
+     */
+    public void installHomeRecentsGuard(ClassLoader cl) {
+        int hooked = 0;
+
+        // 1. Steer MiuiHome BlurUtils away from broken complete/pass-window Recents blur
+        for (String clsName : HOME_BLUR_UTILS_CLASSES) {
+            Class<?> clazz = safeFindClass(clsName, cl);
+            if (clazz == null) {
+                continue;
+            }
+            Method[] methods;
+            try {
+                methods = clazz.getDeclaredMethods();
+            } catch (Throwable ignored) {
+                continue;
+            }
+            for (Method m : methods) {
+                if (Modifier.isAbstract(m.getModifiers())) {
+                    continue;
+                }
+                String name = m.getName();
+                Class<?> ret = m.getReturnType();
+                if (ret == boolean.class && isCompleteBlurQuery(name)) {
+                    if (hookReturnFalseWhenGuarded(m)) {
+                        hooked++;
+                    }
+                } else if (ret == int.class && "getBlurType".equals(name)) {
+                    if (hookClampBlurType(m)) {
+                        hooked++;
+                    }
+                }
+            }
+        }
+
+        // 2. Intercept MIUI View background blur setters ONLY on Recents/Overview/NavStub views
+        //    (explicitly excludes Folder views so folder blur stays 100% intact)
+        hooked += hookViewMiBlurForRecents("setMiBackgroundBlurMode");
+        hooked += hookViewMiBlurForRecents("setMiViewBlurMode");
+
+        // 3. Guard MiuiHome Recents window FLAG_BLUR_BEHIND / blurBehindRadius
+        try {
+            Class<?> wmgClass = XposedHelpers.findClassIfExists("android.view.WindowManagerGlobal", cl);
+            if (wmgClass != null) {
+                XC_MethodHook recentsWinHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (!config.isSurgicalGuard() || param.args == null || param.args.length < 2) {
+                            return;
+                        }
+                        if (!(param.args[0] instanceof View) || !(param.args[1] instanceof WindowManager.LayoutParams)) {
+                            return;
+                        }
+                        View view = (View) param.args[0];
+                        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) param.args[1];
+                        if (isRecentsWindow(view, lp)) {
+                            boolean stripped = false;
+                            if ((lp.flags & WindowManager.LayoutParams.FLAG_BLUR_BEHIND) != 0) {
+                                lp.flags &= ~WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+                                stripped = true;
+                            }
+                            if (Build.VERSION.SDK_INT >= 31 && lp.getBlurBehindRadius() > 0) {
+                                lp.setBlurBehindRadius(0);
+                                stripped = true;
+                            }
+                            if (stripped) {
+                                telemetry.incRecentsGuarded();
+                            }
+                        }
+                    }
+                };
+                XposedBridge.hookAllMethods(wmgClass, "updateViewLayout", recentsWinHook);
+                hooked++;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        if (hooked > 0) {
+            telemetry.recordHookBound("RecentsGuard");
+        }
+    }
+
+    private boolean hookReturnFalseWhenGuarded(Method m) {
+        try {
+            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (config.isSurgicalGuard()) {
+                        param.setResult(Boolean.FALSE);
+                        telemetry.incRecentsGuarded();
+                    }
+                }
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private boolean hookClampBlurType(Method m) {
+        try {
+            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (!config.isSurgicalGuard()) {
+                        return;
+                    }
+                    Object res = param.getResult();
+                    if (res instanceof Integer && ((Integer) res) >= 2) {
+                        // Type 1 = standard reliable wallpaper blur; >=2 = broken HOS3 complete/advanced window blur
+                        param.setResult(1);
+                        telemetry.incRecentsGuarded();
+                    }
+                }
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private int hookViewMiBlurForRecents(String methodName) {
+        try {
+            Method m = View.class.getMethod(methodName, int.class);
+            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (!config.isSurgicalGuard() || !(param.thisObject instanceof View)
+                            || param.args == null || param.args.length < 1) {
+                        return;
+                    }
+                    Object arg = param.args[0];
+                    if (!(arg instanceof Integer) || ((Integer) arg) == 0) {
+                        return;
+                    }
+                    View v = (View) param.thisObject;
+                    if (isRecentsClass(v.getClass())) {
+                        param.args[0] = 0;
+                        telemetry.incRecentsGuarded();
+                    }
+                }
+            });
+            return 1;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
     public boolean isRecentsClass(Class<?> clazz) {
         Integer cached = recentsClassCache.get(clazz);
         if (cached != null) {
             return cached == RECENTS_YES;
         }
         String cls = clazz.getName().toLowerCase();
-        boolean match = cls.contains("recents") || cls.contains("taskstack") || cls.contains("overview");
+        // Explicitly never touch Folder blur views
+        boolean match = !cls.contains("folder")
+                && (cls.contains("recents")
+                || cls.contains("taskstack")
+                || cls.contains("overview")
+                || cls.contains("navstub")
+                || cls.contains("blurbackground"));
         recentsClassCache.put(clazz, match ? RECENTS_YES : RECENTS_NO);
         return match;
     }
@@ -105,7 +270,6 @@ public final class SurgicalBlurGuardHook {
                 int r = Color.red(color);
                 int g = Color.green(color);
                 int b = Color.blue(color);
-                // Detect broken HyperOS 3 opaque/near-opaque black fallback scrim
                 if (alpha >= 210 && r <= 24 && g <= 24 && b <= 24) {
                     view.setBackgroundColor(Color.argb(68, 12, 16, 24));
                     telemetry.incRecentsGuarded();
@@ -113,6 +277,27 @@ public final class SurgicalBlurGuardHook {
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    private static boolean isCompleteBlurQuery(String methodName) {
+        String lower = methodName.toLowerCase();
+        return lower.contains("completeblur")
+                || lower.contains("usecompleteblur")
+                || lower.contains("passwindowblur")
+                || lower.contains("realtimeblurinrecents")
+                || lower.contains("supportadvancedblur");
+    }
+
+    private boolean isRecentsWindow(View view, WindowManager.LayoutParams lp) {
+        if (isRecentsClass(view.getClass())) {
+            return true;
+        }
+        CharSequence title = lp.getTitle();
+        if (title != null) {
+            String t = title.toString().toLowerCase();
+            return t.contains("recents") || t.contains("overview");
+        }
+        return false;
     }
 
     @SuppressWarnings("deprecation")
@@ -145,7 +330,6 @@ public final class SurgicalBlurGuardHook {
             if (clearMiBlurRecursive(view, 0)) {
                 modified = true;
             }
-            // Post-attach sweep in case HyperOS MiuiToast applies blur right after addView()
             view.post(() -> {
                 if (config.isSurgicalGuard()) {
                     clearMiBlurRecursive(view, 0);
@@ -171,6 +355,14 @@ public final class SurgicalBlurGuardHook {
     private static Method findViewIntMethod(String name) {
         try {
             return View.class.getMethod(name, int.class);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Class<?> safeFindClass(String className, ClassLoader cl) {
+        try {
+            return XposedHelpers.findClassIfExists(className, cl);
         } catch (Throwable ignored) {
             return null;
         }

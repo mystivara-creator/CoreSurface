@@ -137,10 +137,10 @@ cs_set_prop() {
 cs_apply_feat_animations() {
   [ "$EFF_FEAT_ANIMATIONS" = "1" ] || return 0
 
-  # Verified HyperOS/MIUI animation & split Control Center flags (zero placebo keys)
+  # Verified HyperOS/MIUI animation & split Control Center flags scaled by resolved tier
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
-  case "$CS_RAM_TIER" in
-    high)
+  case "${CS_EFF_TIER:-low}" in
+    flagship)
       cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:3,g:3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
@@ -148,7 +148,7 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.sf_charge_anim_supported" "true"
       ;;
-    mid)
+    balanced_pro)
       cs_set_prop "FEAT_ANIMATIONS" "ro.miui.device_level" "2"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.deviceLevelList" "v:1,c:2,g:3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
@@ -164,7 +164,8 @@ cs_apply_feat_animations() {
 cs_apply_feat_blur() {
   [ "$EFF_FEAT_BLUR" = "1" ] || return 0
 
-  # Verified AOSP SurfaceFlinger & HyperOS Control Center/Shade/Folder/Launcher blur
+  # Verified AOSP SurfaceFlinger & HyperOS Control Center/Shade/Folder/Launcher blur.
+  # Low tier keeps clean standard blur WITHOUT enabling Advanced Textures.
   cs_set_prop "FEAT_BLUR" "ro.surface_flinger.supports_background_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.sf.blurs_are_expensive" "0"
   cs_set_prop "FEAT_BLUR" "sf.blurs_are_expensive" "0"
@@ -175,9 +176,7 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "1"
   cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_supported" "true"
 
-  # On HyperOS 3+, keep default Advanced Textures OFF so Toasts/Recents stay clean out-of-the-box;
-  # SurgicalBlurGuardHook protects Toast windows & Recents scrims if the user enables it manually.
-  if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
+  if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ] || [ "${EFF_FEAT_ADV_TEXTURES:-0}" != "1" ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
   else
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "true"
@@ -210,11 +209,12 @@ cs_apply_feat_display_hz() {
 
 cs_sync_engine_live_prop() {
   cs_find_resetprop || return 0
-  _cs_live_cfg=$(printf 'motion=%s;native=%s;guard=%s;thermallod=%s' \
+  _cs_live_cfg=$(printf 'motion=%s;native=%s;guard=%s;thermallod=%s;aod=%s' \
     "${EFF_FEAT_MOTION_PROFILE:-off}" \
     "${EFF_FEAT_NATIVE_TIER:-0}" \
     "${EFF_FEAT_SURGICAL_GUARD:-0}" \
-    "${EFF_FEAT_THERMAL_LOD:-1}")
+    "${EFF_FEAT_THERMAL_LOD:-1}" \
+    "${EFF_FEAT_AOD_UNLOCK:-1}")
 
   if [ "$CS_RESETPROP_MODE" = "magisk" ]; then
     "$CS_RESETPROP_BIN" resetprop -n "debug.coresurface.cfg" "$_cs_live_cfg" 2>/dev/null || true
@@ -252,6 +252,6 @@ cs_apply_all_props() {
 
   _cs_count=$(wc -l < "$CS_PROPS_AUDIT_FILE" 2>/dev/null | tr -d ' \t\r\n')
   cs_state_set "APPLIED_PROPS_COUNT" "${_cs_count:-0}"
-  cs_log "Applied ${_cs_count:-0} verified non-persistent props (blur=${EFF_FEAT_BLUR}, anim=${EFF_FEAT_ANIMATIONS}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ})."
+  cs_log "Applied ${_cs_count:-0} verified non-persistent props (tier=${CS_EFF_TIER:-low}, blur=${EFF_FEAT_BLUR}, advtex=${EFF_FEAT_ADV_TEXTURES:-0}, anim=${EFF_FEAT_ANIMATIONS}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ})."
   return 0
 }

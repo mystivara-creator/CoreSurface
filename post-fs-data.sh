@@ -63,9 +63,11 @@ cs_state_set "ROM_VERSION" "$CS_ROM_VERSION"
 cs_state_set "ANDROID_SDK" "$CS_ANDROID_SDK"
 cs_state_set "RAM_MB" "$CS_RAM_MB"
 cs_state_set "RAM_TIER" "$CS_RAM_TIER"
+cs_state_set "DETECTED_TIER" "$CS_DETECTED_TIER"
+cs_state_set "EFF_TIER" "$CS_EFF_TIER"
 cs_state_set "PENDING_KEYS" ""
 
-cs_log "Detected ${CS_ROM_FAMILY} (${CS_ROM_VERSION}) SDK=${CS_ANDROID_SDK} RAM=${CS_RAM_MB}MB (${CS_RAM_TIER_LABEL})."
+cs_log "Detected ${CS_ROM_FAMILY} (${CS_ROM_VERSION}) SDK=${CS_ANDROID_SDK} RAM=${CS_RAM_MB}MB | Tier=${CS_EFF_TIER} (cfg=${CFG_TIER_MODE}, detected=${CS_DETECTED_TIER})."
 
 # Layer 4a: Apply Granular Non-Persistent Properties (resetprop -n + system.prop sync)
 cs_apply_all_props "$MODDIR" || true

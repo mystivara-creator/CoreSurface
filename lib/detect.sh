@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# CoreSurface - Layer 1 (ROM & SDK Gate) & Layer 2 (Dynamic Hardware Tiering)
+# CoreSurface - Layer 1 (ROM & SDK Gate) & Layer 2 (Dynamic Hardware & 4-Tier Classification)
 # Pure POSIX sh. Zero hardcoded device codenames.
 
 cs_getprop() {
@@ -53,14 +53,19 @@ cs_detect_rom() {
   return 1
 }
 
-# Read MemTotal from /proc/meminfo (or CORESURFACE_MEMINFO override) in MB.
-# Sets: CS_RAM_MB, CS_RAM_TIER (low | mid | high), CS_RAM_TIER_LABEL
+# Read MemTotal from /proc/meminfo (or CORESURFACE_MEMINFO override) in MB
+# and classify hardware class dynamically (distinguishing Entry/Mid Non-Pro,
+# Mid-Range Pro/Pro+, and Flagship without hardcoding any device codenames).
+# Sets: CS_RAM_MB, CS_RAM_TIER (low | mid | high), CS_RAM_TIER_LABEL,
+#       CS_DETECTED_TIER (low | balanced_pro | flagship), CS_DETECTED_TIER_LABEL
 cs_detect_ram_tier() {
   _cs_meminfo=${CORESURFACE_MEMINFO:-/proc/meminfo}
   CS_RAM_MB="0"
   CS_RAM_TIER="low"
   CS_RAM_TIER_LABEL="< 6 GB"
-  export CS_RAM_MB CS_RAM_TIER CS_RAM_TIER_LABEL
+  CS_DETECTED_TIER="low"
+  CS_DETECTED_TIER_LABEL="Low (Entry / Mid Non-Pro)"
+  export CS_RAM_MB CS_RAM_TIER CS_RAM_TIER_LABEL CS_DETECTED_TIER CS_DETECTED_TIER_LABEL
 
   if [ -r "$_cs_meminfo" ]; then
     _cs_kb=$(awk '/^MemTotal:/ { print $2; exit }' "$_cs_meminfo" 2>/dev/null || true)
@@ -69,8 +74,7 @@ cs_detect_ram_tier() {
     fi
   fi
 
-  # Physical 6 GB devices typically expose ~5632-6000 MB to Linux;
-  # Physical 8 GB devices typically expose ~7168-8000 MB to Linux.
+  # Physical 6 GB ~5632-6000 MB, 8 GB ~7168-8000 MB, 12 GB+ >= 10240 MB
   if [ "$CS_RAM_MB" -ge 7168 ]; then
     CS_RAM_TIER="high"
     CS_RAM_TIER_LABEL=">= 8 GB"
@@ -81,19 +85,75 @@ cs_detect_ram_tier() {
     CS_RAM_TIER="low"
     CS_RAM_TIER_LABEL="< 6 GB"
   fi
+
+  _cs_mkt=$(cs_getprop "ro.product.marketname")
+  if [ -z "$_cs_mkt" ]; then
+    _cs_mkt=$(cs_getprop "ro.product.model")
+  fi
+  _cs_mkt_lc=$(printf '%s' "$_cs_mkt" | tr '[:upper:]' '[:lower:]')
+  _cs_stock_lvl=$(cs_getprop "ro.miui.device_level")
+
+  # Dynamic hardware class classification (zero hardcoded codenames):
+  # - Flagship: >= 12 GB RAM, stock device_level >= 3, or Ultra/Fold/Flip/Mix tier
+  # - Balance Pro/Pro+: >= 6 GB RAM + Pro/Pro+/Turbo/GT tier (e.g., Redmi Note Pro/Pro+, POCO X Pro)
+  # - Low (Entry / Mid Non-Pro): < 6 GB RAM OR non-Pro mid-range (e.g., Redmi Note 15 5G)
+  if [ "$CS_RAM_MB" -ge 10240 ]; then
+    CS_DETECTED_TIER="flagship"
+    CS_DETECTED_TIER_LABEL="Flagship Tier"
+  elif cs_is_uint "$_cs_stock_lvl" && [ "$_cs_stock_lvl" -ge 3 ]; then
+    CS_DETECTED_TIER="flagship"
+    CS_DETECTED_TIER_LABEL="Flagship Tier"
+  else
+    case "$_cs_mkt_lc" in
+      *ultra*|*fold*|*flip*|*mix*)
+        if [ "$CS_RAM_MB" -ge 7168 ]; then
+          CS_DETECTED_TIER="flagship"
+          CS_DETECTED_TIER_LABEL="Flagship Tier"
+        else
+          CS_DETECTED_TIER="balanced_pro"
+          CS_DETECTED_TIER_LABEL="Balance Pro / Pro+"
+        fi
+        ;;
+      *pro*|*turbo*|*gt*)
+        if [ "$CS_RAM_MB" -ge 5632 ]; then
+          CS_DETECTED_TIER="balanced_pro"
+          CS_DETECTED_TIER_LABEL="Balance Pro / Pro+"
+        else
+          CS_DETECTED_TIER="low"
+          CS_DETECTED_TIER_LABEL="Low (Entry / Mid Non-Pro)"
+        fi
+        ;;
+      '')
+        # Fallback when marketname/model is not exposed: use RAM tier
+        if [ "$CS_RAM_MB" -ge 7168 ]; then
+          CS_DETECTED_TIER="balanced_pro"
+          CS_DETECTED_TIER_LABEL="Balance Pro / Pro+"
+        else
+          CS_DETECTED_TIER="low"
+          CS_DETECTED_TIER_LABEL="Low (Entry / Mid Non-Pro)"
+        fi
+        ;;
+      *)
+        # Named non-Pro mid-range / entry device (e.g., Redmi Note 15 5G) -> Low (Blur ON, no Advanced Textures)
+        CS_DETECTED_TIER="low"
+        CS_DETECTED_TIER_LABEL="Low (Entry / Mid Non-Pro)"
+        ;;
+    esac
+  fi
 }
 
 # Load user config safely without executing arbitrary shell code.
 cs_load_config() {
   _cs_cfg_file=$1
 
-  # Live Layer 2 Pure Flagship Motion & Experience toggles
+  CFG_TIER_MODE="auto"
   CFG_FEAT_MOTION_PROFILE="hyperos4"
   CFG_FEAT_NATIVE_TIER="auto"
-  CFG_FEAT_SURGICAL_GUARD="auto"
+  CFG_FEAT_SURGICAL_GUARD="1"
   CFG_FEAT_THERMAL_LOD="auto"
+  CFG_FEAT_AOD_UNLOCK="1"
 
-  # Layer 1 Early-Boot Base toggles
+  # Base features default to "auto" (driven cleanly by CS_TIER_MODE unless explicitly overridden)
   CFG_FEAT_BLUR="auto"
   CFG_FEAT_ANIMATIONS="auto"
   CFG_FEAT_XML_PATCHER="auto"
@@ -101,17 +161,12 @@ cs_load_config() {
   CFG_FEAT_VIDEO_DEPTH="auto"
   CFG_FEAT_MULTITASK="auto"
   CFG_FEAT_DISPLAY_HZ="auto"
+  CFG_FEAT_COLOR_EXPERT="1"
 
-  # Opt-in features
-  CFG_FEAT_COLOR_EXPERT="0"
-  CFG_FEAT_GALLERY_PRO="0"
-  CFG_FEAT_AOD_UNLOCK="0"
-
-  export CFG_FEAT_MOTION_PROFILE CFG_FEAT_NATIVE_TIER \
-    CFG_FEAT_SURGICAL_GUARD CFG_FEAT_THERMAL_LOD \
+  export CFG_TIER_MODE CFG_FEAT_MOTION_PROFILE CFG_FEAT_NATIVE_TIER \
+    CFG_FEAT_SURGICAL_GUARD CFG_FEAT_THERMAL_LOD CFG_FEAT_AOD_UNLOCK \
     CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
-    CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ \
-    CFG_FEAT_COLOR_EXPERT CFG_FEAT_GALLERY_PRO CFG_FEAT_AOD_UNLOCK
+    CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ CFG_FEAT_COLOR_EXPERT
 
   [ -r "$_cs_cfg_file" ] || return 0
 
@@ -121,6 +176,11 @@ cs_load_config() {
     _cs_v=$(printf '%s' "$_cs_v" | tr -d '\r')
     case "$_cs_k" in
       ''|'#'*) continue ;;
+      CS_TIER_MODE)
+        case "$_cs_v" in
+          auto|low|balanced_pro|flagship) CFG_TIER_MODE="$_cs_v" ;;
+        esac
+        ;;
       FEAT_MOTION_PROFILE)
         case "$_cs_v" in
           hyperos4|silk|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
@@ -136,7 +196,6 @@ cs_load_config() {
         esac
         ;;
       FEAT_LIVING_FLOW)
-        # Backward-compatibility with configs created by earlier preview builds
         if [ "$_cs_seen_native_tier" = "0" ]; then
           case "$_cs_v" in auto|1|0) CFG_FEAT_NATIVE_TIER="$_cs_v" ;; esac
         fi
@@ -146,6 +205,9 @@ cs_load_config() {
         ;;
       FEAT_THERMAL_LOD)
         case "$_cs_v" in auto|1|0) CFG_FEAT_THERMAL_LOD="$_cs_v" ;; esac
+        ;;
+      FEAT_AOD_UNLOCK)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_AOD_UNLOCK="$_cs_v" ;; esac
         ;;
       FEAT_BLUR)
         case "$_cs_v" in auto|1|0) CFG_FEAT_BLUR="$_cs_v" ;; esac
@@ -169,26 +231,35 @@ cs_load_config() {
         case "$_cs_v" in auto|1|0) CFG_FEAT_DISPLAY_HZ="$_cs_v" ;; esac
         ;;
       FEAT_COLOR_EXPERT)
-        case "$_cs_v" in 1|0) CFG_FEAT_COLOR_EXPERT="$_cs_v" ;; esac
-        ;;
-      FEAT_GALLERY_PRO|FEAT_HYPERAI)
-        case "$_cs_v" in 1|0) CFG_FEAT_GALLERY_PRO="$_cs_v" ;; esac
-        ;;
-      FEAT_AOD_UNLOCK)
-        case "$_cs_v" in 1|0) CFG_FEAT_AOD_UNLOCK="$_cs_v" ;; esac
+        case "$_cs_v" in auto|1|0) CFG_FEAT_COLOR_EXPERT="$_cs_v" ;; esac
         ;;
     esac
   done < "$_cs_cfg_file"
 }
 
-# Resolve effective per-feature enablement from config + dynamic hardware tiering.
+# Resolve effective tier (low | balanced_pro | flagship) and per-feature flags.
 cs_resolve_features() {
+  case "$CFG_TIER_MODE" in
+    low)          CS_EFF_TIER="low" ;;
+    balanced_pro) CS_EFF_TIER="balanced_pro" ;;
+    flagship)     CS_EFF_TIER="flagship" ;;
+    *)            CS_EFF_TIER="${CS_DETECTED_TIER:-low}" ;;
+  esac
+
+  case "$CS_EFF_TIER" in
+    flagship)     CS_EFF_TIER_LABEL="Flagship Tier" ;;
+    balanced_pro) CS_EFF_TIER_LABEL="Balance Pro / Pro+" ;;
+    *)            CS_EFF_TIER_LABEL="Low (Blur Standar, Tanpa Advanced Textures)" ;;
+  esac
+
   EFF_FEAT_MOTION_PROFILE="off"
   EFF_FEAT_NATIVE_TIER="0"
   EFF_FEAT_SURGICAL_GUARD="0"
   EFF_FEAT_THERMAL_LOD="0"
+  EFF_FEAT_AOD_UNLOCK="0"
 
   EFF_FEAT_BLUR="0"
+  EFF_FEAT_ADV_TEXTURES="0"
   EFF_FEAT_ANIMATIONS="0"
   EFF_FEAT_XML_PATCHER="0"
   EFF_FEAT_RRO_OVERLAYS="0"
@@ -196,75 +267,72 @@ cs_resolve_features() {
   EFF_FEAT_MULTITASK="0"
   EFF_FEAT_DISPLAY_HZ="0"
   EFF_FEAT_COLOR_EXPERT="0"
-  EFF_FEAT_GALLERY_PRO="0"
-  EFF_FEAT_AOD_UNLOCK="0"
 
-  export EFF_FEAT_MOTION_PROFILE EFF_FEAT_NATIVE_TIER \
-    EFF_FEAT_SURGICAL_GUARD EFF_FEAT_THERMAL_LOD \
-    EFF_FEAT_BLUR EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER EFF_FEAT_RRO_OVERLAYS \
-    EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK EFF_FEAT_DISPLAY_HZ \
-    EFF_FEAT_COLOR_EXPERT EFF_FEAT_GALLERY_PRO EFF_FEAT_AOD_UNLOCK
+  export CS_EFF_TIER CS_EFF_TIER_LABEL \
+    EFF_FEAT_MOTION_PROFILE EFF_FEAT_NATIVE_TIER \
+    EFF_FEAT_SURGICAL_GUARD EFF_FEAT_THERMAL_LOD EFF_FEAT_AOD_UNLOCK \
+    EFF_FEAT_BLUR EFF_FEAT_ADV_TEXTURES EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER \
+    EFF_FEAT_RRO_OVERLAYS EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK \
+    EFF_FEAT_DISPLAY_HZ EFF_FEAT_COLOR_EXPERT
 
-  # FEAT_MOTION_PROFILE: Native Folme & Jetpack SpringForce Physics Profile
+  # Live Motion Profile
   case "$CFG_FEAT_MOTION_PROFILE" in
     hyperos4) EFF_FEAT_MOTION_PROFILE="hyperos4" ;;
-    silk) EFF_FEAT_MOTION_PROFILE="silk" ;;
-    *) EFF_FEAT_MOTION_PROFILE="off" ;;
+    silk)     EFF_FEAT_MOTION_PROFILE="silk" ;;
+    *)        EFF_FEAT_MOTION_PROFILE="off" ;;
   esac
 
-  # FEAT_NATIVE_TIER: Native HyperOS Flagship DeviceLevel / CpuLevel / GpuLevel Unlock
+  # Native Flagship Tier Unlock, Surgical Guard & Thermal-Adaptive Motion
   case "$CFG_FEAT_NATIVE_TIER" in
     1|auto) EFF_FEAT_NATIVE_TIER="1" ;;
-    0) EFF_FEAT_NATIVE_TIER="0" ;;
   esac
-
-  # FEAT_SURGICAL_GUARD: HyperOS 3 Toast & Black Recent Apps surgical guard (ON by default)
   case "$CFG_FEAT_SURGICAL_GUARD" in
     1|auto) EFF_FEAT_SURGICAL_GUARD="1" ;;
-    0) EFF_FEAT_SURGICAL_GUARD="0" ;;
   esac
-
-  # FEAT_THERMAL_LOD: Thermal-Adaptive Motion Safety (ON by default to protect 120 FPS)
   case "$CFG_FEAT_THERMAL_LOD" in
     1|auto) EFF_FEAT_THERMAL_LOD="1" ;;
-    0) EFF_FEAT_THERMAL_LOD="0" ;;
   esac
 
-  # FEAT_BLUR: High GPU/RAM load -> default ON only if RAM >= 6 GB (mid/high)
+  # Standard Blur is ON in ALL tiers (including Low!), but Advanced Textures XML
+  # is NEVER enabled in Low mode.
   case "$CFG_FEAT_BLUR" in
-    1) EFF_FEAT_BLUR="1" ;;
-    auto)
-      if [ "$CS_RAM_TIER" != "low" ]; then
-        EFF_FEAT_BLUR="1"
+    1|auto)
+      EFF_FEAT_BLUR="1"
+      if [ "$CS_EFF_TIER" != "low" ]; then
+        EFF_FEAT_ADV_TEXTURES="1"
       fi
       ;;
-    0) EFF_FEAT_BLUR="0" ;;
+    0)
+      EFF_FEAT_BLUR="0"
+      EFF_FEAT_ADV_TEXTURES="0"
+      ;;
   esac
 
-  # FEAT_ANIMATIONS: Default ON across all tiers (scales with RAM tier)
+  # Animations: ON across all tiers (scaled by CS_EFF_TIER: low=Lvl2, balanced_pro=Lvl2+, flagship=Lvl3)
   case "$CFG_FEAT_ANIMATIONS" in
     1|auto) EFF_FEAT_ANIMATIONS="1" ;;
-    0) EFF_FEAT_ANIMATIONS="0" ;;
   esac
 
-  # FEAT_XML_PATCHER: Default ON (fail-closed dynamic bind-mount)
+  # Dynamic XML Patcher: ON across all tiers
   case "$CFG_FEAT_XML_PATCHER" in
     1|auto) EFF_FEAT_XML_PATCHER="1" ;;
-    0) EFF_FEAT_XML_PATCHER="0" ;;
   esac
 
-  # FEAT_RRO_OVERLAYS: Default ON when RAM >= 6 GB (mid/high); opt-in on < 6 GB
-  case "$CFG_FEAT_RRO_OVERLAYS" in
-    1) EFF_FEAT_RRO_OVERLAYS="1" ;;
-    auto)
-      if [ "$CS_RAM_TIER" != "low" ]; then
-        EFF_FEAT_RRO_OVERLAYS="1"
+  # Custom Color Scheme Expert Mode: ALWAYS ON across ALL tiers (unless explicitly 0)
+  case "$CFG_FEAT_COLOR_EXPERT" in
+    1|auto)
+      if [ "$EFF_FEAT_XML_PATCHER" = "1" ]; then
+        EFF_FEAT_COLOR_EXPERT="1"
       fi
       ;;
-    0) EFF_FEAT_RRO_OVERLAYS="0" ;;
   esac
 
-  # FEAT_VIDEO_DEPTH: Lockscreen Video Depth -> auto ON on HyperOS and RAM >= 6 GB
+  # Clean-Room RRO Overlays: ON across all tiers (Low skips heavy MiWallpaper)
+  case "$CFG_FEAT_RRO_OVERLAYS" in
+    1|auto) EFF_FEAT_RRO_OVERLAYS="1" ;;
+  esac
+
+  # Lockscreen Video Depth: ON in Balance Pro/Pro+ & Flagship on HyperOS (OFF in Low)
   case "$CFG_FEAT_VIDEO_DEPTH" in
     1)
       if [ "$CS_ROM_FAMILY" = "hyperos" ]; then
@@ -272,48 +340,33 @@ cs_resolve_features() {
       fi
       ;;
     auto)
-      if [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "$CS_RAM_TIER" != "low" ]; then
+      if [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "$CS_EFF_TIER" != "low" ]; then
         EFF_FEAT_VIDEO_DEPTH="1"
       fi
       ;;
-    0) EFF_FEAT_VIDEO_DEPTH="0" ;;
   esac
 
-  # FEAT_MULTITASK: Default ON only when RAM >= 8 GB (high)
+  # Multitasking & High Refresh Rate: ON in Balance Pro/Pro+ & Flagship (OFF in Low for lightness)
   case "$CFG_FEAT_MULTITASK" in
     1) EFF_FEAT_MULTITASK="1" ;;
     auto)
-      if [ "$CS_RAM_TIER" = "high" ]; then
+      if [ "$CS_EFF_TIER" != "low" ]; then
         EFF_FEAT_MULTITASK="1"
       fi
       ;;
-    0) EFF_FEAT_MULTITASK="0" ;;
   esac
 
-  # FEAT_DISPLAY_HZ: Default ON only when RAM >= 8 GB (high)
   case "$CFG_FEAT_DISPLAY_HZ" in
     1) EFF_FEAT_DISPLAY_HZ="1" ;;
     auto)
-      if [ "$CS_RAM_TIER" = "high" ]; then
+      if [ "$CS_EFF_TIER" != "low" ]; then
         EFF_FEAT_DISPLAY_HZ="1"
       fi
       ;;
-    0) EFF_FEAT_DISPLAY_HZ="0" ;;
   esac
 
-  # FEAT_COLOR_EXPERT: Opt-in only (requires XML patcher enabled)
-  if [ "$CFG_FEAT_COLOR_EXPERT" = "1" ] && [ "$EFF_FEAT_XML_PATCHER" = "1" ]; then
-    EFF_FEAT_COLOR_EXPERT="1"
-  fi
-
-  # FEAT_GALLERY_PRO: Opt-in real Gallery XML capabilities (HyperOS + SDK >= 34 + XML patcher)
-  if [ "$CFG_FEAT_GALLERY_PRO" = "1" ] && [ "$EFF_FEAT_XML_PATCHER" = "1" ] \
-    && [ "$CS_ROM_FAMILY" = "hyperos" ] && [ "$CS_ANDROID_SDK" -ge 34 ]; then
-    EFF_FEAT_GALLERY_PRO="1"
-  fi
-
-  # FEAT_AOD_UNLOCK: Opt-in only (real AOD XML + MiuiAod RRO + Native AOD Tier)
-  if [ "$CFG_FEAT_AOD_UNLOCK" = "1" ]; then
-    EFF_FEAT_AOD_UNLOCK="1"
-  fi
+  # Non-LTPO AOD Always-On Unlock (RRO + XML + MiuiAod hook)
+  case "$CFG_FEAT_AOD_UNLOCK" in
+    1|auto) EFF_FEAT_AOD_UNLOCK="1" ;;
+  esac
 }

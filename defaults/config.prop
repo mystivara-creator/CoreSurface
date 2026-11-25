@@ -1,22 +1,14 @@
-# CoreSurface v1.0.0 Configuration (Pure Flagship Motion & Experience — 100% Original UI)
-# Live Engine features (LSPosed Runtime — hot-reload instantly without reboot):
-#   FEAT_MOTION_PROFILE: hyperos4 | silk | 0
-#   Other live toggles:  auto | 1 | 0
+# CoreSurface v1.0.0 Configuration (4-Tier Pure Experience Architecture)
+# Tier Mode (selected via Volume Up/Down installer or WebUI):
+#   auto | low | balanced_pro | flagship
+CS_TIER_MODE=auto
+
+# Live Motion Physics Profile (LSPosed Runtime — hot-reload without reboot):
+#   hyperos4 | silk | 0
 FEAT_MOTION_PROFILE=hyperos4
-FEAT_NATIVE_TIER=auto
-FEAT_SURGICAL_GUARD=auto
-FEAT_THERMAL_LOD=auto
 
-# Early-Boot Base features (RAM-tiered auto | 1 | 0):
-FEAT_BLUR=auto
-FEAT_ANIMATIONS=auto
-FEAT_XML_PATCHER=auto
-FEAT_RRO_OVERLAYS=auto
-FEAT_VIDEO_DEPTH=auto
-FEAT_MULTITASK=auto
-FEAT_DISPLAY_HZ=auto
-
-# Opt-in hardware/ROM-dependent features (0 | 1, default OFF):
-FEAT_COLOR_EXPERT=0
-FEAT_GALLERY_PRO=0
-FEAT_AOD_UNLOCK=0
+# Core User Toggles:
+#   FEAT_SURGICAL_GUARD: 1 | 0 (HyperOS 3 Toast & Recent Apps fix, live)
+#   FEAT_AOD_UNLOCK:     1 | 0 (Non-LTPO Always-On Display 10s-cap unlock)
+FEAT_SURGICAL_GUARD=1
+FEAT_AOD_UNLOCK=1

@@ -1,5 +1,11 @@
 package org.mystivara.coresurface.engine;
 
+import android.content.Context;
+import android.hardware.display.DisplayManager;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Display;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -9,21 +15,17 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * Native HyperOS Folme & Jetpack SpringForce Physics Tuner.
+ * Refresh-Rate-Aware Native HyperOS Folme & Jetpack SpringForce Physics Tuner.
  *
  * Preserves 100% original HyperOS visual design with ZERO custom overlays, ZERO FBOs,
- * and ZERO competing animators. Instead, refines Xiaomi's own native 120 Hz Folme
- * (`miuix.animation.utils.EaseManager`, `miuix.animation.physics.SpringForce`) and
- * Android `SpringForce` spring parameters into flagship motion curves:
+ * and ZERO competing animators. Dynamically adapts spring damping & response to BOTH
+ * 60 Hz and 90/120 Hz display modes via DisplayManager.DisplayListener (zero polling):
  *
- * - `hyperos4`: Crisp, airy HyperOS 4 flagship spring feel (softens rigid mid-range
- *               damping & extends settle response by +12%).
- * - `silk`:     Silky iOS / ColorOS 17 continuous momentum spring feel (fluid damping
- *               0.82-0.90 & response +24%).
- * - `off`:      100% stock ROM curves (instant live switch, zero reboot).
- *
- * Thermal-Adaptive Safety: Automatically tightens response toward snappy 1.0x when
- * ThermalLodController reports SEVERE thermal status.
+ * - 60 Hz (16.67ms/frame): Tight, crisp damping (0.85-0.94) & controlled response (+6% to +12%)
+ *   so animations stay snappy and consistent without floaty tail stutter.
+ * - 90/120 Hz (8.33ms/frame): Fluid flagship settle curves (+13% HyperOS 4, +22% iOS/ColorOS Silk).
+ * - Thermal-Adaptive Safety: Automatically scales curve intensity toward stock 1.0x when
+ *   ThermalLodController reports MODERATE/SEVERE thermal status.
  */
 public final class FolmePhysicsHook {
     private static final int DEFAULT_SPRING_STYLE = -2;
@@ -31,11 +33,75 @@ public final class FolmePhysicsHook {
     private final EngineConfig config;
     private final ThermalLodController lodController;
     private final TelemetryReporter telemetry;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private volatile boolean displayAttached = false;
+    private volatile float currentRefreshHz = 60.0f;
+    private volatile float cachedThermalScale = 1.0f;
 
     public FolmePhysicsHook(EngineConfig config, ThermalLodController lodController, TelemetryReporter telemetry) {
         this.config = config;
         this.lodController = lodController;
         this.telemetry = telemetry;
+        this.lodController.addListener(this::refreshThermalScale);
+    }
+
+    public void attachContext(Context context) {
+        if (context == null || displayAttached) {
+            return;
+        }
+        displayAttached = true;
+        refreshThermalScale();
+        try {
+            Context appCtx = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+            DisplayManager dm = (DisplayManager) appCtx.getSystemService(Context.DISPLAY_SERVICE);
+            if (dm == null) {
+                return;
+            }
+            updateDisplayRate(dm);
+            dm.registerDisplayListener(new DisplayManager.DisplayListener() {
+                @Override
+                public void onDisplayAdded(int displayId) {
+                }
+
+                @Override
+                public void onDisplayRemoved(int displayId) {
+                }
+
+                @Override
+                public void onDisplayChanged(int displayId) {
+                    if (displayId == Display.DEFAULT_DISPLAY) {
+                        updateDisplayRate(dm);
+                    }
+                }
+            }, mainHandler);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void updateDisplayRate(DisplayManager dm) {
+        try {
+            Display d = dm.getDisplay(Display.DEFAULT_DISPLAY);
+            if (d != null) {
+                float hz = d.getRefreshRate();
+                if (hz >= 45.0f && hz <= 240.0f) {
+                    currentRefreshHz = hz;
+                    telemetry.setDisplayHz(Math.round(hz));
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void refreshThermalScale() {
+        float lod = lodController.getEffectiveLod();
+        if (lod <= ThermalLodController.LOD_ECO + 0.05f) {
+            cachedThermalScale = 0.35f;
+        } else if (lod <= ThermalLodController.LOD_BALANCED + 0.05f) {
+            cachedThermalScale = 0.70f;
+        } else {
+            cachedThermalScale = 1.0f;
+        }
     }
 
     public int install(ClassLoader cl) {
@@ -107,8 +173,7 @@ public final class FolmePhysicsHook {
                     if (!(param.args[0] instanceof Integer) || !(param.args[1] instanceof float[])) {
                         return;
                     }
-                    int style = (Integer) param.args[0];
-                    if (style != springStyle) {
+                    if (((Integer) param.args[0]) != springStyle) {
                         return;
                     }
                     float[] factors = (float[]) param.args[1];
@@ -117,14 +182,11 @@ public final class FolmePhysicsHook {
                     }
                     float damping = factors[0];
                     float response = factors[1];
-                    // Only refine normal UI motion springs; leave bounce/instant snaps untouched
                     if (damping < 0.60f || damping > 1.05f || response < 0.14f || response > 0.70f) {
                         return;
                     }
-                    float[] tuned = tuneDampingResponse(damping, response, profile);
                     float[] copy = factors.clone();
-                    copy[0] = tuned[0];
-                    copy[1] = tuned[1];
+                    applyTunedCurve(copy, damping, response, profile);
                     param.args[1] = copy;
                     telemetry.incSpringsTuned();
                 }
@@ -150,8 +212,7 @@ public final class FolmePhysicsHook {
                     if (!(param.args[0] instanceof Integer) || !(param.args[1] instanceof double[])) {
                         return;
                     }
-                    int style = (Integer) param.args[0];
-                    if (style != springStyle) {
+                    if (((Integer) param.args[0]) != springStyle) {
                         return;
                     }
                     double[] factors = (double[]) param.args[1];
@@ -163,10 +224,8 @@ public final class FolmePhysicsHook {
                     if (damping < 0.60f || damping > 1.05f || response < 0.14f || response > 0.70f) {
                         return;
                     }
-                    float[] tuned = tuneDampingResponse(damping, response, profile);
                     double[] copy = factors.clone();
-                    copy[0] = tuned[0];
-                    copy[1] = tuned[1];
+                    applyTunedCurveDouble(copy, damping, response, profile);
                     param.args[1] = copy;
                     telemetry.incSpringsTuned();
                 }
@@ -197,10 +256,18 @@ public final class FolmePhysicsHook {
                     if (d < 0.75f || d > 1.02f) {
                         return;
                     }
-                    float thermalWeight = getThermalScale();
-                    float target = EngineConfig.MOTION_SILK.equals(profile)
-                            ? clamp(d * (1.0f - 0.08f * thermalWeight), 0.82f, 0.90f)
-                            : clamp(d * (1.0f - 0.05f * thermalWeight), 0.85f, 0.93f);
+                    boolean highHz = currentRefreshHz > 75.0f;
+                    float w = cachedThermalScale;
+                    float target;
+                    if (EngineConfig.MOTION_SILK.equals(profile)) {
+                        target = highHz
+                                ? clamp(d * (1.0f - 0.08f * w), 0.82f, 0.90f)
+                                : clamp(d * (1.0f - 0.05f * w), 0.85f, 0.92f);
+                    } else {
+                        target = highHz
+                                ? clamp(d * (1.0f - 0.05f * w), 0.85f, 0.93f)
+                                : clamp(d * (1.0f - 0.03f * w), 0.88f, 0.94f);
+                    }
                     param.args[0] = target;
                     telemetry.incSpringsTuned();
                 }
@@ -222,11 +289,15 @@ public final class FolmePhysicsHook {
                     if (s < 180.0f || s > 1600.0f) {
                         return;
                     }
-                    float thermalWeight = getThermalScale();
-                    float mult = EngineConfig.MOTION_SILK.equals(profile)
-                            ? (1.0f - 0.24f * thermalWeight)
-                            : (1.0f - 0.14f * thermalWeight);
-                    param.args[0] = clamp(s * mult, 150.0f, 1400.0f);
+                    boolean highHz = currentRefreshHz > 75.0f;
+                    float w = cachedThermalScale;
+                    float reduction;
+                    if (EngineConfig.MOTION_SILK.equals(profile)) {
+                        reduction = (highHz ? 0.22f : 0.12f) * w;
+                    } else {
+                        reduction = (highHz ? 0.13f : 0.07f) * w;
+                    }
+                    param.args[0] = clamp(s * (1.0f - reduction), 160.0f, 1450.0f);
                 }
             });
             hooked++;
@@ -236,36 +307,48 @@ public final class FolmePhysicsHook {
         return hooked;
     }
 
-    private float[] tuneDampingResponse(float damping, float response, String profile) {
-        float w = getThermalScale();
+    private void applyTunedCurve(float[] out, float damping, float response, String profile) {
+        boolean highHz = currentRefreshHz > 75.0f;
+        float w = cachedThermalScale;
         float outDamp = damping;
-        float outResp = response;
+        float outResp;
 
         if (EngineConfig.MOTION_SILK.equals(profile)) {
-            // iOS / ColorOS 17 silky fluid momentum
-            if (damping > 0.84f) {
-                outDamp = clamp(damping - (damping - 0.84f) * (0.55f * w), 0.82f, 0.91f);
+            if (highHz) {
+                if (damping > 0.84f) {
+                    outDamp = clamp(damping - (damping - 0.84f) * (0.55f * w), 0.82f, 0.90f);
+                }
+                outResp = clamp(response * (1.0f + 0.22f * w), 0.20f, 0.62f);
+            } else {
+                // 60 Hz Silk: controlled smooth settle without sluggish tail frames
+                if (damping > 0.86f) {
+                    outDamp = clamp(damping - (damping - 0.86f) * (0.40f * w), 0.85f, 0.92f);
+                }
+                outResp = clamp(response * (1.0f + 0.12f * w), 0.19f, 0.52f);
             }
-            outResp = clamp(response * (1.0f + 0.24f * w), 0.20f, 0.64f);
         } else {
-            // HyperOS 4 crisp flagship spring
-            if (damping > 0.88f) {
-                outDamp = clamp(damping - (damping - 0.88f) * (0.45f * w), 0.85f, 0.93f);
+            if (highHz) {
+                if (damping > 0.88f) {
+                    outDamp = clamp(damping - (damping - 0.88f) * (0.45f * w), 0.85f, 0.93f);
+                }
+                outResp = clamp(response * (1.0f + 0.13f * w), 0.18f, 0.54f);
+            } else {
+                // 60 Hz HyperOS 4: crisp, immediate response with clean frame landing
+                if (damping > 0.90f) {
+                    outDamp = clamp(damping - (damping - 0.90f) * (0.35f * w), 0.88f, 0.94f);
+                }
+                outResp = clamp(response * (1.0f + 0.06f * w), 0.17f, 0.46f);
             }
-            outResp = clamp(response * (1.0f + 0.13f * w), 0.18f, 0.56f);
         }
-        return new float[] { outDamp, outResp };
+        out[0] = outDamp;
+        out[1] = outResp;
     }
 
-    private float getThermalScale() {
-        float lod = lodController.getEffectiveLod();
-        if (lod <= ThermalLodController.LOD_ECO + 0.05f) {
-            return 0.35f;
-        }
-        if (lod <= ThermalLodController.LOD_BALANCED + 0.05f) {
-            return 0.70f;
-        }
-        return 1.0f;
+    private void applyTunedCurveDouble(double[] out, float damping, float response, String profile) {
+        float[] tmp = new float[2];
+        applyTunedCurve(tmp, damping, response, profile);
+        out[0] = tmp[0];
+        out[1] = tmp[1];
     }
 
     private static int resolveSpringStyleConstant(Class<?> easeClass) {

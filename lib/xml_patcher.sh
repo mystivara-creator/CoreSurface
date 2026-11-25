@@ -66,9 +66,9 @@ cs_xml_discover() {
   return 1
 }
 
-# Build desired <bool> and <integer> patch specifications based ONLY on whitelisted
-# active features (FEAT_BLUR, FEAT_ANIMATIONS, FEAT_MULTITASK, FEAT_HYPERAI, FEAT_AOD_UNLOCK).
-# Intentionally excludes FEAT_DISPLAY_HZ, color scheme, fpsList, and double_tap tags.
+# Build desired <bool> and <integer> patch specifications based ONLY on verified
+# active features (zero gimmick: Gallery Pro removed; Low tier excludes Advanced Textures;
+# Custom Color Expert enabled across all tiers).
 # Format per line: type|name|value
 cs_xml_build_patch_spec() {
   _cs_spec_file=$1
@@ -76,12 +76,14 @@ cs_xml_build_patch_spec() {
   {
     if [ "$EFF_FEAT_BLUR" = "1" ]; then
       printf 'bool|support_background_blur|true\n'
-      printf 'bool|support_advanced_textures|true\n'
       printf 'bool|support_realtime_blur|true\n'
+      if [ "${EFF_FEAT_ADV_TEXTURES:-0}" = "1" ]; then
+        printf 'bool|support_advanced_textures|true\n'
+      fi
     fi
 
     if [ "$EFF_FEAT_ANIMATIONS" = "1" ]; then
-      if [ "$CS_RAM_TIER" = "high" ]; then
+      if [ "${CS_EFF_TIER:-low}" = "flagship" ]; then
         printf 'integer|device_level|3\n'
       else
         printf 'integer|device_level|2\n'
@@ -94,20 +96,10 @@ cs_xml_build_patch_spec() {
     fi
 
     if [ "$EFF_FEAT_COLOR_EXPERT" = "1" ]; then
-      # Unlocks Advanced settings / Custom color menu without touching stock Vivid/Saturated/Standard tags
+      # Unlocks Advanced settings / Custom color menu across all modes without touching Vivid/Saturated/Standard
       printf 'bool|support_display_expert_mode|true\n'
     fi
 
-    if [ "$EFF_FEAT_GALLERY_PRO" = "1" ]; then
-      printf 'bool|gallery_support_analytic_face_and_scene|true\n'
-      printf 'bool|gallery_support_media_feature|true\n'
-      printf 'bool|gallery_support_video_compress|true\n'
-      printf 'bool|gallery_support_time_burst_video|true\n'
-      printf 'bool|gallery_support_print|true\n'
-      printf 'bool|gallery_support_dolby|true\n'
-    fi
-
-    # Only touch AOD tags when FEAT_AOD_UNLOCK is explicitly enabled
     if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
       printf 'bool|support_aod|true\n'
       printf 'bool|support_aod_aon|true\n'

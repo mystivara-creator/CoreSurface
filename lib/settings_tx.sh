@@ -189,11 +189,12 @@ cs_settings_rollback_key() {
 }
 
 cs_settings_build_engine_ipc() {
-  printf 'motion=%s;native=%s;guard=%s;thermallod=%s' \
+  printf 'motion=%s;native=%s;guard=%s;thermallod=%s;aod=%s' \
     "${EFF_FEAT_MOTION_PROFILE:-off}" \
     "${EFF_FEAT_NATIVE_TIER:-0}" \
     "${EFF_FEAT_SURGICAL_GUARD:-0}" \
-    "${EFF_FEAT_THERMAL_LOD:-1}"
+    "${EFF_FEAT_THERMAL_LOD:-1}" \
+    "${EFF_FEAT_AOD_UNLOCK:-1}"
 }
 
 cs_settings_sync_engine_ipc() {
@@ -256,8 +257,10 @@ cs_settings_sync_all() {
 
   if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
     cs_settings_apply_key "FEAT_AOD_UNLOCK" "secure" "doze_always_on" "1" || true
+    cs_settings_apply_key "FEAT_AOD_UNLOCK" "secure" "aod_mode_time" "0" || true
   else
     cs_settings_rollback_key "secure" "doze_always_on" || true
+    cs_settings_rollback_key "secure" "aod_mode_time" || true
   fi
 
   return 0

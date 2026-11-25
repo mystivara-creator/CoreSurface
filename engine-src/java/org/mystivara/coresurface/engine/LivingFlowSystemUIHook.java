@@ -83,6 +83,7 @@ public final class LivingFlowSystemUIHook {
         config.attachContext(appCtx);
         telemetry.attachContext(appCtx);
         lodController.attachContext(appCtx);
+        folmeHook.attachContext(appCtx);
         telemetry.setMotionProfile(config.getMotionProfile());
         telemetry.setLastConfig(config.getRawConfig());
         config.addListener(() -> {

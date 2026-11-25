@@ -94,10 +94,12 @@ cs_verify_engine() {
   CS_V_ENGINE_ACTIVE="0"
   CS_V_ENGINE_MODE="NONE"
   CS_V_ENGINE_MOTION="N/A"
+  CS_V_ENGINE_HZ="0"
   CS_V_ENGINE_LOD="N/A"
   CS_V_ENGINE_HOOKS=""
   CS_V_ENGINE_NATIVE_GATES=0
   CS_V_ENGINE_FOLME_HOOKS=0
+  CS_V_ENGINE_AOD_GATES=0
   CS_V_ENGINE_SPRINGS=0
   CS_V_ENGINE_TOASTS=0
   CS_V_ENGINE_RECENTS=0
@@ -161,6 +163,11 @@ cs_verify_engine() {
       CS_V_ENGINE_MOTION="$_cs_mp"
     fi
 
+    _cs_hz=$(cs_telem_get "$_cs_tf" "DISPLAY_HZ")
+    if cs_is_uint "$_cs_hz" && [ "$_cs_hz" -gt "$CS_V_ENGINE_HZ" ]; then
+      CS_V_ENGINE_HZ="$_cs_hz"
+    fi
+
     _cs_lod=$(cs_telem_get "$_cs_tf" "LOD_TIER")
     if [ -n "$_cs_lod" ] && [ "$CS_V_ENGINE_LOD" = "N/A" ]; then
       CS_V_ENGINE_LOD="$_cs_lod"
@@ -174,11 +181,13 @@ cs_verify_engine() {
 
     _cs_ng=$(cs_telem_get "$_cs_tf" "NATIVE_GATES")
     _cs_fh=$(cs_telem_get "$_cs_tf" "FOLME_HOOKS")
+    _cs_ag=$(cs_telem_get "$_cs_tf" "AOD_GATES")
     _cs_sp=$(cs_telem_get "$_cs_tf" "SPRINGS_TUNED")
     _cs_nt=$(cs_telem_get "$_cs_tf" "TOASTS_GUARDED")
     _cs_nr=$(cs_telem_get "$_cs_tf" "RECENTS_GUARDED")
     cs_is_uint "$_cs_ng" && CS_V_ENGINE_NATIVE_GATES=$((CS_V_ENGINE_NATIVE_GATES + _cs_ng))
     cs_is_uint "$_cs_fh" && CS_V_ENGINE_FOLME_HOOKS=$((CS_V_ENGINE_FOLME_HOOKS + _cs_fh))
+    cs_is_uint "$_cs_ag" && CS_V_ENGINE_AOD_GATES=$((CS_V_ENGINE_AOD_GATES + _cs_ag))
     cs_is_uint "$_cs_sp" && CS_V_ENGINE_SPRINGS=$((CS_V_ENGINE_SPRINGS + _cs_sp))
     cs_is_uint "$_cs_nt" && CS_V_ENGINE_TOASTS=$((CS_V_ENGINE_TOASTS + _cs_nt))
     cs_is_uint "$_cs_nr" && CS_V_ENGINE_RECENTS=$((CS_V_ENGINE_RECENTS + _cs_nr))
@@ -507,13 +516,11 @@ cs_verifier_run() {
 
   cs_verify_xml_tag_feature "$CFG_FEAT_COLOR_EXPERT" "$EFF_FEAT_COLOR_EXPERT" '<bool name="support_display_expert_mode">true</bool>'
   _cs_v_color=$CS_XT_RESULT
-  cs_verify_xml_tag_feature "$CFG_FEAT_GALLERY_PRO" "$EFF_FEAT_GALLERY_PRO" '<bool name="gallery_support_video_compress">true</bool>'
-  _cs_v_gallery=$CS_XT_RESULT
   cs_verify_xml_tag_feature "$CFG_FEAT_AOD_UNLOCK" "$EFF_FEAT_AOD_UNLOCK" '<bool name="support_aod_aon">true</bool>'
   _cs_v_aod=$CS_XT_RESULT
   if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ] && [ "$_cs_v_aod" != "verified_active" ] && [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
     case ",$CS_V_ENGINE_HOOKS," in
-      *,AodFlagshipTier,*) _cs_v_aod="verified_active" ;;
+      *,AodNonLtpoUnlock,*|*,AodFlagshipTier,*) _cs_v_aod="verified_active" ;;
     esac
   fi
 
@@ -531,7 +538,7 @@ cs_verifier_run() {
     "$CS_V_SURGICAL_GUARD" "$CS_V_THERMAL_LOD" \
     "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
     "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" \
-    "$_cs_v_color" "$_cs_v_gallery" "$_cs_v_aod"
+    "$_cs_v_color" "$_cs_v_aod"
   do
     cs_score_tally "$_cs_s"
   done
@@ -546,10 +553,12 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_ENGINE_ACTIVE" "$CS_V_ENGINE_ACTIVE"
   cs_verify_set "VERIFY_ENGINE_MODE" "$CS_V_ENGINE_MODE"
   cs_verify_set "VERIFY_ENGINE_MOTION" "$CS_V_ENGINE_MOTION"
+  cs_verify_set "VERIFY_ENGINE_HZ" "$CS_V_ENGINE_HZ"
   cs_verify_set "VERIFY_ENGINE_LOD" "$CS_V_ENGINE_LOD"
   cs_verify_set "VERIFY_ENGINE_HOOKS" "$CS_V_ENGINE_HOOKS"
   cs_verify_set "VERIFY_ENGINE_NATIVE_GATES" "$CS_V_ENGINE_NATIVE_GATES"
   cs_verify_set "VERIFY_ENGINE_FOLME_HOOKS" "$CS_V_ENGINE_FOLME_HOOKS"
+  cs_verify_set "VERIFY_ENGINE_AOD_GATES" "$CS_V_ENGINE_AOD_GATES"
   cs_verify_set "VERIFY_ENGINE_SPRINGS" "$CS_V_ENGINE_SPRINGS"
   cs_verify_set "VERIFY_ENGINE_TOASTS" "$CS_V_ENGINE_TOASTS"
   cs_verify_set "VERIFY_ENGINE_RECENTS" "$CS_V_ENGINE_RECENTS"
@@ -566,7 +575,6 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_FEAT_MULTITASK" "$_cs_v_multi"
   cs_verify_set "VERIFY_FEAT_DISPLAY_HZ" "$_cs_v_hz"
   cs_verify_set "VERIFY_FEAT_COLOR_EXPERT" "$_cs_v_color"
-  cs_verify_set "VERIFY_FEAT_GALLERY_PRO" "$_cs_v_gallery"
   cs_verify_set "VERIFY_FEAT_AOD_UNLOCK" "$_cs_v_aod"
 
   cs_verify_set "VERIFY_XML_MOUNT" "$CS_V_XML_MOUNT"
@@ -580,6 +588,6 @@ cs_verifier_run() {
   cs_verify_set "COMPAT_SCORE_PCT" "$_cs_compat_pct"
 
   mv -f "$CS_VERIFY_TMP" "$CS_VERIFY_FILE"
-  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (motion=${CS_V_ENGINE_MOTION}, folme=${CS_V_ENGINE_FOLME_HOOKS}, gates=${CS_V_ENGINE_NATIVE_GATES}, lod=${CS_V_ENGINE_LOD})."
+  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (motion=${CS_V_ENGINE_MOTION}, hz=${CS_V_ENGINE_HZ}, folme=${CS_V_ENGINE_FOLME_HOOKS}, gates=${CS_V_ENGINE_NATIVE_GATES}, lod=${CS_V_ENGINE_LOD})."
   return 0
 }

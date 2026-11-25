@@ -97,8 +97,11 @@ cs_rro_stage() {
 
       cs_rro_sync_one "$_cs_rs_src" "$_cs_rs_dst" \
         "CoreSurfaceThemeManager.apk" "org.mystivara.coresurface.overlay.thememanager" || true
-      cs_rro_sync_one "$_cs_rs_src" "$_cs_rs_dst" \
-        "CoreSurfaceMiWallpaper.apk" "org.mystivara.coresurface.overlay.miwallpaper" || true
+
+      if [ "${CS_EFF_TIER:-low}" != "low" ]; then
+        cs_rro_sync_one "$_cs_rs_src" "$_cs_rs_dst" \
+          "CoreSurfaceMiWallpaper.apk" "org.mystivara.coresurface.overlay.miwallpaper" || true
+      fi
 
       if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
         cs_rro_sync_one "$_cs_rs_src" "$_cs_rs_dst" \

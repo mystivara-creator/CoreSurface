@@ -2,17 +2,18 @@ package org.mystivara.coresurface.engine;
 
 import android.content.ContentResolver;
 import android.content.Context;
+import android.os.SystemClock;
 import android.provider.Settings;
 
 import java.lang.reflect.Method;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Zero-Binder Live Configuration Bridge.
+ * Zero-Binder Live Configuration Bridge (optimized hot-path).
  * Reads non-persistent memory property `debug.coresurface.cfg` set via `resetprop -n`
  * (~2 microseconds, zero Binder calls, 100% SELinux-safe on Android 16 KernelSU-Next).
  *
- * Format: motion=hyperos4|silk|off;native=1|0;guard=1|0;thermallod=1|0
+ * Format: motion=hyperos4|silk|off;native=1|0;guard=1|0;thermallod=1|0;aod=1|0
  */
 public final class EngineConfig {
     public static final String PROP_KEY = "debug.coresurface.cfg";
@@ -22,10 +23,13 @@ public final class EngineConfig {
     public static final String MOTION_HYPEROS4 = "hyperos4";
     public static final String MOTION_SILK = "silk";
 
+    private static final long REFRESH_INTERVAL_MS = 2000L;
+
     private volatile String motionProfile = MOTION_HYPEROS4;
     private volatile boolean nativeTier = true;
     private volatile boolean surgicalGuard = true;
     private volatile boolean thermalLod = true;
+    private volatile boolean aodUnlock = true;
     private volatile String rawConfig = "default";
 
     private final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
@@ -52,15 +56,15 @@ public final class EngineConfig {
     }
 
     public void refreshIfStale() {
-        long now = System.currentTimeMillis();
-        if (now - lastRefreshMs < 750L) {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastRefreshMs < REFRESH_INTERVAL_MS) {
             return;
         }
         refreshNow(false);
     }
 
     public void refreshNow(boolean forceNotify) {
-        lastRefreshMs = System.currentTimeMillis();
+        lastRefreshMs = SystemClock.uptimeMillis();
         String next = readSystemProperty();
         if (next == null || next.isEmpty()) {
             next = readSettingsFallback();
@@ -155,6 +159,9 @@ public final class EngineConfig {
                 case "thermallod":
                     thermalLod = on;
                     break;
+                case "aod":
+                    aodUnlock = on;
+                    break;
                 default:
                     break;
             }
@@ -179,6 +186,11 @@ public final class EngineConfig {
     public boolean isThermalLod() {
         refreshIfStale();
         return thermalLod;
+    }
+
+    public boolean isAodUnlockEnabled() {
+        refreshIfStale();
+        return aodUnlock;
     }
 
     public String getRawConfig() {
