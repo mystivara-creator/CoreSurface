@@ -424,7 +424,7 @@ assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="gallery_s
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "XML patcher preserves stock display color tag"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_double_tap_to_wake">true</bool>' "XML patcher preserves stock double_tap tag"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<integer-array name="fpsList">' "XML patcher preserves stock fpsList array"
-assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_smart_fps' "XML patcher does NOT inject FEAT_DISPLAY_HZ tags"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_smart_fps">true</bool>' "XML patcher enables support_smart_fps=true for Per-App Refresh Rate when FEAT_DISPLAY_HZ=1"
 assert_file_contains "$SB_STATE/work/device_features.xml" '</features>' "XML patcher preserves closing </features> tag"
 assert_file_contains "$SB_CHCON_LOG" "--reference=$SB_XML_DIR2/aurora.xml $SB_STATE/work/device_features.xml" "XML patcher restores SELinux context via chcon --reference before bind-mount"
 assert_file_contains "$SB_MOUNT_LOG" "$SB_STATE/work/device_features.xml -> $SB_XML_DIR2/aurora.xml" "XML patcher calls mount --bind to original XML path"

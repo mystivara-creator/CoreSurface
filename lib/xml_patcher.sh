@@ -175,7 +175,8 @@ cs_xml_build_patch_spec() {
       printf 'integer|support_inner_record|1\n'
     fi
 
-    if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ] && cs_hw_supports_90hz; then
+    if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ]; then
+      # Unlocks HyperOS Smart FPS & "Apps using high refresh rate" (Per-App Refresh Rate under Custom)
       printf 'bool|support_smart_fps|true\n'
     fi
   } > "$_cs_spec_file"
@@ -242,8 +243,9 @@ cs_hw_supports_90hz() {
 
 # Non-destructive XML patcher using POSIX awk:
 # - Protected tags (fpsList, color/screen_effect, double_tap) are never modified,
-#   EXCEPT inserting <item>90</item> into fpsList + support_smart_fps=true ONLY when
-#   90Hz is verified in hardware display modes (hw_fps.list).
+#   EXCEPT:
+#     * support_smart_fps=true (unlocks Per-App Refresh Rate under Custom) when EFF_FEAT_DISPLAY_HZ=1
+#     * inserting <item>90</item> into fpsList ONLY when 90Hz is verified in hardware display modes.
 # - Capability <bool>: only upgrades false -> true; never downgrades true -> false.
 # - Whitelisted restriction-removal <bool> (is_only_support_keycode_goto): flips true -> false.
 # - <integer>: only upgrades when desired > existing; never lowers an existing higher value.
@@ -253,13 +255,17 @@ cs_xml_patch_file() {
   _cs_spec=$2
   _cs_dst=$3
   _cs_add_90hz=0
-  if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ] && cs_hw_supports_90hz; then
-    _cs_add_90hz=1
+  _cs_allow_smart_fps=0
+  if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ]; then
+    _cs_allow_smart_fps=1
+    if cs_hw_supports_90hz; then
+      _cs_add_90hz=1
+    fi
   fi
 
-  awk -F '|' -v add_90hz="$_cs_add_90hz" '
+  awk -F '|' -v add_90hz="$_cs_add_90hz" -v allow_smart_fps="$_cs_allow_smart_fps" '
     function is_protected(name) {
-      if (add_90hz == 1 && name == "support_smart_fps") {
+      if (allow_smart_fps == 1 && name == "support_smart_fps") {
         return 0
       }
       if (name ~ /(fps|refresh|double_tap|screen_effect|color_mode|color_gamut|vivid|saturat|paper_mode|eyecare|sunlight)/) {
