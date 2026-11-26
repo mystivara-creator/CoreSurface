@@ -119,24 +119,6 @@ _cs_tier_key() {
   esac
 }
 
-_cs_motion_label() {
-  case "$1" in
-    1) printf 'Stock Flagship (100%% Native Xiaomi Folme — Ultra Light)' ;;
-    2) printf 'Snappy (Fast & Crisp App/CC/Page Physics, ~220ms Settle)' ;;
-    3) printf 'Fluid (Heavy, Silky Cushioned Glide, ~560ms Tail)' ;;
-    4) printf 'Bouncy (Distinct Elastic Overshoot on App/CC/Page)' ;;
-  esac
-}
-
-_cs_motion_key() {
-  case "$1" in
-    1) printf '0' ;;
-    2) printf 'snappy' ;;
-    3) printf 'fluid' ;;
-    4) printf 'bouncy' ;;
-  esac
-}
-
 _cs_run_vol_selector() {
   _cs_vs_cfg=$1
 
@@ -145,7 +127,7 @@ _cs_run_vol_selector() {
   command -v getevent >/dev/null 2>&1 || return 0
   command -v timeout >/dev/null 2>&1 || return 0
 
-  # Step 1: Select 4-Tier Mode
+  # Select 4-Tier Mode
   _cs_sel=1
   case "${CFG_TIER_MODE:-auto}" in
     low)          _cs_sel=2 ;;
@@ -186,52 +168,13 @@ _cs_run_vol_selector() {
 
   _cs_chosen_tier=$(_cs_tier_key "$_cs_sel")
   _cs_cfg_write_key "$_cs_vs_cfg" "CS_TIER_MODE" "$_cs_chosen_tier"
-
-  # Step 2: Select Live Physics Motion Profile (default: 1 = Stock Flagship)
-  _cs_msel=1
-  case "${CFG_FEAT_MOTION_PROFILE:-}" in
-    snappy|coloros|silk) _cs_msel=2 ;;
-    fluid|hyperos4)      _cs_msel=3 ;;
-    bouncy|ios)          _cs_msel=4 ;;
-    *)                   _cs_msel=1 ;;
-  esac
-
-  _cs_ui_print ""
-  _cs_ui_print "  SELECT PHYSICS MOTION PROFILE (60-144 Hz)"
-  _cs_ui_print "  [Vol+] = Next Profile  |  [Vol-] = Confirm (8s timeout)"
-  _cs_ui_print "  1. $(_cs_motion_label 1)"
-  _cs_ui_print "  2. $(_cs_motion_label 2)"
-  _cs_ui_print "  3. $(_cs_motion_label 3)"
-  _cs_ui_print "  4. $(_cs_motion_label 4)"
-  _cs_ui_print "-> Selected: [$_cs_msel] $(_cs_motion_label "$_cs_msel")"
-
-  _cs_loops=0
-  while [ "$_cs_loops" -lt 15 ]; do
-    _cs_loops=$((_cs_loops + 1))
-    _cs_key=$(_cs_read_vol_key 8)
-    _cs_krc=$?
-    if [ "$_cs_krc" -ne 0 ]; then
-      _cs_ui_print "- Timeout: keeping [$_cs_msel] $(_cs_motion_label "$_cs_msel")"
-      break
-    fi
-    if [ "$_cs_key" = "UP" ]; then
-      _cs_msel=$(( (_cs_msel % 4) + 1 ))
-      _cs_ui_print "-> Selected: [$_cs_msel] $(_cs_motion_label "$_cs_msel")"
-    else
-      _cs_ui_print "- Confirmed: [$_cs_msel] $(_cs_motion_label "$_cs_msel")"
-      break
-    fi
-  done
-
-  _cs_chosen_motion=$(_cs_motion_key "$_cs_msel")
-  _cs_cfg_write_key "$_cs_vs_cfg" "FEAT_MOTION_PROFILE" "$_cs_chosen_motion"
 }
 
 _cs_modpath=${MODPATH:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 _cs_state_dir=${CORESURFACE_STATE_DIR:-/data/adb/coresurface}
 _cs_rom_supported="0"
 
-_cs_ui_print "- Installing CoreSurface v1.3.0 (Pure Flagship Motion & 4-Tier Experience)"
+_cs_ui_print "- Installing CoreSurface v1.3.0 (100% Standalone Flagship Experience)"
 
 mkdir -p "$_cs_state_dir" 2>/dev/null || true
 
@@ -266,13 +209,13 @@ if [ -r "$_cs_modpath/lib/detect.sh" ]; then
     _cs_ui_print "- Detected ROM: ${CS_ROM_FAMILY} (${CS_ROM_VERSION}) | SDK ${CS_ANDROID_SDK}"
     _cs_ui_print "- Detected RAM: ${CS_RAM_MB} MB | Auto Class: ${CS_DETECTED_TIER_LABEL}"
 
-    # Interactive Volume Up / Volume Down 4-Tier & Motion Profile Selector
+    # Interactive Volume Up / Volume Down 4-Tier Selector
     _cs_run_vol_selector "$_cs_state_dir/config.prop"
 
     # Reload & resolve final selected configuration
     cs_load_config "$_cs_state_dir/config.prop"
     cs_resolve_features
-    _cs_ui_print "- Active Tier: ${CS_EFF_TIER_LABEL} | Motion: ${EFF_FEAT_MOTION_PROFILE}"
+    _cs_ui_print "- Active Tier: ${CS_EFF_TIER_LABEL}"
   else
     _cs_ui_print "! Non-HyperOS/MIUI ROM detected (SDK ${CS_ANDROID_SDK})"
     _cs_ui_print "! CoreSurface will stay idle (unsupported_rom) and will not modify any properties"
@@ -302,12 +245,8 @@ if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ] && 
   fi
 fi
 
-# Stage clean-room CoreSurface Flagship Motion Engine APK for automatic install after boot
-if [ -r "$_cs_modpath/engine/CoreSurfaceEngine.apk" ]; then
-  cp "$_cs_modpath/engine/CoreSurfaceEngine.apk" "$_cs_state_dir/CoreSurfaceEngine.apk" 2>/dev/null || true
-  chmod 0644 "$_cs_state_dir/CoreSurfaceEngine.apk" 2>/dev/null || true
-  _cs_ui_print "- Staged CoreSurfaceEngine.apk (~52 KB, persistent LSPosed in-place upgrade)"
-fi
+# Remove any staged legacy LSPosed Engine APK left over from earlier builds
+rm -f "$_cs_state_dir/CoreSurfaceEngine.apk" "$_cs_state_dir/.engine_installed.sig" 2>/dev/null || true
 
 # Reset boot strikes & clear stale Safe-Mode cleanly on fresh install or upgrade
 printf '0\n' > "$_cs_state_dir/boot_strikes" 2>/dev/null || true
@@ -326,7 +265,6 @@ _cs_set_exec "$_cs_modpath/action.sh"
 _cs_set_exec "$_cs_modpath/uninstall.sh"
 _cs_set_exec "$_cs_modpath/lib/detect.sh"
 _cs_set_exec "$_cs_modpath/lib/watchdog.sh"
-_cs_set_exec "$_cs_modpath/lib/engine_ctl.sh"
 _cs_set_exec "$_cs_modpath/lib/props.sh"
 _cs_set_exec "$_cs_modpath/lib/xml_patcher.sh"
 _cs_set_exec "$_cs_modpath/lib/rro.sh"
@@ -336,5 +274,4 @@ _cs_set_exec "$_cs_modpath/lib/os_bug_logic.sh"
 _cs_set_exec "$_cs_modpath/lib/webui_ctl.sh"
 
 _cs_ui_print "- Watchdog armed (auto safe-mode disable after 2 consecutive failed boots)"
-_cs_ui_print "- 100% Original HyperOS UI | Custom Color Expert ON | Zero Gimmick"
-_cs_ui_print "- Optional LSPosed: Enable 'CoreSurface Engine' once (Recommended scope auto-pinned at top; future updates stay enabled automatically)"
+_cs_ui_print "- 100% Standalone Pure User-Space | Zero LSPosed Required | Zero Gimmick"

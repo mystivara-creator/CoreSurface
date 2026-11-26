@@ -1,18 +1,14 @@
-# CoreSurface v1.0.0 Configuration (4-Tier Pure Experience Architecture)
-# Tier Mode (selected via Volume Up/Down installer or WebUI):
-#   auto | low | balanced_pro | flagship
+# CoreSurface Standalone Configuration
+# 4-Tier Mode: auto | low (Lite) | balanced_pro | flagship (Max Flagship)
+# Native Flagship devices automatically use Passthrough when CS_TIER_MODE=auto.
 CS_TIER_MODE=auto
 
-# Live Motion Physics Profile (LSPosed Runtime — hot-reload without reboot):
-#   0 (Stock Flagship) | snappy (Fast & Crisp) | fluid (Silky Glide) | bouncy (Elastic Overshoot)
-FEAT_MOTION_PROFILE=0
-
 # Core User Toggles:
-#   FEAT_SURGICAL_GUARD:  1 | 0 (HyperOS 3 Toast & Recent Apps fix, live)
-#   FEAT_AOD_UNLOCK:      1 | 0 (Non-LTPO Always-On Display "Always" & "Scheduled" unlock)
-#   FEAT_FLAGSHIP_AUDIO:  auto | 1 | 0 (Dolby/Hi-Fi/Mi Sound/Speaker Stereo & Clear Speaker/Sound Assistant)
-#   FEAT_FLAGSHIP_SUITE:  auto | 1 | 0 (AI Image Engine, Video Toolbox, Dynamic Font Anim, Wild Boost, Live Photo)
-FEAT_SURGICAL_GUARD=1
+#   FEAT_AOD_UNLOCK:     1 (Unlock Always/Scheduled AOD on Non-LTPO AMOLED, FOD-safe) | 0 (OFF)
+#   FEAT_COLOR_EXPERT:   1 (Unlock Custom Color Expert Menu) | 0 (OFF)
+#   FEAT_FLAGSHIP_AUDIO: auto (ON on all non-passthrough tiers) | 1 (Force ON) | 0 (OFF)
+#   FEAT_FLAGSHIP_SUITE: auto (ON on Balanced Pro & Max Flagship) | 1 (Force ON) | 0 (OFF)
 FEAT_AOD_UNLOCK=1
+FEAT_COLOR_EXPERT=1
 FEAT_FLAGSHIP_AUDIO=auto
 FEAT_FLAGSHIP_SUITE=auto

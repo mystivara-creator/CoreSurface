@@ -285,10 +285,6 @@ cs_load_config() {
   _cs_cfg_file=$1
 
   CFG_TIER_MODE="auto"
-  CFG_FEAT_MOTION_PROFILE="snappy"
-  CFG_FEAT_NATIVE_TIER="auto"
-  CFG_FEAT_SURGICAL_GUARD="1"
-  CFG_FEAT_THERMAL_LOD="auto"
   CFG_FEAT_AOD_UNLOCK="1"
 
   # Base features default to "auto" (driven cleanly by CS_TIER_MODE unless explicitly overridden)
@@ -303,15 +299,13 @@ cs_load_config() {
   CFG_FEAT_FLAGSHIP_AUDIO="auto"
   CFG_FEAT_FLAGSHIP_SUITE="auto"
 
-  export CFG_TIER_MODE CFG_FEAT_MOTION_PROFILE CFG_FEAT_NATIVE_TIER \
-    CFG_FEAT_SURGICAL_GUARD CFG_FEAT_THERMAL_LOD CFG_FEAT_AOD_UNLOCK \
+  export CFG_TIER_MODE CFG_FEAT_AOD_UNLOCK \
     CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
     CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ CFG_FEAT_COLOR_EXPERT \
     CFG_FEAT_FLAGSHIP_AUDIO CFG_FEAT_FLAGSHIP_SUITE
 
   [ -r "$_cs_cfg_file" ] || return 0
 
-  _cs_seen_native_tier="0"
   while IFS='=' read -r _cs_k _cs_v || [ -n "$_cs_k" ]; do
     _cs_k=$(printf '%s' "$_cs_k" | tr -d '\r')
     _cs_v=$(printf '%s' "$_cs_v" | tr -d '\r')
@@ -323,34 +317,6 @@ cs_load_config() {
           lite)         CFG_TIER_MODE="low" ;;
           max_flagship) CFG_TIER_MODE="flagship" ;;
         esac
-        ;;
-      FEAT_MOTION_PROFILE)
-        case "$_cs_v" in
-          snappy|fluid|bouncy|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
-          coloros|silk)          CFG_FEAT_MOTION_PROFILE="snappy" ;;
-          hyperos4)              CFG_FEAT_MOTION_PROFILE="fluid" ;;
-          ios)                   CFG_FEAT_MOTION_PROFILE="bouncy" ;;
-          off)                   CFG_FEAT_MOTION_PROFILE="0" ;;
-        esac
-        ;;
-      FEAT_NATIVE_TIER)
-        case "$_cs_v" in
-          auto|1|0)
-            CFG_FEAT_NATIVE_TIER="$_cs_v"
-            _cs_seen_native_tier="1"
-            ;;
-        esac
-        ;;
-      FEAT_LIVING_FLOW)
-        if [ "$_cs_seen_native_tier" = "0" ]; then
-          case "$_cs_v" in auto|1|0) CFG_FEAT_NATIVE_TIER="$_cs_v" ;; esac
-        fi
-        ;;
-      FEAT_SURGICAL_GUARD)
-        case "$_cs_v" in auto|1|0) CFG_FEAT_SURGICAL_GUARD="$_cs_v" ;; esac
-        ;;
-      FEAT_THERMAL_LOD)
-        case "$_cs_v" in auto|1|0) CFG_FEAT_THERMAL_LOD="$_cs_v" ;; esac
         ;;
       FEAT_AOD_UNLOCK)
         case "$_cs_v" in auto|1|0) CFG_FEAT_AOD_UNLOCK="$_cs_v" ;; esac
@@ -399,18 +365,13 @@ cs_resolve_features() {
   esac
 
   case "$CS_EFF_TIER" in
-    motion_only)  CS_EFF_TIER_LABEL="Native Flagship (Motion-Only Passthrough)" ;;
+    motion_only)  CS_EFF_TIER_LABEL="Native Flagship (Stock Passthrough)" ;;
     flagship)     CS_EFF_TIER_LABEL="Max Flagship" ;;
     balanced_pro) CS_EFF_TIER_LABEL="Balanced Pro / Pro+" ;;
     *)            CS_EFF_TIER_LABEL="Lite (Standard Blur, No Advanced Textures)" ;;
   esac
 
-  EFF_FEAT_MOTION_PROFILE="off"
-  EFF_FEAT_NATIVE_TIER="0"
-  EFF_FEAT_SURGICAL_GUARD="0"
-  EFF_FEAT_THERMAL_LOD="0"
   EFF_FEAT_AOD_UNLOCK="0"
-
   EFF_FEAT_BLUR="0"
   EFF_FEAT_ADV_TEXTURES="0"
   EFF_FEAT_ANIMATIONS="0"
@@ -424,29 +385,14 @@ cs_resolve_features() {
   EFF_FEAT_FLAGSHIP_SUITE="0"
 
   export CS_EFF_TIER CS_EFF_TIER_LABEL \
-    EFF_FEAT_MOTION_PROFILE EFF_FEAT_NATIVE_TIER \
-    EFF_FEAT_SURGICAL_GUARD EFF_FEAT_THERMAL_LOD EFF_FEAT_AOD_UNLOCK \
+    EFF_FEAT_AOD_UNLOCK \
     EFF_FEAT_BLUR EFF_FEAT_ADV_TEXTURES EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER \
     EFF_FEAT_RRO_OVERLAYS EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK \
     EFF_FEAT_DISPLAY_HZ EFF_FEAT_COLOR_EXPERT \
     EFF_FEAT_FLAGSHIP_AUDIO EFF_FEAT_FLAGSHIP_SUITE
 
-  # Live Motion Profile & Safety Controllers (active across ALL tiers including Native Flagship)
-  case "$CFG_FEAT_MOTION_PROFILE" in
-    snappy|coloros|silk) EFF_FEAT_MOTION_PROFILE="snappy" ;;
-    fluid|hyperos4)      EFF_FEAT_MOTION_PROFILE="fluid" ;;
-    bouncy|ios)          EFF_FEAT_MOTION_PROFILE="bouncy" ;;
-    *)                   EFF_FEAT_MOTION_PROFILE="off" ;;
-  esac
-  case "$CFG_FEAT_SURGICAL_GUARD" in
-    1|auto) EFF_FEAT_SURGICAL_GUARD="1" ;;
-  esac
-  case "$CFG_FEAT_THERMAL_LOD" in
-    1|auto) EFF_FEAT_THERMAL_LOD="1" ;;
-  esac
-
   # Native Flagship Passthrough (motion_only):
-  # Factory ROM already has device_level >= 3 + blur -> skip Layer 1 overrides cleanly!
+  # Factory ROM already has device_level >= 3 + blur -> skip redundant overrides cleanly!
   if [ "$CS_EFF_TIER" = "motion_only" ]; then
     # Only patch XML if stock flagship XML doesn't already expose Custom Color Expert
     if [ "$CFG_FEAT_COLOR_EXPERT" != "0" ] && [ "${CS_STOCK_HAS_EXPERT_COLOR:-0}" != "1" ]; then
@@ -455,11 +401,6 @@ cs_resolve_features() {
     fi
     return 0
   fi
-
-  # Native Flagship Tier Unlock (Layer 2 DeviceLevelUtils hooks for non-flagship ROMs)
-  case "$CFG_FEAT_NATIVE_TIER" in
-    1|auto) EFF_FEAT_NATIVE_TIER="1" ;;
-  esac
 
   # Standard Blur is ON in ALL non-passthrough tiers (including Lite!),
   # but Advanced Textures XML is NEVER enabled in Lite mode.

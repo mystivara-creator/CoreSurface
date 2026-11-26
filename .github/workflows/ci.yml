@@ -39,7 +39,7 @@ jobs:
         run: sh tests/run_tests.sh
 
   package:
-    name: Build Clean-Room RRO, Flagship Motion Engine & Release ZIP
+    name: Build Clean-Room RRO & Standalone Release ZIP
     needs: lint-and-test
     runs-on: ubuntu-latest
     permissions:
@@ -47,35 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore persistent Engine APK signing keystore cache (fallback when secret unset)
-        uses: actions/cache@v4
-        with:
-          path: ~/.coresurface-signing
-          key: coresurface-engine-signing-v1
-
-      - name: Configure persistent Engine APK signing identity
-        env:
-          KEYSTORE_B64: ${{ secrets.CORESURFACE_KEYSTORE_B64 }}
-          KEYSTORE_PASS: ${{ secrets.CORESURFACE_KEYSTORE_PASS }}
-          KEY_ALIAS: ${{ secrets.CORESURFACE_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.CORESURFACE_KEY_PASS }}
-        run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/coresurface-engine.jks"
-            chmod 0600 "$RUNNER_TEMP/coresurface-engine.jks"
-            echo "CORESURFACE_KEYSTORE=$RUNNER_TEMP/coresurface-engine.jks" >> "$GITHUB_ENV"
-            [ -n "$KEYSTORE_PASS" ] && echo "CORESURFACE_KEYSTORE_PASS=$KEYSTORE_PASS" >> "$GITHUB_ENV"
-            [ -n "$KEY_ALIAS" ] && echo "CORESURFACE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-            [ -n "$KEY_PASS" ] && echo "CORESURFACE_KEY_PASS=$KEY_PASS" >> "$GITHUB_ENV"
-            echo "Using release signing keystore from GitHub Actions secret."
-          else
-            mkdir -p "$HOME/.coresurface-signing"
-            echo "CORESURFACE_KEYSTORE=$HOME/.coresurface-signing/coresurface-engine.jks" >> "$GITHUB_ENV"
-            echo "CORESURFACE_KEY_ALIAS=coresurface_engine" >> "$GITHUB_ENV"
-            echo "Using persistent cached CI signing keystore (preserves LSPosed state across updates)."
-          fi
-
-      - name: Build clean-room RRO overlays, CoreSurfaceEngine.apk & production ZIP
+      - name: Build clean-room RRO overlays & standalone production ZIP
         run: sh scripts/package.sh
 
       - name: Verify ZIP checksum and contents
@@ -85,14 +57,13 @@ jobs:
           unzip -l "dist/CoreSurface-${VER}.zip"
           (cd dist && sha256sum -c "CoreSurface-${VER}.zip.sha256")
 
-      - name: Upload CoreSurface ZIP & CoreSurfaceEngine.apk artifacts
+      - name: Upload CoreSurface standalone ZIP artifacts
         uses: actions/upload-artifact@v4
         with:
           name: CoreSurface-${{ env.CS_VERSION }}
           path: |
             dist/CoreSurface-*.zip
             dist/CoreSurface-*.zip.sha256
-            dist/CoreSurfaceEngine.apk
           if-no-files-found: error
           retention-days: 30
 

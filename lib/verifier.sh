@@ -1,11 +1,8 @@
 #!/system/bin/sh
-# CoreSurface - Zero-Gimmick User-Space Capability & Live Motion Engine Verifier
+# CoreSurface - Zero-Gimmick Standalone User-Space Capability Verifier
 # Pure POSIX sh. Verifies:
-#   - Layer 1: applied resetprop values, XML bind-mount + tags, RRO overlays via
-#              `cmd overlay list --user 0`, Video Depth marker, transactional settings.
-#   - Layer 2: CoreSurfaceEngine APK install + REAL live runtime telemetry written by
-#              SystemUI / MiuiHome / MiuiAod (Native Flagship gates, Folme/SpringForce
-#              hooks, tuned spring count, guarded Toasts/Recents, Thermal LOD tier).
+#   - Applied non-persistent resetprop values, XML bind-mount + tags, RRO overlays via
+#     `cmd overlay list --user 0`, Video Depth marker, and transactional settings.
 
 CS_VERIFY_FILE="$CS_STATE_DIR/verify.state"
 CS_OVERRIDDEN_PROPS_FILE="$CS_STATE_DIR/overridden_props.list"
@@ -71,281 +68,6 @@ cs_telem_get() {
   _cs_tg_key=$2
   if [ -r "$_cs_tg_file" ]; then
     awk -F '=' -v k="$_cs_tg_key" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$_cs_tg_file" 2>/dev/null | tr -d '\r'
-  fi
-}
-
-cs_append_unique_csv() {
-  _cs_au_cur=$1
-  _cs_au_add=$2
-  _cs_au_old_ifs=$IFS
-  IFS=','
-  for _cs_au_item in $_cs_au_add; do
-    IFS=$_cs_au_old_ifs
-    [ -n "$_cs_au_item" ] || continue
-    case ",$_cs_au_cur," in
-      *",$_cs_au_item,"*) ;;
-      *)
-        if [ -z "$_cs_au_cur" ]; then
-          _cs_au_cur="$_cs_au_item"
-        else
-          _cs_au_cur="${_cs_au_cur},${_cs_au_item}"
-        fi
-        ;;
-    esac
-  done
-  IFS=$_cs_au_old_ifs
-  CS_AU_OUT="$_cs_au_cur"
-}
-
-cs_verify_engine() {
-  CS_V_ENGINE_INSTALLED="0"
-  CS_V_ENGINE_ACTIVE="0"
-  CS_V_ENGINE_MODE="NONE"
-  CS_V_ENGINE_MOTION="N/A"
-  CS_V_ENGINE_HZ="0"
-  CS_V_ENGINE_LOD="N/A"
-  CS_V_ENGINE_HOOKS=""
-  CS_V_ENGINE_BUGS=""
-  CS_V_ENGINE_NATIVE_GATES=0
-  CS_V_ENGINE_FOLME_HOOKS=0
-  CS_V_ENGINE_AOD_GATES=0
-  CS_V_ENGINE_SPRINGS=0
-  CS_V_ENGINE_CURVES=0
-  CS_V_ENGINE_TOASTS=0
-  CS_V_ENGINE_RECENTS=0
-  CS_V_ENGINE_CIRCUITS=0
-
-  # 1. Check whether CoreSurfaceEngine APK is installed
-  if [ -n "${CORESURFACE_ENGINE_INSTALLED:-}" ]; then
-    CS_V_ENGINE_INSTALLED="$CORESURFACE_ENGINE_INSTALLED"
-  elif command -v cs_pm_is_installed >/dev/null 2>&1; then
-    if cs_pm_is_installed; then
-      CS_V_ENGINE_INSTALLED="1"
-    fi
-  elif command -v pm >/dev/null 2>&1; then
-    _cs_pm_out=$(pm path org.mystivara.coresurface.engine 2>&1 || true)
-    if [ -z "$_cs_pm_out" ] || cs_verify_is_settings_err "$_cs_pm_out"; then
-      if command -v su >/dev/null 2>&1; then
-        _cs_pm_out=$(su 2000 -c "pm path org.mystivara.coresurface.engine" 2>&1 || true)
-      fi
-    fi
-    case "$_cs_pm_out" in
-      package:*) CS_V_ENGINE_INSTALLED="1" ;;
-    esac
-  fi
-
-  # Current kernel boot_id (rejects stale telemetry from a previous boot if LSPosed was later disabled)
-  _cs_cur_boot_id=""
-  _cs_boot_id_file=${CORESURFACE_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}
-  if [ -r "$_cs_boot_id_file" ]; then
-    _cs_cur_boot_id=$(head -n 1 "$_cs_boot_id_file" 2>/dev/null | tr -d ' \t\r\n')
-  fi
-
-  # 2. Aggregate genuine live telemetry written by hooked processes (supports both user_de & user cache)
-  _cs_t_sysui=${CORESURFACE_ENGINE_SYSUI_TELEM:-}
-  if [ -z "$_cs_t_sysui" ]; then
-    if [ -r /data/user_de/0/com.android.systemui/cache/coresurface_telemetry.prop ]; then
-      _cs_t_sysui=/data/user_de/0/com.android.systemui/cache/coresurface_telemetry.prop
-    else
-      _cs_t_sysui=/data/user/0/com.android.systemui/cache/coresurface_telemetry.prop
-    fi
-  fi
-
-  _cs_t_home=${CORESURFACE_ENGINE_HOME_TELEM:-}
-  if [ -z "$_cs_t_home" ]; then
-    if [ -r /data/user/0/com.miui.home/cache/coresurface_telemetry.prop ]; then
-      _cs_t_home=/data/user/0/com.miui.home/cache/coresurface_telemetry.prop
-    elif [ -r /data/user_de/0/com.miui.home/cache/coresurface_telemetry.prop ]; then
-      _cs_t_home=/data/user_de/0/com.miui.home/cache/coresurface_telemetry.prop
-    elif [ -r /data/user/0/com.mi.android.globallauncher/cache/coresurface_telemetry.prop ]; then
-      _cs_t_home=/data/user/0/com.mi.android.globallauncher/cache/coresurface_telemetry.prop
-    else
-      _cs_t_home=/data/user_de/0/com.mi.android.globallauncher/cache/coresurface_telemetry.prop
-    fi
-  fi
-
-  _cs_t_minus=${CORESURFACE_ENGINE_MINUSONE_TELEM:-}
-  if [ -z "$_cs_t_minus" ]; then
-    if [ -r /data/user/0/com.mi.android.globalminusscreen/cache/coresurface_telemetry.prop ]; then
-      _cs_t_minus=/data/user/0/com.mi.android.globalminusscreen/cache/coresurface_telemetry.prop
-    elif [ -r /data/user/0/com.miui.personalassistant/cache/coresurface_telemetry.prop ]; then
-      _cs_t_minus=/data/user/0/com.miui.personalassistant/cache/coresurface_telemetry.prop
-    else
-      _cs_t_minus=/data/user_de/0/com.mi.android.globalminusscreen/cache/coresurface_telemetry.prop
-    fi
-  fi
-
-  _cs_t_aod=${CORESURFACE_ENGINE_AOD_TELEM:-}
-  if [ -z "$_cs_t_aod" ]; then
-    if [ -r /data/user_de/0/com.miui.aod/cache/coresurface_telemetry.prop ]; then
-      _cs_t_aod=/data/user_de/0/com.miui.aod/cache/coresurface_telemetry.prop
-    else
-      _cs_t_aod=/data/user/0/com.miui.aod/cache/coresurface_telemetry.prop
-    fi
-  fi
-
-  _cs_t_settings=${CORESURFACE_ENGINE_SETTINGS_TELEM:-}
-  if [ -z "$_cs_t_settings" ]; then
-    if [ -r /data/user/0/com.android.settings/cache/coresurface_telemetry.prop ]; then
-      _cs_t_settings=/data/user/0/com.android.settings/cache/coresurface_telemetry.prop
-    else
-      _cs_t_settings=/data/user_de/0/com.android.settings/cache/coresurface_telemetry.prop
-    fi
-  fi
-
-  # Single-pass POSIX parser per telemetry file (0 awk forks instead of ~90)
-  _cs_cr=$(printf '\r')
-  for _cs_tf in "$_cs_t_sysui" "$_cs_t_home" "$_cs_t_minus" "$_cs_t_aod" "$_cs_t_settings"; do
-    [ -r "$_cs_tf" ] || continue
-    _cs_act="" _cs_tf_boot="" _cs_mode="" _cs_mp="" _cs_hz="" _cs_lod="" _cs_hk="" _cs_bm=""
-    _cs_ng=0 _cs_fh=0 _cs_ag=0 _cs_sp=0 _cs_cv=0 _cs_nt=0 _cs_nr=0 _cs_ct=0
-    while IFS='=' read -r _cs_tk _cs_tv || [ -n "$_cs_tk" ]; do
-      _cs_tv=${_cs_tv%"$_cs_cr"}
-      case "$_cs_tk" in
-        ENGINE_ACTIVE)  _cs_act="$_cs_tv" ;;
-        BOOT_ID)        _cs_tf_boot="$_cs_tv" ;;
-        ENGINE_MODE)    _cs_mode="$_cs_tv" ;;
-        MOTION_PROFILE) _cs_mp="$_cs_tv" ;;
-        DISPLAY_HZ)     _cs_hz="$_cs_tv" ;;
-        LOD_TIER)       _cs_lod="$_cs_tv" ;;
-        HOOKS_BOUND)    _cs_hk="$_cs_tv" ;;
-        BUGS_MITIGATED) _cs_bm="$_cs_tv" ;;
-        NATIVE_GATES)   _cs_ng="$_cs_tv" ;;
-        FOLME_HOOKS)    _cs_fh="$_cs_tv" ;;
-        AOD_GATES)      _cs_ag="$_cs_tv" ;;
-        SPRINGS_TUNED)  _cs_sp="$_cs_tv" ;;
-        CURVES_APPLIED) _cs_cv="$_cs_tv" ;;
-        TOASTS_GUARDED) _cs_nt="$_cs_tv" ;;
-        RECENTS_GUARDED) _cs_nr="$_cs_tv" ;;
-        CIRCUIT_TRIPS)  _cs_ct="$_cs_tv" ;;
-      esac
-    done < "$_cs_tf"
-
-    [ "$_cs_act" = "1" ] || continue
-
-    # Reject stale telemetry written during an earlier boot
-    if [ -n "$_cs_cur_boot_id" ] && [ -n "$_cs_tf_boot" ] && [ "$_cs_tf_boot" != "$_cs_cur_boot_id" ]; then
-      continue
-    fi
-
-    CS_V_ENGINE_ACTIVE="1"
-    if [ -n "$_cs_mode" ] && [ "$CS_V_ENGINE_MODE" = "NONE" ]; then
-      CS_V_ENGINE_MODE="$_cs_mode"
-    fi
-    if [ -n "$_cs_mp" ] && [ "$CS_V_ENGINE_MOTION" = "N/A" ]; then
-      CS_V_ENGINE_MOTION="$_cs_mp"
-    fi
-    if cs_is_uint "$_cs_hz" && [ "$_cs_hz" -gt "$CS_V_ENGINE_HZ" ]; then
-      CS_V_ENGINE_HZ="$_cs_hz"
-    fi
-    if [ -n "$_cs_lod" ] && [ "$CS_V_ENGINE_LOD" = "N/A" ]; then
-      CS_V_ENGINE_LOD="$_cs_lod"
-    fi
-    if [ -n "$_cs_hk" ]; then
-      cs_append_unique_csv "$CS_V_ENGINE_HOOKS" "$_cs_hk"
-      CS_V_ENGINE_HOOKS="$CS_AU_OUT"
-    fi
-    if [ -n "$_cs_bm" ]; then
-      cs_append_unique_csv "$CS_V_ENGINE_BUGS" "$_cs_bm"
-      CS_V_ENGINE_BUGS="$CS_AU_OUT"
-    fi
-
-    cs_is_uint "$_cs_ng" && CS_V_ENGINE_NATIVE_GATES=$((CS_V_ENGINE_NATIVE_GATES + _cs_ng))
-    cs_is_uint "$_cs_fh" && CS_V_ENGINE_FOLME_HOOKS=$((CS_V_ENGINE_FOLME_HOOKS + _cs_fh))
-    cs_is_uint "$_cs_ag" && CS_V_ENGINE_AOD_GATES=$((CS_V_ENGINE_AOD_GATES + _cs_ag))
-    cs_is_uint "$_cs_sp" && CS_V_ENGINE_SPRINGS=$((CS_V_ENGINE_SPRINGS + _cs_sp))
-    cs_is_uint "$_cs_cv" && CS_V_ENGINE_CURVES=$((CS_V_ENGINE_CURVES + _cs_cv))
-    cs_is_uint "$_cs_nt" && CS_V_ENGINE_TOASTS=$((CS_V_ENGINE_TOASTS + _cs_nt))
-    cs_is_uint "$_cs_nr" && CS_V_ENGINE_RECENTS=$((CS_V_ENGINE_RECENTS + _cs_nr))
-    cs_is_uint "$_cs_ct" && CS_V_ENGINE_CIRCUITS=$((CS_V_ENGINE_CIRCUITS + _cs_ct))
-  done
-
-  # Reconcile live motion profile from zero-Binder debug.coresurface.cfg when Engine is active
-  # (prevents stale telemetry cache from showing the previous profile right after a live WebUI switch)
-  if [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
-    _cs_live_cfg=$(cs_getprop "debug.coresurface.cfg")
-    case ";${_cs_live_cfg};" in
-      *";motion="*)
-        _cs_live_m=$(printf '%s' "$_cs_live_cfg" | sed -n 's/.*motion=\([^;]*\).*/\1/p')
-        case "$_cs_live_m" in
-          snappy|fluid|bouncy|off) CS_V_ENGINE_MOTION="$_cs_live_m" ;;
-          coloros|silk)            CS_V_ENGINE_MOTION="snappy" ;;
-          hyperos4)                CS_V_ENGINE_MOTION="fluid" ;;
-          ios)                     CS_V_ENGINE_MOTION="bouncy" ;;
-        esac
-        ;;
-    esac
-  fi
-
-  # 3. Map honest per-feature verification for Layer 2 Motion Engine capabilities
-  _cs_base_eng="skipped"
-  if [ "$CS_V_ENGINE_INSTALLED" = "1" ] && [ "$CS_V_ENGINE_ACTIVE" != "1" ]; then
-    _cs_base_eng="pending_lsposed"
-  fi
-
-  # FEAT_MOTION_PROFILE (Folme & Jetpack SpringForce physics tuning)
-  if [ "$CFG_FEAT_MOTION_PROFILE" = "0" ]; then
-    CS_V_MOTION_PROFILE="disabled"
-  elif [ "$EFF_FEAT_MOTION_PROFILE" = "off" ]; then
-    CS_V_MOTION_PROFILE="skipped"
-  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
-    case ",$CS_V_ENGINE_HOOKS," in
-      *,FolmePhysics,*|*,ShellTransitionPhysics,*|*,LauncherChoreography,*|*,SystemUIChoreography,*)
-        CS_V_MOTION_PROFILE="verified_active"
-        ;;
-      *)
-        CS_V_MOTION_PROFILE="ignored_by_rom"
-        ;;
-    esac
-  else
-    CS_V_MOTION_PROFILE="$_cs_base_eng"
-  fi
-
-  # FEAT_NATIVE_TIER (Native HyperOS Flagship DeviceLevel & Cpu/GpuLevel Unlock)
-  if [ "$CFG_FEAT_NATIVE_TIER" = "0" ]; then
-    CS_V_NATIVE_TIER="disabled"
-  elif [ "$EFF_FEAT_NATIVE_TIER" != "1" ]; then
-    CS_V_NATIVE_TIER="skipped"
-  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
-    case ",$CS_V_ENGINE_HOOKS," in
-      *,NativeFlagshipTier,*)
-        CS_V_NATIVE_TIER="verified_active"
-        ;;
-      *)
-        CS_V_NATIVE_TIER="ignored_by_rom"
-        ;;
-    esac
-  else
-    CS_V_NATIVE_TIER="$_cs_base_eng"
-  fi
-
-  # FEAT_SURGICAL_GUARD
-  if [ "$CFG_FEAT_SURGICAL_GUARD" = "0" ]; then
-    CS_V_SURGICAL_GUARD="disabled"
-  elif [ "$EFF_FEAT_SURGICAL_GUARD" != "1" ]; then
-    CS_V_SURGICAL_GUARD="skipped"
-  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
-    case ",$CS_V_ENGINE_HOOKS," in
-      *,ToastGuard,*|*,RecentsGuard,*|*,MinusOneGuard,*)
-        CS_V_SURGICAL_GUARD="verified_active"
-        ;;
-      *)
-        CS_V_SURGICAL_GUARD="ignored_by_rom"
-        ;;
-    esac
-  else
-    CS_V_SURGICAL_GUARD="$_cs_base_eng"
-  fi
-
-  # FEAT_THERMAL_LOD
-  if [ "$CFG_FEAT_THERMAL_LOD" = "0" ]; then
-    CS_V_THERMAL_LOD="disabled"
-  elif [ "$EFF_FEAT_THERMAL_LOD" != "1" ]; then
-    CS_V_THERMAL_LOD="skipped"
-  elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
-    CS_V_THERMAL_LOD="verified_active"
-  else
-    CS_V_THERMAL_LOD="$_cs_base_eng"
   fi
 }
 
@@ -598,7 +320,6 @@ cs_verifier_run() {
   CS_VERIFY_TMP="$CS_VERIFY_FILE.tmp.$$"
   : > "$CS_VERIFY_TMP"
 
-  cs_verify_engine
   cs_verify_xml_mount
   cs_verify_rro_overlays
   cs_verify_video_depth
@@ -607,11 +328,6 @@ cs_verifier_run() {
   _cs_v_color=$CS_XT_RESULT
   cs_verify_xml_tag_feature "$CFG_FEAT_AOD_UNLOCK" "$EFF_FEAT_AOD_UNLOCK" '<bool name="is_only_support_keycode_goto">false</bool>'
   _cs_v_aod=$CS_XT_RESULT
-  if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ] && [ "$_cs_v_aod" != "verified_active" ] && [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
-    case ",$CS_V_ENGINE_HOOKS," in
-      *,AodNonLtpoUnlock,*|*,AodFlagshipTier,*) _cs_v_aod="verified_active" ;;
-    esac
-  fi
 
   cs_verify_feature "FEAT_BLUR" "$CFG_FEAT_BLUR" "$EFF_FEAT_BLUR"
   _cs_v_blur=$CS_VF_RESULT
@@ -627,8 +343,6 @@ cs_verifier_run() {
   _cs_v_suite=$CS_VF_RESULT
 
   for _cs_s in \
-    "$CS_V_MOTION_PROFILE" "$CS_V_NATIVE_TIER" \
-    "$CS_V_SURGICAL_GUARD" "$CS_V_THERMAL_LOD" \
     "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
     "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" \
     "$_cs_v_color" "$_cs_v_aod" "$_cs_v_audio" "$_cs_v_suite"
@@ -642,27 +356,6 @@ cs_verifier_run() {
     _cs_compat_pct=0
   fi
 
-  cs_verify_set "VERIFY_ENGINE_INSTALLED" "$CS_V_ENGINE_INSTALLED"
-  cs_verify_set "VERIFY_ENGINE_ACTIVE" "$CS_V_ENGINE_ACTIVE"
-  cs_verify_set "VERIFY_ENGINE_MODE" "$CS_V_ENGINE_MODE"
-  cs_verify_set "VERIFY_ENGINE_MOTION" "$CS_V_ENGINE_MOTION"
-  cs_verify_set "VERIFY_ENGINE_HZ" "$CS_V_ENGINE_HZ"
-  cs_verify_set "VERIFY_ENGINE_LOD" "$CS_V_ENGINE_LOD"
-  cs_verify_set "VERIFY_ENGINE_HOOKS" "$CS_V_ENGINE_HOOKS"
-  cs_verify_set "VERIFY_ENGINE_BUGS" "$CS_V_ENGINE_BUGS"
-  cs_verify_set "VERIFY_ENGINE_NATIVE_GATES" "$CS_V_ENGINE_NATIVE_GATES"
-  cs_verify_set "VERIFY_ENGINE_FOLME_HOOKS" "$CS_V_ENGINE_FOLME_HOOKS"
-  cs_verify_set "VERIFY_ENGINE_AOD_GATES" "$CS_V_ENGINE_AOD_GATES"
-  cs_verify_set "VERIFY_ENGINE_SPRINGS" "$CS_V_ENGINE_SPRINGS"
-  cs_verify_set "VERIFY_ENGINE_CURVES" "$CS_V_ENGINE_CURVES"
-  cs_verify_set "VERIFY_ENGINE_TOASTS" "$CS_V_ENGINE_TOASTS"
-  cs_verify_set "VERIFY_ENGINE_RECENTS" "$CS_V_ENGINE_RECENTS"
-  cs_verify_set "VERIFY_ENGINE_CIRCUITS" "$CS_V_ENGINE_CIRCUITS"
-
-  cs_verify_set "VERIFY_FEAT_MOTION_PROFILE" "$CS_V_MOTION_PROFILE"
-  cs_verify_set "VERIFY_FEAT_NATIVE_TIER" "$CS_V_NATIVE_TIER"
-  cs_verify_set "VERIFY_FEAT_SURGICAL_GUARD" "$CS_V_SURGICAL_GUARD"
-  cs_verify_set "VERIFY_FEAT_THERMAL_LOD" "$CS_V_THERMAL_LOD"
   cs_verify_set "VERIFY_FEAT_BLUR" "$_cs_v_blur"
   cs_verify_set "VERIFY_FEAT_ANIMATIONS" "$_cs_v_anim"
   cs_verify_set "VERIFY_FEAT_XML_PATCHER" "$CS_V_XML_FEAT"
@@ -691,6 +384,6 @@ cs_verifier_run() {
     _cs_ov_keys=$(awk -F '|' 'NR <= 4 { if (s != "") s = s ","; s = s $2 } END { print s }' "$CS_OVERRIDDEN_PROPS_FILE" 2>/dev/null || true)
     [ -n "$_cs_ov_keys" ] && _cs_ov_note=" overridden=[${_cs_ov_keys}]"
   fi
-  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}${_cs_ov_note}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (motion=${CS_V_ENGINE_MOTION}, hz=${CS_V_ENGINE_HZ}, folme=${CS_V_ENGINE_FOLME_HOOKS}, gates=${CS_V_ENGINE_NATIVE_GATES}, lod=${CS_V_ENGINE_LOD})."
+  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}${_cs_ov_note}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}."
   return 0
 }

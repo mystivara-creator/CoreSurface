@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">CoreSurface Engine</string>
-    <string name="xposed_description">CoreSurface Physics Motion Engine: Distinct Snappy / Fluid / Bouncy Spring ODE for App Open/Close, Control Center &amp; Page Transitions (zero window-scale hacks), Surgical Blur Guard &amp; Non-LTPO AOD Safety.</string>
-</resources>

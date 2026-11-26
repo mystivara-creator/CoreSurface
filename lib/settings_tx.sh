@@ -250,23 +250,6 @@ cs_settings_rollback_key() {
   return 0
 }
 
-cs_settings_build_engine_ipc() {
-  printf 'motion=%s;native=%s;guard=%s;thermallod=%s;aod=%s' \
-    "${EFF_FEAT_MOTION_PROFILE:-off}" \
-    "${EFF_FEAT_NATIVE_TIER:-0}" \
-    "${EFF_FEAT_SURGICAL_GUARD:-0}" \
-    "${EFF_FEAT_THERMAL_LOD:-1}" \
-    "${EFF_FEAT_AOD_UNLOCK:-1}"
-}
-
-cs_settings_sync_engine_ipc() {
-  cs_watchdog_init_dir || return 0
-  cs_settings_available || return 0
-  CS_SETTINGS_BINDER_FAILED=0
-  _cs_ipc_val=$(cs_settings_build_engine_ipc)
-  cs_settings_apply_key "FEAT_MOTION_PROFILE" "global" "coresurface_engine_v1" "$_cs_ipc_val" || true
-}
-
 # One-time cleanup on HyperOS 3+ if an earlier preview left secure/background_blur_enable=1
 # stuck in Settings DB causing bloated Toasts and black Recent Apps.
 cs_settings_clear_hos3_stuck_blur() {
@@ -298,14 +281,7 @@ cs_settings_sync_all() {
   # Clear any stuck HyperOS 3 Advanced Textures flag once on upgrade
   cs_settings_clear_hos3_stuck_blur || true
   if [ "$CS_SETTINGS_BINDER_FAILED" = "1" ]; then
-    cs_log "Settings TX: Android 15/16 root Binder restricted; using zero-Binder debug.coresurface.cfg bridge."
-    return 0
-  fi
-
-  # Push Live Engine IPC config (instant hot-reload in SystemUI / MiuiHome / MiuiAod)
-  cs_settings_sync_engine_ipc || true
-  if [ "$CS_SETTINGS_BINDER_FAILED" = "1" ]; then
-    cs_log "Settings TX: Android 15/16 root Binder restricted; using zero-Binder debug.coresurface.cfg bridge."
+    cs_log "Settings TX: Android 15/16 root Binder restricted; skipping settings writes cleanly."
     return 0
   fi
 

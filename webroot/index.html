@@ -12,28 +12,27 @@
       <div class="hero-top">
         <div>
           <h1>CoreSurface</h1>
-          <p class="subtitle">v1.3.0 · Pure Flagship Experience (100% Original UI)</p>
+          <p class="subtitle">v1.3.0 · 100% Standalone Flagship Experience (Zero LSPosed)</p>
         </div>
         <button id="btn-refresh" class="btn-icon" type="button" aria-label="Refresh status">↻</button>
       </div>
       <div class="badge-row">
         <span id="watchdog-badge" class="badge badge-neutral">Watchdog…</span>
-        <span id="engine-badge" class="badge badge-neutral">Engine…</span>
         <span id="compat-badge" class="badge badge-neutral hidden">Score: -</span>
         <span id="coreflow-badge" class="badge badge-coreflow hidden">CoreFlow Guard</span>
       </div>
     </header>
 
     <div id="reboot-banner" class="banner banner-info hidden" role="status">
-      <strong>Tier / RRO changes saved.</strong> Reboot once to apply early-boot props, XML &amp; RRO overlays (motion profiles &amp; blur guards apply live without reboot).
+      <strong>Changes saved.</strong> Reboot once to apply updated early-boot props, XML &amp; RRO overlays.
     </div>
 
     <div id="safemode-banner" class="banner banner-danger hidden" role="alert">
       <div>
-        <strong>Safe-Mode Active</strong>
-        <p id="safemode-reason">Watchdog automatically disabled the module after 2 consecutive failed boots.</p>
+        <strong>Safe-Mode Active (Auto-Disabled)</strong>
+        <p id="safemode-reason">CoreSurface paused after 2 consecutive failed boots.</p>
       </div>
-      <button id="btn-reset-safemode" class="btn btn-danger" type="button">Reset Safe-Mode</button>
+      <button id="btn-reset-safemode" class="btn btn-danger" type="button">Reset &amp; Re-enable</button>
     </div>
 
     <div id="metamodule-banner" class="banner banner-warn hidden" role="status">
@@ -42,76 +41,46 @@
 
     <section class="card">
       <div class="card-head">
-        <h2>Device Tier Mode</h2>
+        <h2>4-Tier Mode</h2>
         <span id="active-tier-pill" class="pill">-</span>
       </div>
-      <p class="hint">Matches the Volume Up/Down installer selector. <strong>Auto</strong> enters <em>Motion-Only Passthrough</em> on genuine native flagships to preserve factory tuning; <strong>Lite</strong> keeps clean standard blur without <em>Advanced Textures</em>; <strong>Custom Color Expert</strong> stays enabled across all modes.</p>
-      <div class="tier-grid" id="tier-grid">
-        <button type="button" class="btn-tier" data-tier="auto">
+      <p class="hint">Preserves <strong>100% original HyperOS UI</strong> &amp; native flagship animations — zero LSPosed hooks, zero runtime overhead.</p>
+      <div class="tier-grid">
+        <button class="btn-tier" data-tier="auto" type="button">
           <strong>Auto</strong>
-          <span id="auto-tier-hint">Smart Detection</span>
+          <span id="auto-tier-hint">Smart RAM &amp; Stock Snapshot</span>
         </button>
-        <button type="button" class="btn-tier" data-tier="low">
+        <button class="btn-tier" data-tier="low" type="button">
           <strong>Lite</strong>
-          <span>Mid Non-Pro · Standard Blur</span>
+          <span>Standard blur, ultra-light</span>
         </button>
-        <button type="button" class="btn-tier" data-tier="balanced_pro">
+        <button class="btn-tier" data-tier="balanced_pro" type="button">
           <strong>Balanced Pro</strong>
-          <span>Mid Pro/Pro+ · Daily Suite</span>
+          <span>Full blur + HOS3/4 Textures</span>
         </button>
-        <button type="button" class="btn-tier" data-tier="flagship">
+        <button class="btn-tier" data-tier="flagship" type="button">
           <strong>Max Flagship</strong>
-          <span>Full Suite · Ultra Light</span>
+          <span>Full Computility, Audio &amp; Suite</span>
         </button>
       </div>
     </section>
 
     <section class="card">
       <div class="card-head">
-        <h2>⚡ Live Motion &amp; Core Controls</h2>
-        <span id="engine-hz-pill" class="pill">-</span>
+        <h2>Flagship Features &amp; Porting</h2>
+        <span class="pill on">Standalone Layer 1</span>
       </div>
 
       <div class="feat-list">
         <div class="feat-card">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Physics Motion Engine (60–144 Hz)</h3>
-              <span id="verify-FEAT_MOTION_PROFILE" class="v-pill v-neutral">-</span>
-            </div>
-            <p class="feat-desc">Applies <strong>live without reboot</strong> to App Open/Close, Control Center &amp; Page Transitions (zero window-scale hacks; Lock→Home stays 100% stock HyperOS). <strong>Snappy</strong> = ultra-fast crisp (~220ms); <strong>Fluid</strong> = heavy silky glide (~560ms); <strong>Bouncy</strong> = distinct elastic overshoot; <strong>Stock</strong> = 100% native.</p>
-          </div>
-          <div class="seg-group seg-grid-2x2" data-key="FEAT_MOTION_PROFILE" role="group" aria-label="Physics Motion Engine">
-            <button type="button" data-val="0">Stock Flagship</button>
-            <button type="button" data-val="snappy">Snappy</button>
-            <button type="button" data-val="fluid">Fluid</button>
-            <button type="button" data-val="bouncy">Bouncy</button>
-          </div>
-        </div>
-
-        <div class="feat-card">
-          <div class="feat-head">
-            <div class="feat-title-wrap">
-              <h3>Toast, Recents &amp; -1 Screen Guard</h3>
-              <span id="verify-FEAT_SURGICAL_GUARD" class="v-pill v-neutral">-</span>
-            </div>
-            <p class="feat-desc">Prevents bloated Toasts, black Recent Apps, and solid black <em>-1 Screen (App Vault)</em> backdrops when <em>Advanced Textures</em> is enabled on HyperOS 3.</p>
-          </div>
-          <div class="seg-group" data-key="FEAT_SURGICAL_GUARD" role="group" aria-label="Toast, Recents and Minus-One Guard">
-            <button type="button" data-val="1">ON</button>
-            <button type="button" data-val="0">OFF</button>
-          </div>
-        </div>
-
-        <div class="feat-card">
-          <div class="feat-head">
-            <div class="feat-title-wrap">
-              <h3>Non-LTPO Always-On Display</h3>
+              <h3>Non-LTPO AOD Always-On Unlock</h3>
               <span id="verify-FEAT_AOD_UNLOCK" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">Unlocks <strong>Always</strong> &amp; <strong>Scheduled</strong> AOD on non-LTPO AMOLED panels via XML (<code>is_only_support_keycode_goto=false</code>) + RRO + FOD-safe <code>MiuiAod</code> hook.</p>
+            <p class="feat-desc">Unlocks <em>Always</em> &amp; <em>Scheduled</em> AOD on non-LTPO AMOLED panels via XML + RRO with FOD-safe flags (zero fingerprint fade blink).</p>
           </div>
-          <div class="seg-group" data-key="FEAT_AOD_UNLOCK" role="group" aria-label="Non-LTPO Always-On Display">
+          <div class="seg-group" data-key="FEAT_AOD_UNLOCK" role="group" aria-label="Non-LTPO AOD Unlock">
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
           </div>
@@ -123,9 +92,9 @@
               <h3>Flagship Audio &amp; Speaker</h3>
               <span id="verify-FEAT_FLAGSHIP_AUDIO" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">Dolby/Mi Sound Scenario EQ, Stereo &amp; Clear Speaker, Hi-Fi DAC, Sound Assistant, Spatial Audio &amp; 24-bit Studio Mic Record (1× reboot).</p>
+            <p class="feat-desc">Dolby/Mi Sound Scenario EQ, 10-Band Graphic EQ, Stereo &amp; Clear Speaker, Hi-Fi DAC, Sound Assistant, Spatial Audio, Game Audio &amp; 24-bit Studio Mic (1× reboot).</p>
           </div>
-          <div class="seg-group" data-key="FEAT_FLAGSHIP_AUDIO" role="group" aria-label="Flagship Audio and Speaker">
+          <div class="seg-group" data-key="FEAT_FLAGSHIP_AUDIO" role="group" aria-label="Flagship Audio & Speaker">
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
           </div>
@@ -145,33 +114,32 @@
           </div>
         </div>
       </div>
+
+      <div class="action-row">
+        <button id="btn-hot-sync" class="btn btn-primary" type="button">Hot-Sync &amp; Verify</button>
+      </div>
     </section>
 
     <section class="card">
       <div class="card-head">
         <h2>System Summary</h2>
-        <span id="engine-lod-badge" class="pill">-</span>
+        <button id="btn-export-diag" class="btn btn-ghost" type="button">Copy Report</button>
       </div>
-      <div class="kv-list" id="summary-list">
-        <div class="kv-row"><span>Status</span><strong>Loading…</strong></div>
+      <div id="summary-list" class="kv-list">
+        <div class="kv-row"><span>Loading status…</span><strong>…</strong></div>
       </div>
-      <div class="quick-actions">
-        <button id="btn-install-engine" class="btn btn-secondary" type="button">Install / Update Engine APK</button>
-        <button id="btn-hot-sync" class="btn btn-secondary" type="button">Re-Verify</button>
-        <button id="btn-export-diag" class="btn btn-secondary" type="button">Copy Diagnostics</button>
+      <div id="diag-export-wrap" class="diag-export hidden">
+        <textarea id="diag-export-box" rows="6" readonly aria-label="Diagnostic Report"></textarea>
       </div>
+      <details class="log-details">
+        <summary>Recent Activity Log</summary>
+        <pre id="diag-log" class="log-box">Loading…</pre>
+      </details>
     </section>
 
-    <section class="card">
-      <details>
-        <summary class="summary-title">Watchdog &amp; Diagnostic Log</summary>
-        <pre id="diag-log" class="log-box">Loading logs…</pre>
-      </details>
-      <div id="diag-export-wrap" class="hidden">
-        <textarea id="diag-export-box" class="log-box export-box" rows="7" readonly></textarea>
-      </div>
-      <p id="toast-msg" class="toast-msg" aria-live="polite"></p>
-    </section>
+    <footer class="footer">
+      <span id="toast-msg" aria-live="polite"></span>
+    </footer>
   </main>
 
   <script src="app.js"></script>

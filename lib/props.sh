@@ -422,33 +422,6 @@ cs_apply_feat_flagship_suite() {
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.translate.state.supportVoiceTrans" "true"
 }
 
-cs_write_engine_cfg_prop() {
-  _cs_we_val=$1
-  cs_find_resetprop || return 0
-  if [ "$CS_RESETPROP_MODE" = "magisk" ]; then
-    "$CS_RESETPROP_BIN" resetprop -n "debug.coresurface.cfg" "$_cs_we_val" 2>/dev/null || true
-  else
-    "$CS_RESETPROP_BIN" -n "debug.coresurface.cfg" "$_cs_we_val" 2>/dev/null || true
-  fi
-  return 0
-}
-
-cs_sync_engine_live_prop() {
-  _cs_live_cfg=$(printf 'motion=%s;native=%s;guard=%s;thermallod=%s;aod=%s' \
-    "${EFF_FEAT_MOTION_PROFILE:-off}" \
-    "${EFF_FEAT_NATIVE_TIER:-0}" \
-    "${EFF_FEAT_SURGICAL_GUARD:-0}" \
-    "${EFF_FEAT_THERMAL_LOD:-1}" \
-    "${EFF_FEAT_AOD_UNLOCK:-1}")
-  cs_write_engine_cfg_prop "$_cs_live_cfg"
-}
-
-cs_sync_engine_killswitch() {
-  _cs_ks_cur=$(getprop "debug.coresurface.cfg" 2>/dev/null || true)
-  [ -n "$_cs_ks_cur" ] || return 0
-  cs_write_engine_cfg_prop "motion=off;native=0;guard=0;thermallod=0;aod=0"
-}
-
 cs_apply_all_props() {
   _cs_ap_moddir=${1:-}
   cs_watchdog_init_dir || return 1
@@ -466,9 +439,6 @@ cs_apply_all_props() {
 
   # Purge any leaked persist.* properties from earlier preview builds
   cs_purge_leaked_persist_props || true
-
-  # Push zero-Binder non-persistent live Engine config before SystemUI/MiuiHome start
-  cs_sync_engine_live_prop || true
 
   cs_apply_feat_animations
   cs_apply_feat_blur
