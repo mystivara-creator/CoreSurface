@@ -149,7 +149,7 @@ public final class DeviceLevelUnlockHook {
                         return;
                     }
                     try {
-                        if (config.isNativeTierEnabled()) {
+                        if (config.isNativeTierEnabledFast()) {
                             param.setResult(constantValue);
                         }
                     } catch (Throwable ignored) {
@@ -176,7 +176,7 @@ public final class DeviceLevelUnlockHook {
                         return;
                     }
                     try {
-                        if (!config.isNativeTierEnabled()) {
+                        if (!config.isNativeTierEnabledFast()) {
                             return;
                         }
                         Object res = param.getResult();

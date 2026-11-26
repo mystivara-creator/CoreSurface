@@ -1620,7 +1620,27 @@ public final class PhysicsMathTest {
             throw new AssertionError("Bouncy curve must visibly overshoot >= 4%: max=" + maxBouncy);
         }
 
-        // 5. Seamless backward-compatible legacy alias normalization
+        // 5. Verify pre-baked 65-sample LUT matches analytical ODE within 0.002 & exact endpoints
+        if (snappy.sampleShellSpatial(0.0f) != 0.0f || snappy.sampleShellSpatial(1.0f) != 1.0f
+                || bouncy.sampleShellSpatial(0.0f) != 0.0f || bouncy.sampleShellSpatial(1.0f) != 1.0f
+                || bouncy.sampleShellMonotonic(1.0f) != 1.0f) {
+            throw new AssertionError("Pre-baked LUT endpoints must be exact [0, 1]");
+        }
+        float maxLutBouncy = 0.0f;
+        for (int i = 0; i <= 100; i++) {
+            float u = i / 100.0f;
+            float sVal = bouncy.sampleShellSpatial(u);
+            float mVal = bouncy.sampleShellMonotonic(u);
+            if (sVal > maxLutBouncy) maxLutBouncy = sVal;
+            if (mVal > 1.0001f) {
+                throw new AssertionError("Monotonic opacity LUT must NEVER overshoot 1.0: " + mVal);
+            }
+        }
+        if (!(maxLutBouncy >= 1.04f)) {
+            throw new AssertionError("Bouncy LUT must preserve visible overshoot >= 4%: " + maxLutBouncy);
+        }
+
+        // 6. Seamless backward-compatible legacy alias normalization
         if (!MotionProfileSpec.PROFILE_SNAPPY.equals(MotionProfileSpec.forProfile("coloros", 120.0f, 1.0f).profileId)
                 || !MotionProfileSpec.PROFILE_SNAPPY.equals(MotionProfileSpec.forProfile("silk", 120.0f, 1.0f).profileId)
                 || !MotionProfileSpec.PROFILE_FLUID.equals(MotionProfileSpec.forProfile("hyperos4", 120.0f, 1.0f).profileId)
@@ -1636,7 +1656,7 @@ EOF
       "$REPO_ROOT/engine-src/java/org/mystivara/coresurface/engine/MotionProfileSpec.java" \
       "$_jdir/PhysicsMathTest.java" 2>"$_jdir/compile.err" \
     && java -cp "$_jdir/classes" PhysicsMathTest >"$_jdir/run.out" 2>&1; then
-    assert_file_contains "$_jdir/run.out" "PHYSICS_MATH_OK" "CoreSpringSolver ODE, frame-drop stability, mid-flight interruptibility & Snappy/Fluid/Bouncy contrast verified"
+    assert_file_contains "$_jdir/run.out" "PHYSICS_MATH_OK" "CoreSpringSolver ODE, pre-baked LUT precision, mid-flight interruptibility & Snappy/Fluid/Bouncy contrast verified"
   else
     fail "CoreSpringSolver host JVM physics verification failed ($(cat "$_jdir/compile.err" "$_jdir/run.out" 2>/dev/null || true))"
   fi
@@ -1662,6 +1682,7 @@ printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=0" "Lite tier keeps ro.launcher.blur.appLaunch=0"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.launch_response_optimization.enable=true" "Lite tier also receives zero-cost launch response optimization"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.shell_anim_enable_fcb=true" "Lite tier receives zero-GPU-cost Frame Callback Booster (FCB)"
 
 # Native flagship GPU (device_level=3) retains ro.launcher.blur.appLaunch=1
 setup_sandbox "t23c_flagship_gpu_applaunch"
@@ -1672,6 +1693,7 @@ write_sample_xml "$SB_XML_DIR1/houji.xml"
 printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=1" "Native flagship GPU (device_level=3) keeps ro.launcher.blur.appLaunch=1"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=true" "Native flagship GPU retains Recents mask blur"
 
 # Persistent signing keystore reuse & dual LSPosed recommended scope metadata (when Android SDK present)
 if [ -d /opt/android-sdk/build-tools ] || [ -n "${ANDROID_HOME:-}" ] || [ -n "${ANDROID_SDK_ROOT:-}" ]; then
@@ -1738,6 +1760,63 @@ _call_cnt=$(wc -l < "$SB_SETTINGS_CALLS" | tr -d ' ')
 assert_eq "$( [ "$_call_cnt" -ge 1 ] && [ "$_call_cnt" -le 4 ] && printf 'fast' || printf 'unexpected:%s' "$_call_cnt" )" "fast" "Binder circuit-breaker stops wasted settings subprocess retries (1..4 calls total)"
 assert_file_contains "$SB_STATE/coresurface.log" "using zero-Binder debug.coresurface.cfg bridge" "Settings TX logs clean single-line zero-Binder bridge fallback"
 assert_file_not_contains "$SB_STATE/coresurface.log" "WARN: settings get" "Settings TX does not spam WARN lines on Android 15/16 root Binder block"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 25: Full-Stack Lightness, Audio Never-Downgrade, Balanced Pro Parallel Sweep & -1 Screen Telemetry ===\n'
+setup_sandbox "t25_fullstack_perfection"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+printf 'ro.vendor.audio.soundfx.type=dolby\n' > "$SB_PROPS_DB"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=true" "Mid-range GPU omits heavy Recents mask blur even on Flagship tier"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.soundfx.type=mi" "Audio Never-Downgrade preserves factory stock ro.vendor.audio.soundfx.type=dolby"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.independentequalizer=true" "Flagship Audio unlocks zero-overhead 10-band Graphic EQ"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.earadj=true" "Flagship Audio unlocks earphone acoustic calibration"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.game.effect=true" "Flagship Audio unlocks Game Turbo audio enhancement"
+assert_file_contains "$SB_PROPS_LOG" "persist.vendor.audio.misound.disable=false" "Flagship Audio ensures Mi Sound pipeline is active"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_effect">true</bool>' "Flagship Audio XML enables support_sound_effect"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_spatial_audio">true</bool>' "Flagship Audio XML enables support_spatial_audio"
+
+# Verify balanced_pro receives zero-cost parallel_sweep & FCB
+setup_sandbox "t25b_balanced_pro_parallel"
+write_mock_getprop "OS3.0" "" "36" "1" "emerald" "Redmi Note 15 Pro"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/emerald.xml"
+printf 'CS_TIER_MODE=balanced_pro\n' > "$SB_STATE/config.prop"
+run_post_fs_data
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.enable_parallel_sweep=true" "Balanced Pro receives zero-GPU-cost parallel gesture interruptibility"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.shell_anim_enable_fcb=true" "Balanced Pro receives Frame Callback Booster (FCB)"
+
+# Verify App Vault (-1 Screen) telemetry is aggregated by single-pass POSIX verifier
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+cat > "$SB/minusone_telem.prop" <<'EOF'
+ENGINE_ACTIVE=1
+ENGINE_MODE=NATIVE_MOTION
+MOTION_PROFILE=snappy
+DISPLAY_HZ=120
+LOD_TIER=FULL
+HOOKS_BOUND=MinusOneGuard
+BUGS_MITIGATED=HOS3_MINUS_ONE_BLACK
+RECENTS_GUARDED=5
+EOF
+CORESURFACE_ENGINE_INSTALLED=1 \
+CORESURFACE_ENGINE_SYSUI_TELEM="$SB/missing_sysui.prop" \
+CORESURFACE_ENGINE_HOME_TELEM="$SB/missing_home.prop" \
+CORESURFACE_ENGINE_MINUSONE_TELEM="$SB/minusone_telem.prop" \
+CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
+CORESURFACE_ENGINE_SETTINGS_TELEM="$SB/missing_settings.prop" \
+  run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=MinusOneGuard" "Verifier aggregates App Vault (-1 Screen) MinusOneGuard telemetry"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_BUGS=HOS3_MINUS_ONE_BLACK" "Verifier surfaces HOS3_MINUS_ONE_BLACK mitigation from App Vault"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_SURGICAL_GUARD=verified_active" "Verifier marks Surgical Guard verified_active via MinusOneGuard"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

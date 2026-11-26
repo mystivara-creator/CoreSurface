@@ -18,16 +18,12 @@ import de.robv.android.xposed.XposedHelpers;
  * CoreSurface WMShell SurfaceControl Window Transition Physics Engine (com.android.systemui).
  *
  * Runs 100% inside SystemUI's WMShell (ZERO system_server hooks -> zero bootloop risk) to
- * drive real Android 14/15/16 App-to-App, Activity Open/Close, and Task window transitions
- * using our exact analytical CoreSpringSolver ODE physics:
- *
- * - Dynamically binds to DefaultTransitionHandler / DefaultSurfaceAnimator / MiuiDefaultTransitionHandler
- *   by parameter type (safe across AOSP 14/15/16 and HyperOS 2/3/4 signatures).
+ * drive real Android 14/15/16 App-to-App, Activity Open/Close, and Page transitions:
+ * - Zero per-transition Interpolator allocations (reuses cached immutable LUT Interpolators).
+ * - Zero Math.exp/cos/sin per VSync frame (~3ns pre-baked analytical ODE LUT lookup).
  * - Leaves startTransaction, finishTransaction, BLASTSyncEngine, and TransitionFinishCallback
  *   100% atomic and untouched (zero risk of transition hangs or black frames).
  * - Leaves pure AlphaAnimation and short (<80ms) fades native (zero opacity glitches).
- * - Replaces spatial window transition curves with our exact closed-form CoreSpringSolver
- *   physics timeline synchronized to each profile's analytical settling duration.
  */
 public final class ShellTransitionPhysicsEngine {
     private static final String CIRCUIT_KEY = "ShellTransitionPhysics";
@@ -39,10 +35,25 @@ public final class ShellTransitionPhysicsEngine {
             "com.android.wm.shell.transition.TransitionAnimationHelper"
     };
 
+    private static final class CachedInterpolatorPair {
+        final MotionProfileSpec spec;
+        final Interpolator spatial;
+        final Interpolator monotonic;
+
+        CachedInterpolatorPair(MotionProfileSpec spec) {
+            this.spec = spec;
+            this.spatial = new LutSpringInterpolator(spec, true);
+            this.monotonic = spec.shellAllowOvershoot
+                    ? new LutSpringInterpolator(spec, false)
+                    : this.spatial;
+        }
+    }
+
     private final FolmePhysicsHook specHub;
     private final DeviceBugGuard bugGuard;
     private final TelemetryReporter telemetry;
     private final ThreadLocal<Long> pendingSettleMs = new ThreadLocal<>();
+    private volatile CachedInterpolatorPair cachedPair;
 
     public ShellTransitionPhysicsEngine(FolmePhysicsHook specHub, DeviceBugGuard bugGuard,
                                         TelemetryReporter telemetry) {
@@ -90,6 +101,16 @@ public final class ShellTransitionPhysicsEngine {
         return hooked;
     }
 
+    private CachedInterpolatorPair getInterpolators(MotionProfileSpec spec) {
+        CachedInterpolatorPair pair = cachedPair;
+        if (pair != null && pair.spec == spec) {
+            return pair;
+        }
+        pair = new CachedInterpolatorPair(spec);
+        cachedPair = pair;
+        return pair;
+    }
+
     private boolean hookBuildSurfaceAnimation(Method method) {
         Class<?>[] params = method.getParameterTypes();
         int animIdx = -1;
@@ -123,7 +144,7 @@ public final class ShellTransitionPhysicsEngine {
                         if (!(rawAnim instanceof Animation)) {
                             return;
                         }
-                        if (applyPhysicsToShellAnimation((Animation) rawAnim, spec)) {
+                        if (applyPhysicsToShellAnimation((Animation) rawAnim, getInterpolators(spec))) {
                             pendingSettleMs.set(spec.shellSettleMs);
                             telemetry.incCurvesApplied();
                         }
@@ -186,7 +207,7 @@ public final class ShellTransitionPhysicsEngine {
                         }
                         Object res = param.getResult();
                         if (res instanceof Animation) {
-                            if (applyPhysicsToShellAnimation((Animation) res, spec)) {
+                            if (applyPhysicsToShellAnimation((Animation) res, getInterpolators(spec))) {
                                 telemetry.incCurvesApplied();
                             }
                         }
@@ -202,10 +223,10 @@ public final class ShellTransitionPhysicsEngine {
     }
 
     /**
-     * Applies CoreSpringSolver physics to spatial window transition animations while keeping
-     * pure AlphaAnimation and short (<80ms) fades 100% untouched.
+     * Applies pre-baked CoreSpringSolver LUT physics to spatial window transitions while
+     * keeping pure AlphaAnimation and short (<80ms) fades 100% untouched.
      */
-    private static boolean applyPhysicsToShellAnimation(Animation anim, MotionProfileSpec spec) {
+    private static boolean applyPhysicsToShellAnimation(Animation anim, CachedInterpolatorPair pair) {
         if (anim == null || anim instanceof AlphaAnimation) {
             return false;
         }
@@ -213,6 +234,7 @@ public final class ShellTransitionPhysicsEngine {
         if (dur > 0L && (dur < 80L || dur > 950L)) {
             return false;
         }
+        long targetMs = pair.spec.shellSettleMs;
 
         if (anim instanceof AnimationSet) {
             AnimationSet set = (AnimationSet) anim;
@@ -221,80 +243,49 @@ public final class ShellTransitionPhysicsEngine {
                 return false;
             }
             boolean appliedSpatial = false;
-            CoreSpringInterpolator spatialInterp = new CoreSpringInterpolator(spec, spec.shellAllowOvershoot);
-            CoreSpringInterpolator monotonicInterp = new CoreSpringInterpolator(spec, false);
-            for (int i = 0; i < children.size(); i++) {
+            int count = children.size();
+            for (int i = 0; i < count; i++) {
                 Animation child = children.get(i);
                 if (child == null) {
                     continue;
                 }
                 if (child instanceof AlphaAnimation) {
-                    // Never overshoot opacity; keep short alpha fades untouched
                     if (child.getDuration() >= 120L) {
-                        child.setInterpolator(monotonicInterp);
+                        child.setInterpolator(pair.monotonic);
                     }
                 } else {
-                    child.setInterpolator(spatialInterp);
+                    child.setInterpolator(pair.spatial);
                     if (child.getDuration() >= 80L && child.getDuration() <= 900L) {
-                        child.setDuration(spec.shellSettleMs);
+                        child.setDuration(targetMs);
                     }
                     appliedSpatial = true;
                 }
             }
             if (appliedSpatial && dur >= 80L && dur <= 900L) {
-                set.setDuration(spec.shellSettleMs);
+                set.setDuration(targetMs);
             }
             return appliedSpatial;
         }
 
-        anim.setInterpolator(new CoreSpringInterpolator(spec, spec.shellAllowOvershoot));
+        anim.setInterpolator(pair.spatial);
         if (dur >= 80L && dur <= 900L) {
-            anim.setDuration(spec.shellSettleMs);
+            anim.setDuration(targetMs);
         }
         return true;
     }
 
-    /**
-     * Exact closed-form CoreSpringSolver interpolator evaluated over the transition's
-     * physical settle duration with C1 endpoint closure so t=0 -> 0.0 and t=1 -> 1.0.
-     */
-    private static final class CoreSpringInterpolator implements Interpolator {
-        private final double damping;
-        private final double responseSec;
-        private final double v0;
-        private final double settleSec;
-        private final double residual;
-        private final float maxBound;
+    private static final class LutSpringInterpolator implements Interpolator {
+        private final MotionProfileSpec spec;
+        private final boolean spatial;
 
-        CoreSpringInterpolator(MotionProfileSpec spec, boolean allowOvershoot) {
-            this.damping = allowOvershoot ? spec.shellDamping : Math.max(spec.shellDamping, 0.98);
-            this.responseSec = spec.shellResponseSec;
-            this.v0 = spec.shellInitialVelocity;
-            this.settleSec = Math.max(0.20, spec.shellSettleMs / 1000.0);
-            this.residual = 1.0 - CoreSpringSolver.evaluateUnit(this.damping, this.responseSec, this.settleSec, this.v0);
-            this.maxBound = allowOvershoot ? spec.shellMaxOvershoot : 1.0f;
+        LutSpringInterpolator(MotionProfileSpec spec, boolean spatial) {
+            this.spec = spec;
+            this.spatial = spatial;
         }
 
         @Override
         public float getInterpolation(float input) {
-            if (input <= 0.0f) {
-                return 0.0f;
-            }
-            if (input >= 1.0f) {
-                return 1.0f;
-            }
-            double t = input * settleSec;
-            double raw = CoreSpringSolver.evaluateUnit(damping, responseSec, t, v0);
-            // Smooth cubic C1 closure guarantees exact arrival at 1.0 with zero snap
-            double s = input;
-            double val = raw + residual * (s * s * s);
-            if (val < 0.0) {
-                return 0.0f;
-            }
-            if (val > maxBound) {
-                return maxBound;
-            }
-            return (float) val;
+            return spatial ? spec.sampleShellSpatial(input) : spec.sampleShellMonotonic(input);
         }
     }
 

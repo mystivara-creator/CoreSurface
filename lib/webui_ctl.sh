@@ -106,13 +106,15 @@ cs_write_config_key() {
 }
 
 cs_clear_legacy_overrides() {
-  for _cs_lk in FEAT_BLUR FEAT_ANIMATIONS FEAT_XML_PATCHER FEAT_RRO_OVERLAYS FEAT_VIDEO_DEPTH FEAT_MULTITASK FEAT_DISPLAY_HZ FEAT_COLOR_EXPERT FEAT_FLAGSHIP_AUDIO FEAT_FLAGSHIP_SUITE; do
-    if [ -r "$CS_CONFIG_FILE" ]; then
-      _cs_tmp="$CS_CONFIG_FILE.tmp.$$"
-      awk -F '=' -v k="$_cs_lk" '$1 != k { print $0 }' "$CS_CONFIG_FILE" > "$_cs_tmp"
-      mv -f "$_cs_tmp" "$CS_CONFIG_FILE"
-    fi
-  done
+  [ -r "$CS_CONFIG_FILE" ] || return 0
+  _cs_tmp="$CS_CONFIG_FILE.tmp.$$"
+  awk -F '=' '
+    $1 != "FEAT_BLUR" && $1 != "FEAT_ANIMATIONS" && $1 != "FEAT_XML_PATCHER" &&
+    $1 != "FEAT_RRO_OVERLAYS" && $1 != "FEAT_VIDEO_DEPTH" && $1 != "FEAT_MULTITASK" &&
+    $1 != "FEAT_DISPLAY_HZ" && $1 != "FEAT_COLOR_EXPERT" &&
+    $1 != "FEAT_FLAGSHIP_AUDIO" && $1 != "FEAT_FLAGSHIP_SUITE" { print $0 }
+  ' "$CS_CONFIG_FILE" > "$_cs_tmp"
+  mv -f "$_cs_tmp" "$CS_CONFIG_FILE"
 }
 
 cs_sync_rro_for_next_boot() {
@@ -131,11 +133,27 @@ cs_cmd_status() {
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
 
-  _cs_wd_status=$(cs_state_get "WATCHDOG_STATUS")
-  _cs_wd_reason=$(cs_state_get "WATCHDOG_REASON")
+  # Single-pass pure-POSIX read of state.prop (0 awk forks)
+  _cs_wd_status="" _cs_wd_reason="" _cs_pending_keys=""
+  _cs_xml_status="" _cs_xml_source="" _cs_xml_tags=""
+  _cs_rro_status="" _cs_rro_staged=""
+  if [ -r "$CS_STATE_FILE" ]; then
+    while IFS='=' read -r _cs_sk _cs_sv || [ -n "$_cs_sk" ]; do
+      case "$_cs_sk" in
+        WATCHDOG_STATUS)  _cs_wd_status="$_cs_sv" ;;
+        WATCHDOG_REASON)  _cs_wd_reason="$_cs_sv" ;;
+        PENDING_KEYS)     _cs_pending_keys="$_cs_sv" ;;
+        XML_STATUS)       _cs_xml_status="$_cs_sv" ;;
+        XML_SOURCE)       _cs_xml_source="$_cs_sv" ;;
+        XML_PATCHED_TAGS) _cs_xml_tags="$_cs_sv" ;;
+        RRO_STATUS)       _cs_rro_status="$_cs_sv" ;;
+        RRO_STAGED_COUNT) _cs_rro_staged="$_cs_sv" ;;
+      esac
+    done < "$CS_STATE_FILE"
+  fi
+
   _cs_strikes=$(cs_read_strikes)
   _cs_cf_guard=$(cs_detect_coreflow_guard)
-  _cs_pending_keys=$(cs_state_get "PENDING_KEYS")
   _cs_disabled="0"
   if [ -f "$MODDIR/disable" ]; then
     _cs_disabled="1"
@@ -144,11 +162,60 @@ cs_cmd_status() {
     fi
   fi
 
-  _cs_xml_status=$(cs_state_get "XML_STATUS")
-  _cs_xml_source=$(cs_state_get "XML_SOURCE")
-  _cs_xml_tags=$(cs_state_get "XML_PATCHED_TAGS")
-  _cs_rro_status=$(cs_state_get "RRO_STATUS")
-  _cs_rro_staged=$(cs_state_get "RRO_STAGED_COUNT")
+  # Single-pass pure-POSIX read of verify.state (0 awk forks instead of 32)
+  _v_ei="" _v_ea="" _v_em="" _v_emo="" _v_ehz="" _v_elod="" _v_ehk="" _v_ebg=""
+  _v_eng="" _v_efh="" _v_eag="" _v_esp="" _v_ecv="" _v_ent="" _v_enr="" _v_ect=""
+  _v_fmp="" _v_fsg="" _v_faod="" _v_faud="" _v_fsu="" _v_fbl="" _v_fce=""
+  _v_xmlm="" _v_rroa="" _v_rrot="" _v_ptot="" _v_pmat="" _v_fver="" _v_fev="" _v_pct=""
+  if [ -r "$CS_VERIFY_FILE" ]; then
+    while IFS='=' read -r _cs_vk _cs_vv || [ -n "$_cs_vk" ]; do
+      case "$_cs_vk" in
+        VERIFY_ENGINE_INSTALLED)    _v_ei="$_cs_vv" ;;
+        VERIFY_ENGINE_ACTIVE)       _v_ea="$_cs_vv" ;;
+        VERIFY_ENGINE_MODE)         _v_em="$_cs_vv" ;;
+        VERIFY_ENGINE_MOTION)       _v_emo="$_cs_vv" ;;
+        VERIFY_ENGINE_HZ)           _v_ehz="$_cs_vv" ;;
+        VERIFY_ENGINE_LOD)          _v_elod="$_cs_vv" ;;
+        VERIFY_ENGINE_HOOKS)        _v_ehk="$_cs_vv" ;;
+        VERIFY_ENGINE_BUGS)         _v_ebg="$_cs_vv" ;;
+        VERIFY_ENGINE_NATIVE_GATES) _v_eng="$_cs_vv" ;;
+        VERIFY_ENGINE_FOLME_HOOKS)  _v_efh="$_cs_vv" ;;
+        VERIFY_ENGINE_AOD_GATES)    _v_eag="$_cs_vv" ;;
+        VERIFY_ENGINE_SPRINGS)      _v_esp="$_cs_vv" ;;
+        VERIFY_ENGINE_CURVES)       _v_ecv="$_cs_vv" ;;
+        VERIFY_ENGINE_TOASTS)       _v_ent="$_cs_vv" ;;
+        VERIFY_ENGINE_RECENTS)      _v_enr="$_cs_vv" ;;
+        VERIFY_ENGINE_CIRCUITS)     _v_ect="$_cs_vv" ;;
+        VERIFY_FEAT_MOTION_PROFILE) _v_fmp="$_cs_vv" ;;
+        VERIFY_FEAT_SURGICAL_GUARD) _v_fsg="$_cs_vv" ;;
+        VERIFY_FEAT_AOD_UNLOCK)     _v_faod="$_cs_vv" ;;
+        VERIFY_FEAT_FLAGSHIP_AUDIO) _v_faud="$_cs_vv" ;;
+        VERIFY_FEAT_FLAGSHIP_SUITE) _v_fsu="$_cs_vv" ;;
+        VERIFY_FEAT_BLUR)           _v_fbl="$_cs_vv" ;;
+        VERIFY_FEAT_COLOR_EXPERT)   _v_fce="$_cs_vv" ;;
+        VERIFY_XML_MOUNT)           _v_xmlm="$_cs_vv" ;;
+        VERIFY_RRO_ACTIVE)          _v_rroa="$_cs_vv" ;;
+        VERIFY_RRO_TOTAL)           _v_rrot="$_cs_vv" ;;
+        VERIFY_PROPS_TOTAL)         _v_ptot="$_cs_vv" ;;
+        VERIFY_PROPS_MATCHED)       _v_pmat="$_cs_vv" ;;
+        VERIFY_FEAT_VERIFIED)       _v_fver="$_cs_vv" ;;
+        VERIFY_FEAT_EVALUATED)      _v_fev="$_cs_vv" ;;
+        COMPAT_SCORE_PCT)           _v_pct="$_cs_vv" ;;
+      esac
+    done < "$CS_VERIFY_FILE"
+  fi
+
+  # Single-pass pure-POSIX read of os_bugs.state
+  _b_det="" _b_mit="" _b_csv=""
+  if [ -r "$CS_OS_BUGS_FILE" ]; then
+    while IFS='=' read -r _cs_bk _cs_bv || [ -n "$_cs_bk" ]; do
+      case "$_cs_bk" in
+        OS_BUGS_DETECTED)  _b_det="$_cs_bv" ;;
+        OS_BUGS_MITIGATED) _b_mit="$_cs_bv" ;;
+        OS_BUGS_CSV)       _b_csv="$_cs_bv" ;;
+      esac
+    done < "$CS_OS_BUGS_FILE"
+  fi
 
   printf 'module_version=%s\n' "v1.3.0"
   printf 'watchdog_status=%s\n' "${_cs_wd_status:-unknown}"
@@ -190,42 +257,42 @@ cs_cmd_status() {
   printf 'rro_status=%s\n' "${_cs_rro_status:-skipped}"
   printf 'rro_staged_count=%s\n' "${_cs_rro_staged:-0}"
 
-  printf 'verify_engine_installed=%s\n' "$(cs_verify_get VERIFY_ENGINE_INSTALLED)"
-  printf 'verify_engine_active=%s\n' "$(cs_verify_get VERIFY_ENGINE_ACTIVE)"
-  printf 'verify_engine_mode=%s\n' "$(cs_verify_get VERIFY_ENGINE_MODE)"
-  printf 'verify_engine_motion=%s\n' "$(cs_verify_get VERIFY_ENGINE_MOTION)"
-  printf 'verify_engine_hz=%s\n' "$(cs_verify_get VERIFY_ENGINE_HZ)"
-  printf 'verify_engine_lod=%s\n' "$(cs_verify_get VERIFY_ENGINE_LOD)"
-  printf 'verify_engine_hooks=%s\n' "$(cs_verify_get VERIFY_ENGINE_HOOKS)"
-  printf 'verify_engine_bugs=%s\n' "$(cs_verify_get VERIFY_ENGINE_BUGS)"
-  printf 'verify_engine_native_gates=%s\n' "$(cs_verify_get VERIFY_ENGINE_NATIVE_GATES)"
-  printf 'verify_engine_folme_hooks=%s\n' "$(cs_verify_get VERIFY_ENGINE_FOLME_HOOKS)"
-  printf 'verify_engine_aod_gates=%s\n' "$(cs_verify_get VERIFY_ENGINE_AOD_GATES)"
-  printf 'verify_engine_springs=%s\n' "$(cs_verify_get VERIFY_ENGINE_SPRINGS)"
-  printf 'verify_engine_curves=%s\n' "$(cs_verify_get VERIFY_ENGINE_CURVES)"
-  printf 'verify_engine_toasts=%s\n' "$(cs_verify_get VERIFY_ENGINE_TOASTS)"
-  printf 'verify_engine_recents=%s\n' "$(cs_verify_get VERIFY_ENGINE_RECENTS)"
-  printf 'verify_engine_circuits=%s\n' "$(cs_verify_get VERIFY_ENGINE_CIRCUITS)"
+  printf 'verify_engine_installed=%s\n' "$_v_ei"
+  printf 'verify_engine_active=%s\n' "$_v_ea"
+  printf 'verify_engine_mode=%s\n' "$_v_em"
+  printf 'verify_engine_motion=%s\n' "$_v_emo"
+  printf 'verify_engine_hz=%s\n' "$_v_ehz"
+  printf 'verify_engine_lod=%s\n' "$_v_elod"
+  printf 'verify_engine_hooks=%s\n' "$_v_ehk"
+  printf 'verify_engine_bugs=%s\n' "$_v_ebg"
+  printf 'verify_engine_native_gates=%s\n' "$_v_eng"
+  printf 'verify_engine_folme_hooks=%s\n' "$_v_efh"
+  printf 'verify_engine_aod_gates=%s\n' "$_v_eag"
+  printf 'verify_engine_springs=%s\n' "$_v_esp"
+  printf 'verify_engine_curves=%s\n' "$_v_ecv"
+  printf 'verify_engine_toasts=%s\n' "$_v_ent"
+  printf 'verify_engine_recents=%s\n' "$_v_enr"
+  printf 'verify_engine_circuits=%s\n' "$_v_ect"
 
-  printf 'os_bugs_detected=%s\n' "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_DETECTED)"
-  printf 'os_bugs_mitigated=%s\n' "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_MITIGATED)"
-  printf 'os_bugs_csv=%s\n' "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_CSV)"
+  printf 'os_bugs_detected=%s\n' "$_b_det"
+  printf 'os_bugs_mitigated=%s\n' "$_b_mit"
+  printf 'os_bugs_csv=%s\n' "$_b_csv"
 
-  printf 'verify_feat_motion_profile=%s\n' "$(cs_verify_get VERIFY_FEAT_MOTION_PROFILE)"
-  printf 'verify_feat_surgical_guard=%s\n' "$(cs_verify_get VERIFY_FEAT_SURGICAL_GUARD)"
-  printf 'verify_feat_aod_unlock=%s\n' "$(cs_verify_get VERIFY_FEAT_AOD_UNLOCK)"
-  printf 'verify_feat_flagship_audio=%s\n' "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_AUDIO)"
-  printf 'verify_feat_flagship_suite=%s\n' "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_SUITE)"
-  printf 'verify_feat_blur=%s\n' "$(cs_verify_get VERIFY_FEAT_BLUR)"
-  printf 'verify_feat_color_expert=%s\n' "$(cs_verify_get VERIFY_FEAT_COLOR_EXPERT)"
-  printf 'verify_xml_mount=%s\n' "$(cs_verify_get VERIFY_XML_MOUNT)"
-  printf 'verify_rro_active=%s\n' "$(cs_verify_get VERIFY_RRO_ACTIVE)"
-  printf 'verify_rro_total=%s\n' "$(cs_verify_get VERIFY_RRO_TOTAL)"
-  printf 'verify_props_total=%s\n' "$(cs_verify_get VERIFY_PROPS_TOTAL)"
-  printf 'verify_props_matched=%s\n' "$(cs_verify_get VERIFY_PROPS_MATCHED)"
-  printf 'verify_feat_verified=%s\n' "$(cs_verify_get VERIFY_FEAT_VERIFIED)"
-  printf 'verify_feat_evaluated=%s\n' "$(cs_verify_get VERIFY_FEAT_EVALUATED)"
-  printf 'compat_score_pct=%s\n' "$(cs_verify_get COMPAT_SCORE_PCT)"
+  printf 'verify_feat_motion_profile=%s\n' "$_v_fmp"
+  printf 'verify_feat_surgical_guard=%s\n' "$_v_fsg"
+  printf 'verify_feat_aod_unlock=%s\n' "$_v_faod"
+  printf 'verify_feat_flagship_audio=%s\n' "$_v_faud"
+  printf 'verify_feat_flagship_suite=%s\n' "$_v_fsu"
+  printf 'verify_feat_blur=%s\n' "$_v_fbl"
+  printf 'verify_feat_color_expert=%s\n' "$_v_fce"
+  printf 'verify_xml_mount=%s\n' "$_v_xmlm"
+  printf 'verify_rro_active=%s\n' "$_v_rroa"
+  printf 'verify_rro_total=%s\n' "$_v_rrot"
+  printf 'verify_props_total=%s\n' "$_v_ptot"
+  printf 'verify_props_matched=%s\n' "$_v_pmat"
+  printf 'verify_feat_verified=%s\n' "$_v_fver"
+  printf 'verify_feat_evaluated=%s\n' "$_v_fev"
+  printf 'compat_score_pct=%s\n' "$_v_pct"
 
   printf 'log_start\n'
   if [ -r "$CS_LOG_FILE" ]; then

@@ -33,6 +33,8 @@ public final class SystemUIChoreographyHook {
     private final CoreSurfaceChoreographer choreographer;
     private final DeviceBugGuard bugGuard;
     private final TelemetryReporter telemetry;
+    private long lastPanelTriggerMs = 0L;
+    private int lastPanelViewId = 0;
 
     public SystemUIChoreographyHook(FolmePhysicsHook specHub, CoreSurfaceChoreographer choreographer,
                                     DeviceBugGuard bugGuard, TelemetryReporter telemetry) {
@@ -154,10 +156,22 @@ public final class SystemUIChoreographyHook {
         if (spec == null || !v.isAttachedToWindow()) {
             return;
         }
+        // Never fight an active interactive finger-pull gesture (non-zero translationY)
+        if (Math.abs(v.getTranslationY()) > 4.0f) {
+            return;
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        int vid = System.identityHashCode(v);
+        if (vid == lastPanelViewId && (now - lastPanelTriggerMs) < 280L) {
+            return;
+        }
+        lastPanelViewId = vid;
+        lastPanelTriggerMs = now;
+
         float density = v.getResources() != null
                 ? v.getResources().getDisplayMetrics().density : 2.75f;
-        // Subtle downward spring glide from top edge into natural rest (0f)
-        float startY = -(spec.surfaceLiftDp * 1.15f) * density;
+        // Crisp, blur-friendly downward spring settle from top edge into natural rest (0f)
+        float startY = -spec.surfaceLiftDp * density;
         float initialVel = Math.abs(startY) * spec.surfaceImpulseVel;
         choreographer.springTo(
                 v,

@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Zero-Binder Live Configuration Bridge (ultra-lightweight hot-path).
  * Reads non-persistent memory property `debug.coresurface.cfg` set via `resetprop -n`
- * (~2 microseconds, zero Binder calls, 100% SELinux-safe on Android 16 KernelSU-Next).
+ * (~2 microseconds, zero Binder calls on UI frames, 100% SELinux-safe on Android 16 KernelSU-Next).
  *
  * Format: motion=snappy|fluid|bouncy|off;native=1|0;guard=1|0;thermallod=1|0;aod=1|0
  */
@@ -25,7 +25,8 @@ public final class EngineConfig {
     public static final String MOTION_FLUID = "fluid";
     public static final String MOTION_BOUNCY = "bouncy";
 
-    private static final long REFRESH_INTERVAL_MS = 500L;
+    private static final long REFRESH_INTERVAL_MS = 1500L;
+    private static final Object[] PROP_ARGS = new Object[] { PROP_KEY, "" };
 
     private volatile String motionProfile = MOTION_OFF;
     private volatile boolean nativeTier = true;
@@ -38,7 +39,7 @@ public final class EngineConfig {
     private final AtomicBoolean refreshing = new AtomicBoolean(false);
     private volatile Method sysPropGetMethod;
     private volatile boolean sysPropResolved = false;
-    private volatile boolean propBridgeConfirmed = false;
+    private volatile boolean settingsFallbackTried = false;
     private volatile ContentResolver contentResolver;
     private volatile long lastRefreshMs = -REFRESH_INTERVAL_MS;
 
@@ -68,26 +69,28 @@ public final class EngineConfig {
             return;
         }
         try {
-            refreshNowInternal(false, now);
+            refreshNowInternal(false, now, false);
         } finally {
             refreshing.set(false);
         }
     }
 
     public void refreshNow(boolean forceNotify) {
-        refreshNowInternal(forceNotify, SystemClock.uptimeMillis());
+        refreshNowInternal(forceNotify, SystemClock.uptimeMillis(), true);
     }
 
-    private void refreshNowInternal(boolean forceNotify, long now) {
+    private void refreshNowInternal(boolean forceNotify, long now, boolean allowSettingsFallback) {
         lastRefreshMs = now;
         String next = readSystemProperty();
-        if (next != null && !next.isEmpty()) {
-            propBridgeConfirmed = true;
-        } else if (!propBridgeConfirmed) {
-            // Only query Settings.Global Binder fallback if zero-Binder prop bridge was never seen
+        if ((next == null || next.isEmpty()) && allowSettingsFallback && !settingsFallbackTried) {
+            // Query Settings.Global at most once during startup bootstrap — NEVER on UI animation frames
+            settingsFallbackTried = true;
             next = readSettingsFallback();
         }
         if (next == null || next.isEmpty()) {
+            if (forceNotify) {
+                notifyListeners();
+            }
             return;
         }
         String trimmed = next.trim();
@@ -114,7 +117,7 @@ public final class EngineConfig {
             return "";
         }
         try {
-            Object res = m.invoke(null, PROP_KEY, "");
+            Object res = m.invoke(null, PROP_ARGS);
             return res instanceof String ? (String) res : "";
         } catch (Throwable ignored) {
             return "";
@@ -200,18 +203,32 @@ public final class EngineConfig {
         return nativeTier;
     }
 
+    /** Zero-syscall single volatile read for ultra-hot device-level getters (thousands/sec). */
+    public boolean isNativeTierEnabledFast() {
+        return nativeTier;
+    }
+
     public boolean isSurgicalGuard() {
         refreshIfStale();
         return surgicalGuard;
     }
 
+    /** Zero-syscall single volatile read for hot View blur setters. */
+    public boolean isSurgicalGuardFast() {
+        return surgicalGuard;
+    }
+
     public boolean isThermalLod() {
-        refreshIfStale();
         return thermalLod;
     }
 
     public boolean isAodUnlockEnabled() {
         refreshIfStale();
+        return aodUnlock;
+    }
+
+    /** Zero-syscall single volatile read for AOD FeatureParser / capability gates. */
+    public boolean isAodUnlockEnabledFast() {
         return aodUnlock;
     }
 

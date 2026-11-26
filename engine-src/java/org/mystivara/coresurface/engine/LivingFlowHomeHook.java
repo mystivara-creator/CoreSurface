@@ -47,7 +47,7 @@ public final class LivingFlowHomeHook {
     }
 
     public void install(ClassLoader cl) {
-        blurGuard.installWindowToastGuard(cl);
+        // Unified WindowManagerGlobal guard (Toast + Recents + -1 Screen) installed in a single trampoline
         blurGuard.installHomeRecentsGuard(cl);
         deviceLevelHook.install(cl);
         folmeHook.install(cl);

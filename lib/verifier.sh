@@ -155,8 +155,23 @@ cs_verify_engine() {
   if [ -z "$_cs_t_home" ]; then
     if [ -r /data/user/0/com.miui.home/cache/coresurface_telemetry.prop ]; then
       _cs_t_home=/data/user/0/com.miui.home/cache/coresurface_telemetry.prop
-    else
+    elif [ -r /data/user_de/0/com.miui.home/cache/coresurface_telemetry.prop ]; then
       _cs_t_home=/data/user_de/0/com.miui.home/cache/coresurface_telemetry.prop
+    elif [ -r /data/user/0/com.mi.android.globallauncher/cache/coresurface_telemetry.prop ]; then
+      _cs_t_home=/data/user/0/com.mi.android.globallauncher/cache/coresurface_telemetry.prop
+    else
+      _cs_t_home=/data/user_de/0/com.mi.android.globallauncher/cache/coresurface_telemetry.prop
+    fi
+  fi
+
+  _cs_t_minus=${CORESURFACE_ENGINE_MINUSONE_TELEM:-}
+  if [ -z "$_cs_t_minus" ]; then
+    if [ -r /data/user/0/com.mi.android.globalminusscreen/cache/coresurface_telemetry.prop ]; then
+      _cs_t_minus=/data/user/0/com.mi.android.globalminusscreen/cache/coresurface_telemetry.prop
+    elif [ -r /data/user/0/com.miui.personalassistant/cache/coresurface_telemetry.prop ]; then
+      _cs_t_minus=/data/user/0/com.miui.personalassistant/cache/coresurface_telemetry.prop
+    else
+      _cs_t_minus=/data/user_de/0/com.mi.android.globalminusscreen/cache/coresurface_telemetry.prop
     fi
   fi
 
@@ -178,58 +193,62 @@ cs_verify_engine() {
     fi
   fi
 
-  for _cs_tf in "$_cs_t_sysui" "$_cs_t_home" "$_cs_t_aod" "$_cs_t_settings"; do
+  # Single-pass POSIX parser per telemetry file (0 awk forks instead of ~90)
+  for _cs_tf in "$_cs_t_sysui" "$_cs_t_home" "$_cs_t_minus" "$_cs_t_aod" "$_cs_t_settings"; do
     [ -r "$_cs_tf" ] || continue
-    _cs_act=$(cs_telem_get "$_cs_tf" "ENGINE_ACTIVE")
+    _cs_act="" _cs_tf_boot="" _cs_mode="" _cs_mp="" _cs_hz="" _cs_lod="" _cs_hk="" _cs_bm=""
+    _cs_ng=0 _cs_fh=0 _cs_ag=0 _cs_sp=0 _cs_cv=0 _cs_nt=0 _cs_nr=0 _cs_ct=0
+    while IFS='=' read -r _cs_tk _cs_tv || [ -n "$_cs_tk" ]; do
+      _cs_tv=${_cs_tv%$(printf '\r')}
+      case "$_cs_tk" in
+        ENGINE_ACTIVE)  _cs_act="$_cs_tv" ;;
+        BOOT_ID)        _cs_tf_boot="$_cs_tv" ;;
+        ENGINE_MODE)    _cs_mode="$_cs_tv" ;;
+        MOTION_PROFILE) _cs_mp="$_cs_tv" ;;
+        DISPLAY_HZ)     _cs_hz="$_cs_tv" ;;
+        LOD_TIER)       _cs_lod="$_cs_tv" ;;
+        HOOKS_BOUND)    _cs_hk="$_cs_tv" ;;
+        BUGS_MITIGATED) _cs_bm="$_cs_tv" ;;
+        NATIVE_GATES)   _cs_ng="$_cs_tv" ;;
+        FOLME_HOOKS)    _cs_fh="$_cs_tv" ;;
+        AOD_GATES)      _cs_ag="$_cs_tv" ;;
+        SPRINGS_TUNED)  _cs_sp="$_cs_tv" ;;
+        CURVES_APPLIED) _cs_cv="$_cs_tv" ;;
+        TOASTS_GUARDED) _cs_nt="$_cs_tv" ;;
+        RECENTS_GUARDED) _cs_nr="$_cs_tv" ;;
+        CIRCUIT_TRIPS)  _cs_ct="$_cs_tv" ;;
+      esac
+    done < "$_cs_tf"
+
     [ "$_cs_act" = "1" ] || continue
 
     # Reject stale telemetry written during an earlier boot
-    _cs_tf_boot=$(cs_telem_get "$_cs_tf" "BOOT_ID")
     if [ -n "$_cs_cur_boot_id" ] && [ -n "$_cs_tf_boot" ] && [ "$_cs_tf_boot" != "$_cs_cur_boot_id" ]; then
       continue
     fi
 
     CS_V_ENGINE_ACTIVE="1"
-    _cs_mode=$(cs_telem_get "$_cs_tf" "ENGINE_MODE")
     if [ -n "$_cs_mode" ] && [ "$CS_V_ENGINE_MODE" = "NONE" ]; then
       CS_V_ENGINE_MODE="$_cs_mode"
     fi
-
-    _cs_mp=$(cs_telem_get "$_cs_tf" "MOTION_PROFILE")
     if [ -n "$_cs_mp" ] && [ "$CS_V_ENGINE_MOTION" = "N/A" ]; then
       CS_V_ENGINE_MOTION="$_cs_mp"
     fi
-
-    _cs_hz=$(cs_telem_get "$_cs_tf" "DISPLAY_HZ")
     if cs_is_uint "$_cs_hz" && [ "$_cs_hz" -gt "$CS_V_ENGINE_HZ" ]; then
       CS_V_ENGINE_HZ="$_cs_hz"
     fi
-
-    _cs_lod=$(cs_telem_get "$_cs_tf" "LOD_TIER")
     if [ -n "$_cs_lod" ] && [ "$CS_V_ENGINE_LOD" = "N/A" ]; then
       CS_V_ENGINE_LOD="$_cs_lod"
     fi
-
-    _cs_hk=$(cs_telem_get "$_cs_tf" "HOOKS_BOUND")
     if [ -n "$_cs_hk" ]; then
       cs_append_unique_csv "$CS_V_ENGINE_HOOKS" "$_cs_hk"
       CS_V_ENGINE_HOOKS="$CS_AU_OUT"
     fi
-
-    _cs_bm=$(cs_telem_get "$_cs_tf" "BUGS_MITIGATED")
     if [ -n "$_cs_bm" ]; then
       cs_append_unique_csv "$CS_V_ENGINE_BUGS" "$_cs_bm"
       CS_V_ENGINE_BUGS="$CS_AU_OUT"
     fi
 
-    _cs_ng=$(cs_telem_get "$_cs_tf" "NATIVE_GATES")
-    _cs_fh=$(cs_telem_get "$_cs_tf" "FOLME_HOOKS")
-    _cs_ag=$(cs_telem_get "$_cs_tf" "AOD_GATES")
-    _cs_sp=$(cs_telem_get "$_cs_tf" "SPRINGS_TUNED")
-    _cs_cv=$(cs_telem_get "$_cs_tf" "CURVES_APPLIED")
-    _cs_nt=$(cs_telem_get "$_cs_tf" "TOASTS_GUARDED")
-    _cs_nr=$(cs_telem_get "$_cs_tf" "RECENTS_GUARDED")
-    _cs_ct=$(cs_telem_get "$_cs_tf" "CIRCUIT_TRIPS")
     cs_is_uint "$_cs_ng" && CS_V_ENGINE_NATIVE_GATES=$((CS_V_ENGINE_NATIVE_GATES + _cs_ng))
     cs_is_uint "$_cs_fh" && CS_V_ENGINE_FOLME_HOOKS=$((CS_V_ENGINE_FOLME_HOOKS + _cs_fh))
     cs_is_uint "$_cs_ag" && CS_V_ENGINE_AOD_GATES=$((CS_V_ENGINE_AOD_GATES + _cs_ag))
@@ -306,7 +325,7 @@ cs_verify_engine() {
     CS_V_SURGICAL_GUARD="skipped"
   elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
     case ",$CS_V_ENGINE_HOOKS," in
-      *,ToastGuard,*|*,RecentsGuard,*)
+      *,ToastGuard,*|*,RecentsGuard,*|*,MinusOneGuard,*)
         CS_V_SURGICAL_GUARD="verified_active"
         ;;
       *)

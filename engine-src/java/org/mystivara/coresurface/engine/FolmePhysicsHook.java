@@ -36,10 +36,11 @@ public final class FolmePhysicsHook {
 
     private volatile boolean displayAttached = false;
     private volatile float currentRefreshHz = 60.0f;
+    private volatile int currentHzBucket = 0; // 0=60, 1=90, 2=120, 3=144
     private volatile float cachedThermalScale = 1.0f;
-    private volatile MotionProfileSpec activeSpec = MotionProfileSpec.forProfile(
-            EngineConfig.MOTION_FLUID, 60.0f, 1.0f);
     private volatile String activeSpecProfile = EngineConfig.MOTION_FLUID;
+    private volatile MotionProfileSpec[] bucketSpecs = buildBucketSpecs(EngineConfig.MOTION_FLUID, 1.0f);
+    private volatile MotionProfileSpec activeSpec = bucketSpecs[0];
 
     public FolmePhysicsHook(EngineConfig config, ThermalLodController lodController,
                             DeviceBugGuard bugGuard, TelemetryReporter telemetry) {
@@ -110,7 +111,9 @@ public final class FolmePhysicsHook {
         }
         if (!profile.equals(activeSpecProfile)) {
             activeSpecProfile = profile;
-            activeSpec = MotionProfileSpec.forProfile(profile, currentRefreshHz, cachedThermalScale);
+            MotionProfileSpec[] nextBuckets = buildBucketSpecs(profile, cachedThermalScale);
+            bucketSpecs = nextBuckets;
+            activeSpec = nextBuckets[currentHzBucket];
         }
         return activeSpec;
     }
@@ -128,10 +131,17 @@ public final class FolmePhysicsHook {
             Display d = dm.getDisplay(Display.DEFAULT_DISPLAY);
             if (d != null) {
                 float hz = d.getRefreshRate();
-                if (hz >= 45.0f && hz <= 240.0f && Math.abs(hz - currentRefreshHz) >= 0.5f) {
+                if (hz >= 45.0f && hz <= 240.0f && Math.abs(hz - currentRefreshHz) >= 2.0f) {
                     currentRefreshHz = hz;
+                    int nextBucket = hzToBucket(hz);
+                    if (nextBucket != currentHzBucket) {
+                        currentHzBucket = nextBucket;
+                        MotionProfileSpec[] table = bucketSpecs;
+                        if (table != null && nextBucket < table.length) {
+                            activeSpec = table[nextBucket];
+                        }
+                    }
                     telemetry.setDisplayHz(Math.round(hz));
-                    rebuildSpecState();
                 }
             }
         } catch (Throwable ignored) {
@@ -140,18 +150,45 @@ public final class FolmePhysicsHook {
 
     private void rebuildSpecState() {
         float lod = lodController.getEffectiveLod();
+        float nextScale;
         if (lod <= ThermalLodController.LOD_ECO + 0.05f) {
-            cachedThermalScale = 0.35f;
+            nextScale = 0.35f;
         } else if (lod <= ThermalLodController.LOD_BALANCED + 0.05f) {
-            cachedThermalScale = 0.70f;
+            nextScale = 0.70f;
         } else {
-            cachedThermalScale = 1.0f;
+            nextScale = 1.0f;
         }
         String profile = config.getMotionProfile();
+        boolean unchanged = profile.equals(activeSpecProfile) && Math.abs(nextScale - cachedThermalScale) < 0.01f;
+        cachedThermalScale = nextScale;
         activeSpecProfile = profile;
-        if (!EngineConfig.MOTION_OFF.equals(profile)) {
-            activeSpec = MotionProfileSpec.forProfile(profile, currentRefreshHz, cachedThermalScale);
+        if (!EngineConfig.MOTION_OFF.equals(profile) && !unchanged) {
+            MotionProfileSpec[] nextBuckets = buildBucketSpecs(profile, nextScale);
+            bucketSpecs = nextBuckets;
+            activeSpec = nextBuckets[currentHzBucket];
         }
+    }
+
+    private static int hzToBucket(float hz) {
+        if (hz >= 132.0f) {
+            return 3;
+        }
+        if (hz >= 105.0f) {
+            return 2;
+        }
+        if (hz >= 75.0f) {
+            return 1;
+        }
+        return 0;
+    }
+
+    private static MotionProfileSpec[] buildBucketSpecs(String profile, float thermalScale) {
+        return new MotionProfileSpec[] {
+                MotionProfileSpec.forProfile(profile, 60.0f, thermalScale),
+                MotionProfileSpec.forProfile(profile, 90.0f, thermalScale),
+                MotionProfileSpec.forProfile(profile, 120.0f, thermalScale),
+                MotionProfileSpec.forProfile(profile, 144.0f, thermalScale)
+        };
     }
 
     public int install(ClassLoader cl) {
@@ -385,9 +422,14 @@ public final class FolmePhysicsHook {
                         if (s < 100.0f || s > 2400.0f) {
                             return;
                         }
-                        double w = spec.folmeBlendWeight * 0.90;
-                        double targetK = Math.pow(s, 1.0 - w) * Math.pow(spec.folmeStiffnessK, w);
-                        param.args[0] = clamp((float) targetK, 100.0f, 2400.0f);
+                        // Preserve crispness of fast micro-interactions (taps/toggles with s > 1100)
+                        // while strongly reshaping real transition springs (100..1100)
+                        float w = (s > 1100.0f) ? (spec.folmeBlendWeight * 0.25f) : (spec.folmeBlendWeight * 0.90f);
+                        float targetK = s + (spec.folmeStiffnessK - s) * w;
+                        if (s > 1100.0f && targetK < 650.0f) {
+                            targetK = 650.0f;
+                        }
+                        param.args[0] = clamp(targetK, 100.0f, 2400.0f);
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringStiff");
                     }
@@ -402,16 +444,29 @@ public final class FolmePhysicsHook {
 
     private static void applyProfileSpringBlend(float[] out, float stockDamp, float stockResp,
                                                 MotionProfileSpec spec) {
+        // Keep fast micro-interactions (stockResp < 0.24s: button taps, toggles) crisp even in Fluid mode
+        if (stockResp < 0.24f) {
+            float mw = spec.folmeBlendWeight * 0.30f;
+            out[0] = clamp(stockDamp * (1.0f - mw) + spec.folmeDamping * mw, 0.72f, 0.99f);
+            out[1] = clamp(stockResp * (1.0f - mw) + Math.min(spec.folmeResponseSec, 0.26f) * mw, 0.14f, 0.26f);
+            return;
+        }
         float w = spec.folmeBlendWeight;
         out[0] = clamp(stockDamp * (1.0f - w) + spec.folmeDamping * w, 0.62f, 0.99f);
-        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.15f, 0.62f);
+        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.15f, 0.56f);
     }
 
     private static void applyProfileSpringBlendDouble(double[] out, float stockDamp, float stockResp,
                                                       MotionProfileSpec spec) {
+        if (stockResp < 0.24f) {
+            float mw = spec.folmeBlendWeight * 0.30f;
+            out[0] = clamp(stockDamp * (1.0f - mw) + spec.folmeDamping * mw, 0.72f, 0.99f);
+            out[1] = clamp(stockResp * (1.0f - mw) + Math.min(spec.folmeResponseSec, 0.26f) * mw, 0.14f, 0.26f);
+            return;
+        }
         float w = spec.folmeBlendWeight;
         out[0] = clamp(stockDamp * (1.0f - w) + spec.folmeDamping * w, 0.62f, 0.99f);
-        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.15f, 0.62f);
+        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.15f, 0.56f);
     }
 
     private static int resolveSpringStyleConstant(Class<?> easeClass) {

@@ -115,9 +115,12 @@ cs_xml_build_patch_spec() {
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_AUDIO:-0}" = "1" ]; then
-      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Assistant, Audio Share, 24-bit/Stereo/Studio Mic Record)
+      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Effects/Spatial Audio, Sound Assistant,
+      # Audio Share, 24-bit/Stereo/Studio Mic Record)
       printf 'bool|support_dolby|true\n'
       printf 'bool|support_hifi|true\n'
+      printf 'bool|support_sound_effect|true\n'
+      printf 'bool|support_spatial_audio|true\n'
       printf 'bool|support_sound_assist|true\n'
       printf 'bool|support_audio_share|true\n'
       printf 'bool|support_stereo_record|true\n'
@@ -303,18 +306,12 @@ cs_xml_apply() {
 
   if [ "$EFF_FEAT_XML_PATCHER" != "1" ]; then
     cs_xml_unmount_if_mounted || true
-    cs_state_set "XML_STATUS" "disabled"
-    cs_state_set "XML_REASON" "disabled_by_config"
-    cs_state_set "XML_SOURCE" "none"
-    cs_state_set "XML_PATCHED_TAGS" "0"
+    cs_state_set_batch "XML_STATUS=disabled" "XML_REASON=disabled_by_config" "XML_SOURCE=none" "XML_PATCHED_TAGS=0"
     return 0
   fi
 
   if ! cs_xml_discover; then
-    cs_state_set "XML_STATUS" "skipped"
-    cs_state_set "XML_REASON" "source_xml_not_found"
-    cs_state_set "XML_SOURCE" "none"
-    cs_state_set "XML_PATCHED_TAGS" "0"
+    cs_state_set_batch "XML_STATUS=skipped" "XML_REASON=source_xml_not_found" "XML_SOURCE=none" "XML_PATCHED_TAGS=0"
     cs_log "XML Patcher: no valid device_features XML discovered; skipping cleanly."
     return 0
   fi
@@ -324,10 +321,7 @@ cs_xml_apply() {
   cs_xml_unmount_if_mounted "$CS_XML_DISCOVERED"
 
   mkdir -p "$CS_XML_WORK_DIR" 2>/dev/null || {
-    cs_state_set "XML_STATUS" "skipped"
-    cs_state_set "XML_REASON" "work_dir_error"
-    cs_state_set "XML_SOURCE" "$CS_XML_DISCOVERED"
-    cs_state_set "XML_PATCHED_TAGS" "0"
+    cs_state_set_batch "XML_STATUS=skipped" "XML_REASON=work_dir_error" "XML_SOURCE=$CS_XML_DISCOVERED" "XML_PATCHED_TAGS=0"
     cs_log "XML Patcher: cannot create work directory; skipping cleanly."
     return 0
   }
@@ -339,20 +333,14 @@ cs_xml_apply() {
   _cs_tag_count=$(wc -l < "$_cs_spec" 2>/dev/null | tr -d ' \t\r\n')
   if [ "${_cs_tag_count:-0}" -eq 0 ]; then
     rm -f "$_cs_spec"
-    cs_state_set "XML_STATUS" "skipped"
-    cs_state_set "XML_REASON" "no_active_xml_features"
-    cs_state_set "XML_SOURCE" "$CS_XML_DISCOVERED"
-    cs_state_set "XML_PATCHED_TAGS" "0"
+    cs_state_set_batch "XML_STATUS=skipped" "XML_REASON=no_active_xml_features" "XML_SOURCE=$CS_XML_DISCOVERED" "XML_PATCHED_TAGS=0"
     cs_log "XML Patcher: 0 active feature tags to patch; skipping bind-mount."
     return 0
   fi
 
   if ! cs_xml_patch_file "$CS_XML_DISCOVERED" "$_cs_spec" "$_cs_tmp_xml"; then
     rm -f "$_cs_spec" "$_cs_tmp_xml"
-    cs_state_set "XML_STATUS" "skipped"
-    cs_state_set "XML_REASON" "patch_command_failed"
-    cs_state_set "XML_SOURCE" "$CS_XML_DISCOVERED"
-    cs_state_set "XML_PATCHED_TAGS" "0"
+    cs_state_set_batch "XML_STATUS=skipped" "XML_REASON=patch_command_failed" "XML_SOURCE=$CS_XML_DISCOVERED" "XML_PATCHED_TAGS=0"
     cs_log "XML Patcher: awk patching failed; fail-closed skip."
     return 0
   fi
@@ -362,10 +350,7 @@ cs_xml_apply() {
   _cs_dst_lines=$(wc -l < "$_cs_tmp_xml" 2>/dev/null | tr -d ' \t\r\n')
   if ! cs_xml_is_valid_features_xml "$_cs_tmp_xml" || [ "${_cs_dst_lines:-0}" -lt "${_cs_src_lines:-1}" ]; then
     rm -f "$_cs_spec" "$_cs_tmp_xml"
-    cs_state_set "XML_STATUS" "skipped"
-    cs_state_set "XML_REASON" "xml_validation_failed"
-    cs_state_set "XML_SOURCE" "$CS_XML_DISCOVERED"
-    cs_state_set "XML_PATCHED_TAGS" "0"
+    cs_state_set_batch "XML_STATUS=skipped" "XML_REASON=xml_validation_failed" "XML_SOURCE=$CS_XML_DISCOVERED" "XML_PATCHED_TAGS=0"
     cs_log "XML Patcher: patched XML failed structural/line-count validation; fail-closed skip."
     return 0
   fi
@@ -379,16 +364,10 @@ cs_xml_apply() {
 
   # Perform bind-mount onto original path
   if mount --bind "$CS_XML_WORK_FILE" "$CS_XML_DISCOVERED" 2>/dev/null; then
-    cs_state_set "XML_STATUS" "mounted"
-    cs_state_set "XML_REASON" "bind_mount_ok"
-    cs_state_set "XML_SOURCE" "$CS_XML_DISCOVERED"
-    cs_state_set "XML_PATCHED_TAGS" "$_cs_tag_count"
+    cs_state_set_batch "XML_STATUS=mounted" "XML_REASON=bind_mount_ok" "XML_SOURCE=$CS_XML_DISCOVERED" "XML_PATCHED_TAGS=$_cs_tag_count"
     cs_log "XML Patcher: patched ${_cs_tag_count} tags and bind-mounted ${CS_XML_DISCOVERED}."
   else
-    cs_state_set "XML_STATUS" "skipped"
-    cs_state_set "XML_REASON" "bind_mount_failed"
-    cs_state_set "XML_SOURCE" "$CS_XML_DISCOVERED"
-    cs_state_set "XML_PATCHED_TAGS" "0"
+    cs_state_set_batch "XML_STATUS=skipped" "XML_REASON=bind_mount_failed" "XML_SOURCE=$CS_XML_DISCOVERED" "XML_PATCHED_TAGS=0"
     cs_log "XML Patcher: mount --bind failed for ${CS_XML_DISCOVERED}; fail-closed skip."
   fi
 

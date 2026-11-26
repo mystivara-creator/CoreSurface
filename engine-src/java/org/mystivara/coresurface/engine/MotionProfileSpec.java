@@ -10,8 +10,11 @@ package org.mystivara.coresurface.engine;
  *
  * - `off`:    Stock Flagship (100% pure native Xiaomi Folme, zero intervention)
  * - `snappy`: Snappy (ultra-fast, crisp, high-stiffness takeoff & ~220ms razor-sharp settle)
- * - `fluid`:  Fluid (heavy, viscous, silky weighted glide with ~560ms smooth deceleration tail)
- * - `bouncy`: Bouncy (genuine under-damped elastic spring, zeta~0.66, visible ~7% overshoot catch)
+ * - `fluid`:  Fluid (instant Frame-0 takeoff + heavy, viscous silky glide & ~450ms smooth tail)
+ * - `bouncy`: Bouncy (genuine under-damped elastic spring, zeta~0.66, visible ~6.5% overshoot catch)
+ *
+ * Pre-bakes 65-sample closed-form CoreSpringSolver LUTs once per spec so WMShell VSync evaluation
+ * runs in ~3 nanoseconds (0 Math.exp/cos/sin per frame, 0 per-transition allocations).
  */
 public final class MotionProfileSpec {
     public static final String PROFILE_OFF = "off";
@@ -24,6 +27,8 @@ public final class MotionProfileSpec {
     public static final String LEGACY_SILK = "silk";
     public static final String LEGACY_HYPEROS4 = "hyperos4";
     public static final String LEGACY_IOS = "ios";
+
+    private static final int LUT_SEGMENTS = 64;
 
     public final String profileId;
 
@@ -53,6 +58,10 @@ public final class MotionProfileSpec {
     public final float folmeResponseSec;
     public final float folmeStiffnessK;
     public final float folmeBlendWeight;
+
+    // Pre-baked analytical ODE lookup tables (zero trig/exp per VSync frame)
+    private final float[] shellSpatialLut;
+    private final float[] shellMonotonicLut;
 
     private MotionProfileSpec(
             String profileId,
@@ -88,6 +97,15 @@ public final class MotionProfileSpec {
         double omegaN = (2.0 * Math.PI) / folmeResponseSec;
         this.folmeStiffnessK = (float) (omegaN * omegaN);
         this.folmeBlendWeight = folmeBlendWeight;
+
+        this.shellSpatialLut = bakeShellLut(
+                shellAllowOvershoot ? shellDamping : Math.max(shellDamping, 0.98f),
+                shellResponseSec, shellInitialVelocity, this.shellSettleMs,
+                shellAllowOvershoot ? shellMaxOvershoot : 1.0f);
+        this.shellMonotonicLut = shellAllowOvershoot
+                ? bakeShellLut(Math.max(shellDamping, 0.98f), shellResponseSec,
+                        shellInitialVelocity, this.shellSettleMs, 1.0f)
+                : this.shellSpatialLut;
     }
 
     public static MotionProfileSpec forProfile(String rawProfile, float refreshHz, float thermalScale) {
@@ -97,24 +115,24 @@ public final class MotionProfileSpec {
 
         if (PROFILE_BOUNCY.equals(profile)) {
             // Bouncy: unmistakable under-damped elastic spring (zeta ~ 0.66 -> ~6.5% real overshoot)
-            // across App Open/Close, Control Center, Folders & Page Transitions.
+            // with light, blur-friendly lift so Control Center & Folders never drop frames.
             float shDamp = lerp(0.80f, 0.68f, w);
-            float shResp = lerp(lerp(0.35f, 0.38f, w), lerp(0.38f, 0.41f, w), hz);
-            float shV0 = lerp(0.90f, 1.45f, w);
+            float shResp = lerp(lerp(0.34f, 0.37f, w), lerp(0.37f, 0.40f, w), hz);
+            float shV0 = lerp(0.95f, 1.50f, w);
 
             float appPDamp = lerp(0.78f, 0.66f, w);
-            float appPResp = lerp(lerp(0.35f, 0.38f, w), lerp(0.38f, 0.41f, w), hz);
+            float appPResp = lerp(lerp(0.34f, 0.37f, w), lerp(0.37f, 0.40f, w), hz);
             float appSDamp = lerp(0.80f, 0.70f, w);
-            float appSResp = lerp(lerp(0.37f, 0.40f, w), lerp(0.40f, 0.43f, w), hz);
+            float appSResp = lerp(lerp(0.36f, 0.39f, w), lerp(0.39f, 0.42f, w), hz);
             float appVel = lerp(1.08f, 1.18f, w);
 
-            float surfDamp = lerp(0.76f, 0.62f, w);
-            float surfResp = lerp(lerp(0.36f, 0.40f, w), lerp(0.39f, 0.43f, w), hz);
-            float surfLift = lerp(14.0f, 26.0f, w);
-            float surfVel = lerp(1.5f, 2.5f, w);
+            float surfDamp = lerp(0.76f, 0.64f, w);
+            float surfResp = lerp(lerp(0.34f, 0.38f, w), lerp(0.37f, 0.41f, w), hz);
+            float surfLift = lerp(10.0f, 18.0f, w);
+            float surfVel = lerp(1.4f, 2.2f, w);
 
             float fDamp = lerp(0.78f, 0.66f, w);
-            float fResp = lerp(lerp(0.35f, 0.38f, w), lerp(0.37f, 0.40f, w), hz);
+            float fResp = lerp(lerp(0.34f, 0.37f, w), lerp(0.36f, 0.39f, w), hz);
 
             return new MotionProfileSpec(
                     PROFILE_BOUNCY,
@@ -129,7 +147,7 @@ public final class MotionProfileSpec {
             // and zero sluggish tail — without touching Developer Options animation scales.
             float shDamp = lerp(0.97f, 0.94f, w);
             float shResp = lerp(lerp(0.22f, 0.19f, w), lerp(0.23f, 0.20f, w), hz);
-            float shV0 = lerp(1.50f, 2.30f, w);
+            float shV0 = lerp(1.55f, 2.35f, w);
 
             float appPDamp = lerp(0.95f, 0.92f, w);
             float appPResp = lerp(lerp(0.22f, 0.19f, w), lerp(0.23f, 0.20f, w), hz);
@@ -138,12 +156,12 @@ public final class MotionProfileSpec {
             float appVel = lerp(1.12f, 1.24f, w);
 
             float surfDamp = lerp(0.96f, 0.93f, w);
-            float surfResp = lerp(lerp(0.21f, 0.18f, w), lerp(0.22f, 0.19f, w), hz);
-            float surfLift = lerp(6.0f, 10.0f, w);
-            float surfVel = lerp(1.8f, 3.0f, w);
+            float surfResp = lerp(lerp(0.20f, 0.18f, w), lerp(0.21f, 0.19f, w), hz);
+            float surfLift = lerp(5.0f, 8.0f, w);
+            float surfVel = lerp(1.8f, 2.8f, w);
 
             float fDamp = lerp(0.96f, 0.93f, w);
-            float fResp = lerp(lerp(0.21f, 0.18f, w), lerp(0.22f, 0.19f, w), hz);
+            float fResp = lerp(lerp(0.20f, 0.18f, w), lerp(0.21f, 0.19f, w), hz);
 
             return new MotionProfileSpec(
                     PROFILE_SNAPPY,
@@ -153,24 +171,25 @@ public final class MotionProfileSpec {
                     fDamp, fResp, lerp(0.55f, 0.85f, w));
         }
 
-        // Fluid (default active fallback): heavy, silky, cushioned glide with rich deceleration tail
-        float shDamp = lerp(0.99f, 0.98f, w);
-        float shResp = lerp(lerp(0.42f, 0.48f, w), lerp(0.45f, 0.51f, w), hz);
-        float shV0 = lerp(0.35f, 0.45f, w);
+        // Fluid (default active fallback): instant Frame-0 takeoff (zero sluggish delay) +
+        // rich, silky cushioned deceleration tail (~440ms, zero overshoot).
+        float shDamp = lerp(0.99f, 0.97f, w);
+        float shResp = lerp(lerp(0.41f, 0.46f, w), lerp(0.44f, 0.49f, w), hz);
+        float shV0 = lerp(0.55f, 0.72f, w);
 
-        float appPDamp = lerp(0.98f, 0.96f, w);
-        float appPResp = lerp(lerp(0.43f, 0.48f, w), lerp(0.46f, 0.52f, w), hz);
-        float appSDamp = lerp(0.99f, 0.97f, w);
-        float appSResp = lerp(lerp(0.45f, 0.50f, w), lerp(0.48f, 0.54f, w), hz);
-        float appVel = lerp(0.95f, 0.98f, w);
+        float appPDamp = lerp(0.97f, 0.95f, w);
+        float appPResp = lerp(lerp(0.41f, 0.46f, w), lerp(0.44f, 0.49f, w), hz);
+        float appSDamp = lerp(0.98f, 0.96f, w);
+        float appSResp = lerp(lerp(0.43f, 0.48f, w), lerp(0.46f, 0.51f, w), hz);
+        float appVel = lerp(1.00f, 1.04f, w);
 
         float surfDamp = lerp(0.98f, 0.96f, w);
-        float surfResp = lerp(lerp(0.42f, 0.48f, w), lerp(0.45f, 0.51f, w), hz);
-        float surfLift = lerp(10.0f, 18.0f, w);
-        float surfVel = lerp(0.7f, 1.1f, w);
+        float surfResp = lerp(lerp(0.40f, 0.45f, w), lerp(0.43f, 0.48f, w), hz);
+        float surfLift = lerp(7.0f, 12.0f, w);
+        float surfVel = lerp(0.9f, 1.3f, w);
 
         float fDamp = lerp(0.98f, 0.96f, w);
-        float fResp = lerp(lerp(0.42f, 0.48f, w), lerp(0.45f, 0.50f, w), hz);
+        float fResp = lerp(lerp(0.40f, 0.45f, w), lerp(0.43f, 0.47f, w), hz);
 
         return new MotionProfileSpec(
                 PROFILE_FLUID,
@@ -178,6 +197,54 @@ public final class MotionProfileSpec {
                 appPDamp, appPResp, appSDamp, appSResp, appVel,
                 surfDamp, surfResp, surfLift, surfVel,
                 fDamp, fResp, lerp(0.55f, 0.82f, w));
+    }
+
+    /** Zero-allocation ~3ns LUT evaluation for spatial window transitions. */
+    public float sampleShellSpatial(float input) {
+        return sampleLut(shellSpatialLut, input);
+    }
+
+    /** Zero-allocation ~3ns LUT evaluation for monotonic (opacity-safe) transitions. */
+    public float sampleShellMonotonic(float input) {
+        return sampleLut(shellMonotonicLut, input);
+    }
+
+    private static float[] bakeShellLut(double damping, double responseSec, double v0,
+                                        long settleMs, float maxBound) {
+        float[] lut = new float[LUT_SEGMENTS + 1];
+        double settleSec = Math.max(0.20, settleMs / 1000.0);
+        double residual = 1.0 - CoreSpringSolver.evaluateUnit(damping, responseSec, settleSec, v0);
+        lut[0] = 0.0f;
+        lut[LUT_SEGMENTS] = 1.0f;
+        for (int i = 1; i < LUT_SEGMENTS; i++) {
+            double s = (double) i / LUT_SEGMENTS;
+            double raw = CoreSpringSolver.evaluateUnit(damping, responseSec, s * settleSec, v0);
+            double val = raw + residual * (s * s * s);
+            if (val < 0.0) {
+                val = 0.0;
+            } else if (val > maxBound) {
+                val = maxBound;
+            }
+            lut[i] = (float) val;
+        }
+        return lut;
+    }
+
+    private static float sampleLut(float[] lut, float input) {
+        if (input <= 0.0f) {
+            return 0.0f;
+        }
+        if (input >= 1.0f) {
+            return 1.0f;
+        }
+        float scaled = input * LUT_SEGMENTS;
+        int idx = (int) scaled;
+        if (idx >= LUT_SEGMENTS) {
+            return 1.0f;
+        }
+        float frac = scaled - idx;
+        float a = lut[idx];
+        return a + (lut[idx + 1] - a) * frac;
     }
 
     public static String normalizeProfile(String raw) {

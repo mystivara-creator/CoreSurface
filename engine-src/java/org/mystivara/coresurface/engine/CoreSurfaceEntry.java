@@ -61,18 +61,18 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
             ProcessBootstrap bootstrap = new ProcessBootstrap(config, telemetry, lodController, bugGuard, folmeHook);
 
             if (PKG_SYSTEMUI.equals(pkg)) {
-                CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(telemetry);
+                CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(folmeHook, telemetry);
                 ShellTransitionPhysicsEngine shellEngine = new ShellTransitionPhysicsEngine(folmeHook, bugGuard, telemetry);
                 SystemUIChoreographyHook sysUiChoreo = new SystemUIChoreographyHook(folmeHook, choreo, bugGuard, telemetry);
                 new LivingFlowSystemUIHook(bootstrap, folmeHook, blurGuard, deviceLevelHook, shellEngine, sysUiChoreo)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized True Physics (WMShell + Shade + Folme) in com.android.systemui");
+                XposedBridge.log("CoreSurfaceEngine: initialized Physics (WMShell + Shade + Folme) in com.android.systemui");
             } else if (PKG_HOME.equals(pkg) || PKG_POCO_HOME.equals(pkg)) {
-                CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(telemetry);
+                CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(folmeHook, telemetry);
                 LauncherChoreographyHook launcherChoreo = new LauncherChoreographyHook(folmeHook, choreo, bugGuard, telemetry);
                 new LivingFlowHomeHook(bootstrap, bugGuard, folmeHook, blurGuard, deviceLevelHook, launcherChoreo, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized True Physics (RectF + Folder + RecentsGuard) in " + pkg);
+                XposedBridge.log("CoreSurfaceEngine: initialized Physics (RectF + Folder + RecentsGuard) in " + pkg);
             } else if (PKG_GLOBAL_MINUS_ONE.equals(pkg) || PKG_CN_MINUS_ONE.equals(pkg)) {
                 blurGuard.installMinusOneAppGuard(lpparam.classLoader);
                 bootstrap.install();
@@ -82,12 +82,12 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
                         .install(lpparam.classLoader);
                 XposedBridge.log("CoreSurfaceEngine: initialized Non-LTPO AOD Unlock (native Doze timing) in com.miui.aod");
             } else {
-                // Settings & any additional user-scoped UI app: universal SpringPhysicsCurve,
+                // Settings & any additional user-scoped UI app: universal Folme physics,
                 // Toast window blur guard (protects Toasts under Advanced Textures v4), & self-unhooking bootstrap
                 blurGuard.installWindowToastGuard(lpparam.classLoader);
                 folmeHook.install(lpparam.classLoader);
                 bootstrap.install();
-                XposedBridge.log("CoreSurfaceEngine: initialized Universal UI SpringPhysicsCurve + ToastGuard in " + pkg);
+                XposedBridge.log("CoreSurfaceEngine: initialized Universal UI Folme Physics + ToastGuard in " + pkg);
             }
         } catch (Throwable t) {
             XposedBridge.log("CoreSurfaceEngine: safe isolation catch in " + pkg + ": " + t);

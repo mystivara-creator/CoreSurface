@@ -71,17 +71,23 @@ public final class ProcessBootstrap {
             return;
         }
         try {
-            Context appCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+            final Context appCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
             config.attachContext(appCtx);
             telemetry.attachContext(appCtx);
-            lodController.attachContext(appCtx);
-            bugGuard.attachContext(appCtx);
             folmeHook.attachContext(appCtx);
             telemetry.setMotionProfile(config.getMotionProfile());
             telemetry.setLastConfig(config.getRawConfig());
             config.addListener(() -> {
                 telemetry.setMotionProfile(config.getMotionProfile());
                 telemetry.setLastConfig(config.getRawConfig());
+            });
+            // Defer Binder-backed Settings/PowerManager listener registration past cold-start Frame 0
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                try {
+                    lodController.attachContext(appCtx);
+                    bugGuard.attachContext(appCtx);
+                } catch (Throwable ignored) {
+                }
             });
         } catch (Throwable ignored) {
         } finally {

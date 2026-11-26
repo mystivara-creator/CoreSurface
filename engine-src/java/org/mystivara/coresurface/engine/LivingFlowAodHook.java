@@ -81,16 +81,19 @@ public final class LivingFlowAodHook {
                         return;
                     }
                     try {
-                        if (!config.isAodUnlockEnabled() || param.args == null || param.args.length < 1
-                                || !(param.args[0] instanceof String)) {
+                        if (param.args == null || param.args.length < 1 || !(param.args[0] instanceof String)) {
                             return;
                         }
                         String key = (String) param.args[0];
                         if ("is_only_support_keycode_goto".equals(key)) {
-                            param.setResult(Boolean.FALSE);
+                            if (config.isAodUnlockEnabledFast()) {
+                                param.setResult(Boolean.FALSE);
+                            }
                         } else if ("support_aod".equals(key)
                                 || "aod_support_keycode_goto_dismiss".equals(key)) {
-                            param.setResult(Boolean.TRUE);
+                            if (config.isAodUnlockEnabledFast()) {
+                                param.setResult(Boolean.TRUE);
+                            }
                         }
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("AodFeatureParser");
@@ -155,7 +158,7 @@ public final class LivingFlowAodHook {
                         return;
                     }
                     try {
-                        if (config.isAodUnlockEnabled()) {
+                        if (config.isAodUnlockEnabledFast()) {
                             param.setResult(desired);
                         }
                     } catch (Throwable ignored) {

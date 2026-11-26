@@ -16,6 +16,10 @@ cs_pm_is_installed() {
     case "$_cs_pmi_out" in
       package:*) return 0 ;;
     esac
+    _cs_pmi_out=$(su --context u:r:shell:s0 2000 -c "pm path '${CS_ENGINE_PKG}'" 2>&1 || true)
+    case "$_cs_pmi_out" in
+      package:*) return 0 ;;
+    esac
   fi
   return 1
 }
@@ -25,6 +29,7 @@ cs_pm_uninstall_engine() {
   pm uninstall "$CS_ENGINE_PKG" >/dev/null 2>&1 || true
   if command -v su >/dev/null 2>&1; then
     su 2000 -c "pm uninstall '${CS_ENGINE_PKG}'" >/dev/null 2>&1 || true
+    su --context u:r:shell:s0 2000 -c "pm uninstall '${CS_ENGINE_PKG}'" >/dev/null 2>&1 || true
   fi
   return 0
 }
@@ -59,6 +64,17 @@ cs_pm_try_install_once() {
     esac
     if command -v su >/dev/null 2>&1; then
       CS_PM_LAST_OUT=$(su 2000 -c "pm install -r -d '${_cs_pi_tmp}'" 2>&1 || true)
+      case "$CS_PM_LAST_OUT" in
+        *Success*)
+          rm -f "$_cs_pi_tmp" 2>/dev/null || true
+          return 0
+          ;;
+        *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
+          rm -f "$_cs_pi_tmp" 2>/dev/null || true
+          return 2
+          ;;
+      esac
+      CS_PM_LAST_OUT=$(su --context u:r:shell:s0 2000 -c "pm install -r -d '${_cs_pi_tmp}'" 2>&1 || true)
       case "$CS_PM_LAST_OUT" in
         *Success*)
           rm -f "$_cs_pi_tmp" 2>/dev/null || true

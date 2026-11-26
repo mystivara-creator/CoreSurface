@@ -177,8 +177,10 @@ cs_apply_feat_animations() {
 
   # Verified HyperOS/MIUI Control Center, Computility V1/V2 & HyperTransition flags
   # scaled by resolved tier with strict Never-Downgrade protection.
+  # Zero-GPU-cost responsiveness props (FCB + launch optimization) apply across ALL tiers.
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
   cs_set_prop "FEAT_ANIMATIONS" "persist.sys.launch_response_optimization.enable" "true"
+  cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
   case "${CS_EFF_TIER:-low}" in
     flagship)
       _cs_cpu=$(cs_max_uint 6 "${CS_STOCK_CPU_LEVEL:-0}")
@@ -199,8 +201,10 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.sf_charge_anim_supported" "true"
-      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "true"
-      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
+      # Real-time Recents task-card mask blur adds GPU overdraw on mid-range SoCs; enable only on flagship GPUs
+      if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
+        cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "true"
+      fi
       cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
     balanced_pro)
@@ -220,7 +224,7 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition_v" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
-      cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
     *)
@@ -238,6 +242,10 @@ cs_apply_feat_animations() {
 # flagship animations & computility levels intact without writing /data/property.
 cs_reassert_computility_props() {
   [ "$EFF_FEAT_ANIMATIONS" = "1" ] || return 0
+  cs_set_prop_mem_only "persist.sys.launch_response_optimization.enable" "true"
+  if [ "${EFF_FEAT_BLUR:-0}" = "1" ]; then
+    cs_set_prop_mem_only "persist.sys.sf.disable_blurs" "false"
+  fi
   case "${CS_EFF_TIER:-low}" in
     flagship)
       _cs_rcpu=$(cs_max_uint 6 "${CS_STOCK_CPU_LEVEL:-0}")
@@ -374,11 +382,19 @@ cs_apply_feat_flagship_audio() {
   [ "$EFF_FEAT_FLAGSHIP_AUDIO" = "1" ] || return 0
 
   # Verified HyperOS / Xiaomi Flagship Speaker & Audio Framework pipeline flags
-  # (pure user-space audio framework/HAL props; zero kernel/sysfs coupling)
+  # (pure user-space audio framework/HAL props; zero kernel/sysfs coupling; zero idle DSP load)
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "persist.vendor.audio.misound.disable" "false"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.audiovisual" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.scenario" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.independentequalizer" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.earadj" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.game.effect" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.dolby.dax.support" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.soundfx.type" "mi"
+  # Never-Downgrade: preserve stock Dolby/Harman/Dirac soundfx type if factory ROM sets one
+  _cs_sfx_type=$(cs_getprop "ro.vendor.audio.soundfx.type")
+  if [ -z "$_cs_sfx_type" ]; then
+    cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.soundfx.type" "mi"
+  fi
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.misound.bluetooth.enable" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.stereo" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.clean" "true"

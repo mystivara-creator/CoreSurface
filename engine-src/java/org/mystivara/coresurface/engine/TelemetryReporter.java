@@ -29,10 +29,10 @@ public final class TelemetryReporter {
     private static final long LAZY_FLUSH_MS = 15000L;
 
     private final String processName;
-    private final String bootId;
+    private volatile String bootId;
     private volatile File cacheDir;
     private volatile String motionProfile = EngineConfig.MOTION_FLUID;
-    private volatile int displayHz = 60;
+    private volatile int displayHz = 0;
     private volatile String lodTier = "FULL";
     private volatile int thermalStatus = 0;
     private volatile String lastConfig = "default";
@@ -62,7 +62,6 @@ public final class TelemetryReporter {
 
     public TelemetryReporter(String processName) {
         this.processName = processName;
-        this.bootId = readBootId();
     }
 
     public void attachContext(Context context) {
@@ -102,8 +101,10 @@ public final class TelemetryReporter {
 
     public void setDisplayHz(int hz) {
         if (hz > 0 && hz != this.displayHz) {
+            boolean firstReading = (this.displayHz == 0);
             this.displayHz = hz;
-            scheduleFlush(true);
+            // Fast-flush initial reading once; use lazy 15s flush on adaptive 60<->120Hz flips (0 I/O spam)
+            scheduleFlush(firstReading);
         }
     }
 
@@ -217,16 +218,23 @@ public final class TelemetryReporter {
                 }
             }
 
+            String bid = bootId;
+            if (bid == null) {
+                bid = readBootId();
+                bootId = bid;
+            }
+            int hzOut = displayHz > 0 ? displayHz : 60;
+
             StringBuilder sb = new StringBuilder(420);
             sb.append("ENGINE_ACTIVE=1\n");
             sb.append("ENGINE_VERSION=1.3.0\n");
-            if (!bootId.isEmpty()) {
-                sb.append("BOOT_ID=").append(bootId).append('\n');
+            if (!bid.isEmpty()) {
+                sb.append("BOOT_ID=").append(bid).append('\n');
             }
             sb.append("PROCESS=").append(processName).append('\n');
             sb.append("ENGINE_MODE=NATIVE_MOTION\n");
             sb.append("MOTION_PROFILE=").append(motionProfile).append('\n');
-            sb.append("DISPLAY_HZ=").append(displayHz).append('\n');
+            sb.append("DISPLAY_HZ=").append(hzOut).append('\n');
             sb.append("LOD_TIER=").append(lodTier).append('\n');
             sb.append("THERMAL_STATUS=").append(thermalStatus).append('\n');
             sb.append("HOOKS_BOUND=").append(hooksCsv).append('\n');
