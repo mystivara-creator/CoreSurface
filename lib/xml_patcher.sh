@@ -115,17 +115,13 @@ cs_xml_build_patch_spec() {
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_AUDIO:-0}" = "1" ]; then
-      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Effects/Spatial Audio, Sound Assistant,
-      # Audio Share, 24-bit/Stereo/Studio Mic Record)
-      printf 'bool|support_dolby|true\n'
-      printf 'bool|support_hifi|true\n'
+      # Verified 100% real Audio & Recorder XML capabilities (Sound Assistant, Audio Share,
+      # Stereo/24-bit/HD/Interview Mic Record). Omits hardware-locked DAC/Dolby/LHDC/Spatializer.
       printf 'bool|support_sound_effect|true\n'
-      printf 'bool|support_spatial_audio|true\n'
       printf 'bool|support_sound_assist|true\n'
       printf 'bool|support_audio_share|true\n'
       printf 'bool|support_stereo_record|true\n'
       printf 'bool|support_24bit_record|true\n'
-      printf 'bool|support_lhdc_offload|true\n'
       printf 'bool|support_audio_loopback|true\n'
       printf 'bool|support_phone_call_noise_suppression|true\n'
       printf 'bool|support_interview_record_param|true\n'
@@ -133,15 +129,10 @@ cs_xml_build_patch_spec() {
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_SUITE:-0}" = "1" ]; then
-      # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost,
-      # Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP Record, Power Modes)
-      # NOTE: Deliberately omit panel-specific HBM brighten flags (support_hdr_hbm_brighten /
-      # support_manual_brightness_boost / support_dolby_version_brighten) to avoid FOD HBM white flashes on AOD.
-      printf 'bool|support_AI_display|true\n'
-      printf 'bool|support_super_resolution|true\n'
-      printf 'bool|support_hdr_enhance|true\n'
-      printf 'bool|support_screen_enhance_engine|true\n'
-      printf 'bool|support_truetone|true\n'
+      # Verified 100% real Flagship Porting Suite (Video Toolbox + DisplayFeature Cinema LUTs,
+      # Game Turbo Wild Boost/Gunsight/Macro, Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP & Inner Record).
+      # NOTE: Deliberately omits hardware-locked AI Image Engine/MEMC/Super-Resolution, TrueTone RGB sensor,
+      # and panel HBM brighten flags (no dummy toggles, no FOD white flashes).
       printf 'bool|is_support_video_tool_box|true\n'
       printf 'bool|support_videobox_display_effect|true\n'
       printf 'bool|support_videobox_cinema_adapt_ce|true\n'
@@ -174,11 +165,78 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_super_wallpaper|true\n'
       printf 'integer|support_inner_record|1\n'
     fi
+
+    if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ]; then
+      # Unlocks HyperOS Smart FPS & "Apps using high refresh rate" (Per-App Refresh Rate under Custom)
+      printf 'bool|support_smart_fps|true\n'
+    fi
   } > "$_cs_spec_file"
 }
 
+CS_HW_FPS_FILE="$CS_STATE_DIR/hw_fps.list"
+
+# Probe real hardware-supported display refresh rates via `dumpsys display`
+# (called during customize.sh while Android is live, and during service.sh post-boot).
+cs_probe_hw_fps() {
+  cs_watchdog_init_dir || return 0
+  _cs_ds_out=""
+  if [ -n "${CORESURFACE_DUMPSYS_DISPLAY:-}" ] && [ -r "${CORESURFACE_DUMPSYS_DISPLAY}" ]; then
+    _cs_ds_out=$(cat "$CORESURFACE_DUMPSYS_DISPLAY" 2>/dev/null || true)
+  elif command -v dumpsys >/dev/null 2>&1; then
+    _cs_ds_out=$(dumpsys display 2>/dev/null || true)
+    if [ -z "$_cs_ds_out" ] && command -v su >/dev/null 2>&1; then
+      _cs_ds_out=$(su 2000 -c "dumpsys display" 2>/dev/null || true)
+    fi
+    if [ -z "$_cs_ds_out" ]; then
+      for _cs_dbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+        if [ -x "$_cs_dbb" ]; then
+          _cs_ds_out=$("$_cs_dbb" setuidgid 2000 dumpsys display 2>/dev/null || true)
+          break
+        fi
+      done
+    fi
+  fi
+
+  [ -n "$_cs_ds_out" ] || return 0
+  _cs_fps_vals=$(printf '%s\n' "$_cs_ds_out" | awk '
+    {
+      s = $0
+      while (match(s, /fps=[0-9]+(\.[0-9]+)?/)) {
+        m = substr(s, RSTART + 4, RLENGTH - 4)
+        sub(/\..*/, "", m)
+        if (m + 0 >= 24 && m + 0 <= 240) seen[m + 0] = 1
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }
+    END {
+      out = ""
+      for (f = 24; f <= 240; f++) {
+        if (f in seen) out = (out == "" ? f : out " " f)
+      }
+      if (out != "") print out
+    }
+  ' 2>/dev/null || true)
+
+  if [ -n "$_cs_fps_vals" ]; then
+    printf '%s\n' "$_cs_fps_vals" > "$CS_HW_FPS_FILE" 2>/dev/null || true
+  fi
+  return 0
+}
+
+cs_hw_supports_90hz() {
+  [ -r "$CS_HW_FPS_FILE" ] || return 1
+  _cs_hw_fps=$(head -n 1 "$CS_HW_FPS_FILE" 2>/dev/null | tr -d '\r')
+  case " $_cs_hw_fps " in
+    *" 90 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Non-destructive XML patcher using POSIX awk:
-# - Protected tags (fpsList, color/screen_effect, double_tap) are never modified.
+# - Protected tags (fpsList, color/screen_effect, double_tap) are never modified,
+#   EXCEPT:
+#     * support_smart_fps=true (unlocks Per-App Refresh Rate under Custom) when EFF_FEAT_DISPLAY_HZ=1
+#     * inserting <item>90</item> into fpsList ONLY when 90Hz is verified in hardware display modes.
 # - Capability <bool>: only upgrades false -> true; never downgrades true -> false.
 # - Whitelisted restriction-removal <bool> (is_only_support_keycode_goto): flips true -> false.
 # - <integer>: only upgrades when desired > existing; never lowers an existing higher value.
@@ -187,9 +245,20 @@ cs_xml_patch_file() {
   _cs_src=$1
   _cs_spec=$2
   _cs_dst=$3
+  _cs_add_90hz=0
+  _cs_allow_smart_fps=0
+  if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ]; then
+    _cs_allow_smart_fps=1
+    if cs_hw_supports_90hz; then
+      _cs_add_90hz=1
+    fi
+  fi
 
-  awk -F '|' '
+  awk -F '|' -v add_90hz="$_cs_add_90hz" -v allow_smart_fps="$_cs_allow_smart_fps" '
     function is_protected(name) {
+      if (allow_smart_fps == 1 && name == "support_smart_fps") {
+        return 0
+      }
       if (name ~ /(fps|refresh|double_tap|screen_effect|color_mode|color_gamut|vivid|saturat|paper_mode|eyecare|sunlight)/) {
         return 1
       }
@@ -209,6 +278,31 @@ cs_xml_patch_file() {
     }
     {
       line = $0
+      if (add_90hz == 1) {
+        if (line ~ /<integer-array[ \t]+name="fpsList"/) {
+          in_fps_list = 1
+          has_90 = 0
+          fps_indent = "        "
+          print line
+          next
+        }
+        if (in_fps_list) {
+          if (line ~ /<item>[ \t]*90[ \t]*<\/item>/) {
+            has_90 = 1
+          }
+          if (line ~ /<item>/ && match(line, /^[ \t]*/)) {
+            fps_indent = substr(line, 1, RLENGTH)
+          }
+          if (line ~ /<\/integer-array>/) {
+            if (!has_90) {
+              printf "%s<item>90</item>\n", fps_indent
+            }
+            in_fps_list = 0
+          }
+          print line
+          next
+        }
+      }
       if (line ~ /<\/features>/) {
         for (i = 1; i <= n; i++) {
           k = order[i]

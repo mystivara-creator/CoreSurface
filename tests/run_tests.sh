@@ -424,7 +424,7 @@ assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="gallery_s
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_screen_effect">true</bool>' "XML patcher preserves stock display color tag"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_double_tap_to_wake">true</bool>' "XML patcher preserves stock double_tap tag"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<integer-array name="fpsList">' "XML patcher preserves stock fpsList array"
-assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_smart_fps' "XML patcher does NOT inject FEAT_DISPLAY_HZ tags"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_smart_fps">true</bool>' "XML patcher enables support_smart_fps=true for Per-App Refresh Rate when FEAT_DISPLAY_HZ=1"
 assert_file_contains "$SB_STATE/work/device_features.xml" '</features>' "XML patcher preserves closing </features> tag"
 assert_file_contains "$SB_CHCON_LOG" "--reference=$SB_XML_DIR2/aurora.xml $SB_STATE/work/device_features.xml" "XML patcher restores SELinux context via chcon --reference before bind-mount"
 assert_file_contains "$SB_MOUNT_LOG" "$SB_STATE/work/device_features.xml -> $SB_XML_DIR2/aurora.xml" "XML patcher calls mount --bind to original XML path"
@@ -1136,19 +1136,20 @@ assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.mi_shadow_supported=true" 
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_smoothcorner=true" "HyperOS 3 Flagship sets support_window_smoothcorner=true"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.support_view_smoothcorner=true" "Non-flagship HOS 3 skips per-view smoothcorner shader for consistent Recents frame pacing"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=false" "Non-flagship HOS 3 explicitly disables Recents mask blur to prevent App Close -> Recents stutter"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island.shader=false" "Non-flagship HOS 3 disables heavy HyperIsland GPU shader for smooth Control Center swipes"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "Non-flagship HOS 3 skips heavy backdrop_sampling shader"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "Non-flagship HOS 3 skips heavy blurnoise shader"
-# Audio & Speaker props
-assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Flagship Audio sets ro.vendor.audio.spk.stereo=true"
+# Audio & Speaker props (100% real user-space; zero hardware-locked gimmicks)
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Flagship Audio sets ro.vendor.audio.spk.clean=true"
-assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.dolby.dax.support=true" "Flagship Audio sets ro.vendor.audio.dolby.dax.support=true"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.scenario=true" "Flagship Audio sets ro.vendor.audio.sfx.scenario=true"
-assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.hifi=true" "Flagship Audio sets ro.vendor.audio.hifi=true"
-assert_file_contains "$SB_PROPS_LOG" "persist.vendor.audio.hifi.int_codec=true" "Flagship Audio sets persist.vendor.audio.hifi.int_codec=true"
-assert_file_contains "$SB_PROPS_LOG" "ro.audio.spatializer_enabled=true" "Flagship Audio sets ro.audio.spatializer_enabled=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.voice.change.support=true" "Flagship Audio sets ro.vendor.audio.voice.change.support=true"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.hifi=true" "Zero-gimmick Audio omits hardware-locked ro.vendor.audio.hifi"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Zero-gimmick Audio omits redundant ro.vendor.audio.spk.stereo"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.dolby.dax.support=true" "Zero-gimmick Audio omits vendor-owned dolby.dax.support"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.audio.spatializer_enabled=true" "Zero-gimmick Audio omits hardware-locked spatializer_enabled"
 # Audio XML tags
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Flagship Audio XML enables support_dolby"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hifi">true</bool>' "Flagship Audio XML enables support_hifi"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hifi">true</bool>' "Zero-gimmick Audio XML omits hardware-locked support_hifi"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Zero-gimmick Audio XML omits vendor-owned support_dolby"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_assist">true</bool>' "Flagship Audio XML enables support_sound_assist"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_24bit_record">true</bool>' "Flagship Audio XML enables support_24bit_record"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_stereo_record">true</bool>' "Flagship Audio XML enables support_stereo_record"
@@ -1164,10 +1165,11 @@ assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_ai_wakeup_effect=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.vendor.night.charge=true" "Flagship Suite sets optimized Night Charge"
 assert_file_contains "$SB_PROPS_LOG" "persist.vendor.battery.ai.predict=true" "Flagship Suite sets AI Battery Prediction"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.translate.state.supportAiSubtitles=true" "Flagship Suite sets supportAiSubtitles=true"
-# Flagship Porting Suite XML tags
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_AI_display">true</bool>' "Flagship Suite XML enables support_AI_display"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_super_resolution">true</bool>' "Flagship Suite XML enables support_super_resolution"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hdr_enhance">true</bool>' "Flagship Suite XML enables support_hdr_enhance"
+# Flagship Porting Suite XML tags (zero-gimmick: omits dummy AI HDR/Super-Res/TrueTone; keeps real features)
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_super_resolution' "Zero-gimmick Suite omits hardware-locked support_super_resolution"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_hdr_enhance' "Zero-gimmick Suite omits hardware-locked support_hdr_enhance"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_truetone' "Zero-gimmick Suite omits RGB-sensor-dependent support_truetone"
+assert_file_not_contains "$REPO_ROOT/overlays-src/systemui-ui/res/values/bools.xml" 'support_aod_linkage_anim' "SystemUI RRO omits support_aod_linkage_anim to prevent 30Hz Video-Mode AOD wake blink"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_support_video_tool_box">true</bool>' "Flagship Suite XML enables is_support_video_tool_box"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Flagship Suite XML enables support_wild_boost"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_game_gunsight">true</bool>' "Flagship Suite XML enables support_game_gunsight"
@@ -1207,9 +1209,9 @@ write_sample_xml "$SB_XML_DIR1/kunzite.xml"
 printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "Lite tier skips Advanced Textures v4 release=4"
-assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Lite tier keeps Flagship Audio & Speaker ON by default"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Lite tier keeps Flagship Audio & Speaker ON by default"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Lite tier keeps heavy Flagship Porting Suite OFF by default"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Lite tier XML enables Audio support_dolby"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_assist">true</bool>' "Lite tier XML enables Audio support_sound_assist"
 assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Lite tier XML skips Flagship Porting Suite tags"
 
 # Native Flagship Passthrough (motion_only): skips both Audio & Porting Suite overrides
@@ -1227,7 +1229,7 @@ cat > "$SB_XML_DIR1/houji.xml" <<'EOF'
 EOF
 printf 'CS_TIER_MODE=auto\n' > "$SB_STATE/config.prop"
 run_post_fs_data
-assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Native Flagship motion_only skips Flagship Audio prop overrides"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Native Flagship motion_only skips Flagship Audio prop overrides"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Native Flagship motion_only skips Flagship Suite prop overrides"
 
 # ---------------------------------------------------------------------------
@@ -1242,6 +1244,22 @@ assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=5" "Hy
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.bionic_material_supported=true" "HyperOS 4 Flagship enables persist.sys.bionic_material_supported=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.cpulevel=6" "HyperOS 4 Flagship sets computility cpulevel=6"
 assert_file_not_contains "$SB_STATE/os_bugs.state" "LEAKED_PERSIST_PROPS" "HyperOS 4 does not falsely flag native release=5 as leaked prop"
+
+# Simulate HyperOS 4 boot service overwriting persist.sys.advanced_visual_release back to 3 -> service.sh re-asserts 5
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+tmp_db="$SB_PROPS_DB.hos4"
+awk -F '=' '$1 != "persist.sys.advanced_visual_release" { print $0 }' "$SB_PROPS_DB" > "$tmp_db"
+printf 'persist.sys.advanced_visual_release=3\n' >> "$tmp_db"
+mv -f "$tmp_db" "$SB_PROPS_DB"
+run_service
+assert_file_contains "$SB_PROPS_DB" "persist.sys.advanced_visual_release=5" "service.sh re-asserts persist.sys.advanced_visual_release=5 on HyperOS 4 after boot overwrite"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_PROPS_OVERRIDDEN=0" "HyperOS 4 achieves 0 overridden props after re-assertion"
+assert_file_contains "$SB_STATE/verify.state" "COMPAT_SCORE_PCT=100" "HyperOS 4 reaches 100% compatibility score after re-assertion"
 
 # Future HyperOS 4.1+ ROM with stock advanced_visual_release=6 must NEVER be downgraded to 5
 setup_sandbox "t21b_hyperos4_never_downgrade_avr6"
@@ -1350,7 +1368,8 @@ assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.earadj=true" "Flagship
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.game.effect=true" "Flagship Audio unlocks Game Turbo audio enhancement"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.vendor.audio.misound.disable" "Audio HAL Never-Fight omits persist.vendor.audio.misound.disable so Dolby/audioserver never clashes"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_effect">true</bool>' "Flagship Audio XML enables support_sound_effect"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_spatial_audio">true</bool>' "Flagship Audio XML enables support_spatial_audio"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_audio_share">true</bool>' "Flagship Audio XML enables support_audio_share"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_spatial_audio">true</bool>' "Zero-gimmick Audio XML omits hardware-locked support_spatial_audio"
 
 # Verify single-pass batch getprop ([key]: [value] dump) achieves 100% score & 0 overridden props
 cat > "$SB_BIN/pidof" <<'EOF'
@@ -1389,6 +1408,81 @@ printf 'CS_TIER_MODE=balanced_pro\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.enable_parallel_sweep=true" "Balanced Pro receives zero-GPU-cost parallel gesture interruptibility"
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.shell_anim_enable_fcb=true" "Balanced Pro receives Frame Callback Booster (FCB)"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 25: High-Priority RRO (9999) & Hardware-Verified 90Hz Refresh Rate Unlock ===\n'
+assert_file_contains "$REPO_ROOT/overlays-src/miwallpaper/AndroidManifest.xml" 'android:priority="9999"' "MiWallpaper RRO uses priority=9999 to override vendor Super Wallpaper gates"
+assert_file_contains "$REPO_ROOT/overlays-src/thememanager/AndroidManifest.xml" 'android:priority="9999"' "ThemeManager RRO uses priority=9999"
+assert_file_contains "$REPO_ROOT/overlays-src/miuiaod/AndroidManifest.xml" 'android:priority="9999"' "MiuiAod RRO uses priority=9999"
+assert_file_contains "$REPO_ROOT/overlays-src/systemui-ui/AndroidManifest.xml" 'android:priority="9998"' "SystemUI RRO uses priority=9998"
+assert_file_contains "$REPO_ROOT/overlays-src/systemui-lite-blur/AndroidManifest.xml" 'android:priority="9999"' "SystemUILiteBlur RRO uses priority=9999 above SystemUI"
+
+# 25a: Panel with hardware 90Hz in dumpsys display -> safely injects <item>90</item> into fpsList + support_smart_fps=true
+setup_sandbox "t25a_hw_90hz_supported"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+cat > "$SB_XML_DIR1/kunzite.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">false</bool>
+    <integer name="device_level">1</integer>
+    <integer-array name="fpsList">
+        <item>120</item>
+        <item>60</item>
+    </integer-array>
+</features>
+EOF
+cat > "$SB/dumpsys_90.txt" <<'EOF'
+  mSupportedModesByDisplay:
+    Mode{id=1, width=1080, height=2400, fps=120.00001}
+    Mode{id=2, width=1080, height=2400, fps=90.00001}
+    Mode{id=3, width=1080, height=2400, fps=60.000004}
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_DISPLAY="$SB/dumpsys_90.txt" run_service
+assert_file_contains "$SB_STATE/hw_fps.list" "60 90 120" "cs_probe_hw_fps extracts hardware-verified 60 90 120 Hz from dumpsys display"
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<item>90</item>' "XML patcher injects <item>90</item> into fpsList when panel hardware supports 90Hz"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<item>120</item>' "XML patcher preserves stock <item>120</item> in fpsList"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<item>60</item>' "XML patcher preserves stock <item>60</item> in fpsList"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_smart_fps">true</bool>' "XML patcher enables support_smart_fps=true when 90Hz is hardware-verified"
+
+# 25b: Panel WITHOUT 90Hz in dumpsys display -> fpsList remains 100% untouched (fail-closed)
+setup_sandbox "t25b_hw_no_90hz"
+write_mock_getprop "OS3.0" "" "36" "1" "no90dev" "Redmi Note 15"
+write_mock_meminfo "7500000"
+cat > "$SB_XML_DIR1/no90dev.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">false</bool>
+    <integer name="device_level">1</integer>
+    <integer-array name="fpsList">
+        <item>120</item>
+        <item>60</item>
+    </integer-array>
+</features>
+EOF
+cat > "$SB/dumpsys_no90.txt" <<'EOF'
+    Mode{id=1, width=1080, height=2400, fps=120.0}
+    Mode{id=2, width=1080, height=2400, fps=60.0}
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_DISPLAY="$SB/dumpsys_no90.txt" run_service
+assert_file_contains "$SB_STATE/hw_fps.list" "60 120" "cs_probe_hw_fps records only 60 120 on non-90Hz panel"
+run_post_fs_data
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<item>90</item>' "XML patcher refuses to inject 90Hz on panels without hardware 90Hz support"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

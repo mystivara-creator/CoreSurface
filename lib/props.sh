@@ -183,6 +183,11 @@ cs_apply_feat_animations() {
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
   cs_set_prop "FEAT_ANIMATIONS" "persist.sys.launch_response_optimization.enable" "true"
   cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
+  # HyperIsland real-time GLSL shader stacks on top of Control Center / Notification Shade blur
+  # during left/right swipes; disable only the heavy shader pass on mid-range GPUs (keeping Island + animations ON).
+  if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ] && [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
+    cs_set_prop "FEAT_ANIMATIONS" "persist.sys.feature.island.shader" "false"
+  fi
   case "${CS_EFF_TIER:-low}" in
     flagship)
       _cs_cpu=$(cs_max_uint 6 "${CS_STOCK_CPU_LEVEL:-0}")
@@ -253,6 +258,16 @@ cs_reassert_computility_props() {
   cs_set_prop_mem_only "persist.sys.launch_response_optimization.enable" "true"
   if [ "${EFF_FEAT_BLUR:-0}" = "1" ]; then
     cs_set_prop_mem_only "persist.sys.sf.disable_blurs" "false"
+    if [ "${EFF_FEAT_ADV_TEXTURES:-0}" = "1" ]; then
+      if [ "${CS_HYPEROS_MAJOR:-0}" -ge 4 ]; then
+        _cs_ravr=$(cs_max_uint 5 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
+      elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
+        _cs_ravr=$(cs_max_uint 4 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
+      else
+        _cs_ravr=$(cs_max_uint 3 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
+      fi
+      cs_set_prop_mem_only "persist.sys.advanced_visual_release" "$_cs_ravr"
+    fi
   fi
   case "${CS_EFF_TIER:-low}" in
     flagship)
@@ -389,28 +404,23 @@ cs_apply_feat_display_hz() {
 cs_apply_feat_flagship_audio() {
   [ "$EFF_FEAT_FLAGSHIP_AUDIO" = "1" ] || return 0
 
-  # Verified HyperOS / Xiaomi Flagship Speaker & Audio Framework pipeline flags
-  # (pure user-space audio framework/HAL props; zero kernel/sysfs coupling; zero idle DSP load).
-  # Audio HAL Never-Fight: do NOT force persist.vendor.audio.misound.disable because vendor
-  # audioserver / Dolby DAX actively owns that runtime property to prevent double-DSP routing.
+  # Verified 100% real HyperOS Audio & Speaker user-space props (zero gimmick, zero idle DSP load):
+  # - Unlocks 10-band Graphic EQ, Earphone Acoustic Calibration, Sound Scenarios, Clear Speaker,
+  #   Game Turbo Audio & Voice Changer.
+  # - Omits hardware-locked/placebo props (hifi DAC, spk.stereo, dolby.dax, spatializer) and
+  #   never fights vendor audioserver's persist.vendor.audio.misound.disable.
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.audiovisual" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.scenario" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.independentequalizer" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.earadj" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.game.effect" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.dolby.dax.support" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.voice.change.support" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.clean" "true"
   # Never-Downgrade: preserve stock Dolby/Harman/Dirac soundfx type if factory ROM sets one
   _cs_sfx_type=$(cs_getprop "ro.vendor.audio.soundfx.type")
   if [ -z "$_cs_sfx_type" ]; then
     cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.soundfx.type" "mi"
   fi
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.misound.bluetooth.enable" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.stereo" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.clean" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.hifi" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.voice.change.support" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.audio.spatializer_enabled" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "persist.vendor.audio.hifi.int_codec" "true"
 }
 
 cs_apply_feat_flagship_suite() {

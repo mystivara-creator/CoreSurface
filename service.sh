@@ -15,6 +15,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 . "$MODDIR/lib/props.sh"
 # shellcheck source=lib/rro.sh
 . "$MODDIR/lib/rro.sh"
+# shellcheck source=lib/xml_patcher.sh
+. "$MODDIR/lib/xml_patcher.sh"
 # shellcheck source=lib/settings_tx.sh
 . "$MODDIR/lib/settings_tx.sh"
 # shellcheck source=lib/verifier.sh
@@ -71,6 +73,7 @@ if cs_watchdog_monitor_systemui; then
   cs_resolve_features
 
   cs_cleanup_legacy_engine_once || true
+  [ -s "$CS_HW_FPS_FILE" ] || cs_probe_hw_fps || true
   cs_reassert_computility_props || true
   cs_rro_enable_staged || true
   cs_settings_sync_all || true
