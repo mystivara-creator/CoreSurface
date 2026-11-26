@@ -3,6 +3,7 @@ name: CoreSurface CI
 on:
   push:
     branches: [main, "feat/**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -38,9 +39,11 @@ jobs:
         run: sh tests/run_tests.sh
 
   package:
-    name: Build Clean-Room RRO, Flagship Motion Engine & CoreSurface-v1.2.0.zip
+    name: Build Clean-Room RRO, Flagship Motion Engine & Release ZIP
     needs: lint-and-test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -77,16 +80,34 @@ jobs:
 
       - name: Verify ZIP checksum and contents
         run: |
-          unzip -l dist/CoreSurface-v1.2.0.zip
-          (cd dist && sha256sum -c CoreSurface-v1.2.0.zip.sha256)
+          VER=$(sed -n 's/^version=//p' module.prop | tr -d '\r')
+          echo "CS_VERSION=$VER" >> "$GITHUB_ENV"
+          unzip -l "dist/CoreSurface-${VER}.zip"
+          (cd dist && sha256sum -c "CoreSurface-${VER}.zip.sha256")
 
-      - name: Upload CoreSurface-v1.2.0.zip & CoreSurfaceEngine.apk artifacts
+      - name: Upload CoreSurface ZIP & CoreSurfaceEngine.apk artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: CoreSurface-v1.2.0
+          name: CoreSurface-${{ env.CS_VERSION }}
           path: |
-            dist/CoreSurface-v1.2.0.zip
-            dist/CoreSurface-v1.2.0.zip.sha256
+            dist/CoreSurface-*.zip
+            dist/CoreSurface-*.zip.sha256
             dist/CoreSurfaceEngine.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release assets on version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          ZIP="dist/CoreSurface-${CS_VERSION}.zip"
+          SHA="${ZIP}.sha256"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" "$SHA" --clobber
+          else
+            gh release create "$TAG" "$ZIP" "$SHA" \
+              --title "CoreSurface ${TAG}" \
+              --generate-notes
+          fi
