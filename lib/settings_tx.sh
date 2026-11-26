@@ -199,7 +199,7 @@ cs_settings_backup_once() {
   fi
 
   if ! cs_settings_get "$_cs_sbo_ns" "$_cs_sbo_key"; then
-    cs_log "WARN: settings get ${_cs_sbo_ns}/${_cs_sbo_key} failed (Binder error); skipping backup/override."
+    CS_SETTINGS_BINDER_FAILED=1
     return 1
   fi
 
@@ -218,6 +218,7 @@ cs_settings_apply_key() {
   _cs_sak_val=$4
 
   cs_settings_available || return 0
+  [ "${CS_SETTINGS_BINDER_FAILED:-0}" = "1" ] && return 1
   cs_settings_backup_once "$_cs_sak_ns" "$_cs_sak_key" || return 1
 
   if cs_settings_put "$_cs_sak_ns" "$_cs_sak_key" "$_cs_sak_val"; then
@@ -225,7 +226,7 @@ cs_settings_apply_key() {
     return 0
   fi
 
-  cs_log "WARN: settings put ${_cs_sak_ns} ${_cs_sak_key} ${_cs_sak_val} failed."
+  CS_SETTINGS_BINDER_FAILED=1
   return 1
 }
 
@@ -261,6 +262,7 @@ cs_settings_build_engine_ipc() {
 cs_settings_sync_engine_ipc() {
   cs_watchdog_init_dir || return 0
   cs_settings_available || return 0
+  CS_SETTINGS_BINDER_FAILED=0
   _cs_ipc_val=$(cs_settings_build_engine_ipc)
   cs_settings_apply_key "FEAT_MOTION_PROFILE" "global" "coresurface_engine_v1" "$_cs_ipc_val" || true
 }
@@ -277,13 +279,16 @@ cs_settings_clear_hos3_stuck_blur() {
       cs_settings_put "secure" "background_blur_enable" "0" || true
       cs_log "Cleanup v3: reset stuck HyperOS 3 secure/background_blur_enable=0 to clear Toast/Recents regression."
     fi
+    : > "$_cs_cb_marker" 2>/dev/null || true
+  else
+    CS_SETTINGS_BINDER_FAILED=1
   fi
-  : > "$_cs_cb_marker" 2>/dev/null || true
 }
 
 cs_settings_sync_all() {
   cs_watchdog_init_dir || return 0
   : > "$CS_SETTINGS_APPLIED_FILE"
+  CS_SETTINGS_BINDER_FAILED=0
 
   if ! cs_settings_available; then
     cs_log "Settings TX: 'settings' binary unavailable; skipping."
@@ -292,9 +297,17 @@ cs_settings_sync_all() {
 
   # Clear any stuck HyperOS 3 Advanced Textures flag once on upgrade
   cs_settings_clear_hos3_stuck_blur || true
+  if [ "$CS_SETTINGS_BINDER_FAILED" = "1" ]; then
+    cs_log "Settings TX: Android 15/16 root Binder restricted; using zero-Binder debug.coresurface.cfg bridge."
+    return 0
+  fi
 
   # Push Live Engine IPC config (instant hot-reload in SystemUI / MiuiHome / MiuiAod)
   cs_settings_sync_engine_ipc || true
+  if [ "$CS_SETTINGS_BINDER_FAILED" = "1" ]; then
+    cs_log "Settings TX: Android 15/16 root Binder restricted; using zero-Binder debug.coresurface.cfg bridge."
+    return 0
+  fi
 
   if [ "$EFF_FEAT_ANIMATIONS" = "1" ]; then
     case "${CS_EFF_TIER:-low}" in

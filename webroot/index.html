@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>CoreSurface v1.1.0</title>
+  <title>CoreSurface v1.2.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,63 +12,63 @@
       <div class="hero-top">
         <div>
           <h1>CoreSurface</h1>
-          <p class="subtitle">v1.1.0 · Pure Flagship Experience (100% Original UI)</p>
+          <p class="subtitle">v1.2.0 · Pure Flagship Experience (100% Original UI)</p>
         </div>
-        <button id="btn-refresh" class="btn-icon" type="button" aria-label="Perbarui status">↻</button>
+        <button id="btn-refresh" class="btn-icon" type="button" aria-label="Refresh status">↻</button>
       </div>
       <div class="badge-row">
         <span id="watchdog-badge" class="badge badge-neutral">Watchdog…</span>
         <span id="engine-badge" class="badge badge-neutral">Engine…</span>
-        <span id="compat-badge" class="badge badge-neutral hidden">Skor: -</span>
+        <span id="compat-badge" class="badge badge-neutral hidden">Score: -</span>
         <span id="coreflow-badge" class="badge badge-coreflow hidden">CoreFlow Guard</span>
       </div>
     </header>
 
     <div id="reboot-banner" class="banner banner-info hidden" role="status">
-      <strong>Perubahan tier/RRO disimpan.</strong> Reboot 1× agar properti/XML/RRO baru aktif (profil animasi &amp; fix Recents berlaku langsung tanpa reboot).
+      <strong>Tier / RRO changes saved.</strong> Reboot once to apply early-boot props, XML &amp; RRO overlays (motion profiles &amp; blur guards apply live without reboot).
     </div>
 
     <div id="safemode-banner" class="banner banner-danger hidden" role="alert">
       <div>
-        <strong>Safe-Mode Aktif</strong>
-        <p id="safemode-reason">Watchdog menonaktifkan modul otomatis setelah 2× boot gagal.</p>
+        <strong>Safe-Mode Active</strong>
+        <p id="safemode-reason">Watchdog automatically disabled the module after 2 consecutive failed boots.</p>
       </div>
       <button id="btn-reset-safemode" class="btn btn-danger" type="button">Reset Safe-Mode</button>
     </div>
 
     <div id="metamodule-banner" class="banner banner-warn hidden" role="status">
-      <strong>Metamodule RRO belum aktif.</strong> Pada KernelSU-Next, pasang <code>meta-overlayfs</code> lalu reboot 1× agar RRO overlay (SystemUI, ThemeManager, AOD) termuat otomatis.
+      <strong>RRO metamodule not active.</strong> On KernelSU-Next, install <code>meta-overlayfs</code> and reboot once so clean-room RRO overlays mount properly.
     </div>
 
     <section class="card">
       <div class="card-head">
-        <h2>Mode Tier Perangkat</h2>
+        <h2>Device Tier Mode</h2>
         <span id="active-tier-pill" class="pill">-</span>
       </div>
-      <p class="hint">Sama dengan pilihan Volume Up/Down saat flash. <strong>Auto</strong> otomatis masuk <em>Motion-Only</em> pada Flagship asli agar tuning pabrik tetap utuh; <strong>Lite</strong> menjaga blur standar tanpa <em>Advanced Textures</em>; <strong>Custom Color</strong> aktif di semua mode.</p>
+      <p class="hint">Matches the Volume Up/Down installer selector. <strong>Auto</strong> enters <em>Motion-Only Passthrough</em> on genuine native flagships to preserve factory tuning; <strong>Lite</strong> keeps clean standard blur without <em>Advanced Textures</em>; <strong>Custom Color Expert</strong> stays enabled across all modes.</p>
       <div class="tier-grid" id="tier-grid">
         <button type="button" class="btn-tier" data-tier="auto">
           <strong>Auto</strong>
-          <span id="auto-tier-hint">Rekomendasi Cerdas</span>
+          <span id="auto-tier-hint">Smart Detection</span>
         </button>
         <button type="button" class="btn-tier" data-tier="low">
           <strong>Lite</strong>
-          <span>Mid Non-Pro · Blur Standar</span>
+          <span>Mid Non-Pro · Standard Blur</span>
         </button>
         <button type="button" class="btn-tier" data-tier="balanced_pro">
           <strong>Balanced Pro</strong>
-          <span>Mid Pro/Pro+ · Suite Harian</span>
+          <span>Mid Pro/Pro+ · Daily Suite</span>
         </button>
         <button type="button" class="btn-tier" data-tier="flagship">
           <strong>Max Flagship</strong>
-          <span>Full Suite · Ultra Ringan</span>
+          <span>Full Suite · Ultra Light</span>
         </button>
       </div>
     </section>
 
     <section class="card">
       <div class="card-head">
-        <h2>⚡ Animasi Live &amp; Pengaturan Inti</h2>
+        <h2>⚡ Live Motion &amp; Core Controls</h2>
         <span id="engine-hz-pill" class="pill">-</span>
       </div>
 
@@ -76,12 +76,12 @@
         <div class="feat-card">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Mesin Fisika Animasi (60–144 Hz)</h3>
+              <h3>Physics Motion Engine (60–144 Hz)</h3>
               <span id="verify-FEAT_MOTION_PROFILE" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">Berlaku <strong>live tanpa reboot</strong> lewat <code>CoreSpringSolver</code> (WMShell + RectF App + Choreographer, 0% idle). <strong>iOS Spring</strong> = pegas elastis + Lock→Home bouncy bersih; <strong>ColorOS Quantum</strong> = lepas cepat &amp; interupsi paralel; <strong>Stock</strong> = 100% native.</p>
+            <p class="feat-desc">Applies <strong>live without reboot</strong> via <code>CoreSpringSolver</code> (WMShell + RectF App + Choreographer, 0% idle). <strong>iOS Spring</strong> = elastic catch + clean bouncy Lock→Home; <strong>ColorOS Quantum</strong> = snappy takeoff &amp; parallel interruptibility; <strong>Stock</strong> = 100% native.</p>
           </div>
-          <div class="seg-group seg-grid-2x2" data-key="FEAT_MOTION_PROFILE" role="group" aria-label="Mesin Fisika Animasi">
+          <div class="seg-group seg-grid-2x2" data-key="FEAT_MOTION_PROFILE" role="group" aria-label="Physics Motion Engine">
             <button type="button" data-val="0">Stock Flagship</button>
             <button type="button" data-val="ios">iOS Spring</button>
             <button type="button" data-val="coloros">ColorOS Quantum</button>
@@ -92,12 +92,12 @@
         <div class="feat-card">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Fix Toast, Recents &amp; -1 Screen HOS 3</h3>
+              <h3>Toast, Recents &amp; -1 Screen Guard</h3>
               <span id="verify-FEAT_SURGICAL_GUARD" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">Mencegah Toast melebar, Recent Apps hitam, dan blink hitam pada <em>-1 Screen (App Vault)</em> saat <em>Advanced Textures</em> aktif.</p>
+            <p class="feat-desc">Prevents bloated Toasts, black Recent Apps, and solid black <em>-1 Screen (App Vault)</em> backdrops when <em>Advanced Textures</em> is enabled on HyperOS 3.</p>
           </div>
-          <div class="seg-group" data-key="FEAT_SURGICAL_GUARD" role="group" aria-label="Fix Toast dan Recent Apps">
+          <div class="seg-group" data-key="FEAT_SURGICAL_GUARD" role="group" aria-label="Toast, Recents and Minus-One Guard">
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
           </div>
@@ -106,12 +106,12 @@
         <div class="feat-card">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>AOD Always-On (Non-LTPO)</h3>
+              <h3>Non-LTPO Always-On Display</h3>
               <span id="verify-FEAT_AOD_UNLOCK" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">Membuka opsi <strong>Always</strong> &amp; <strong>Scheduled</strong> pada panel AMOLED non-LTPO via XML (<code>is_only_support_keycode_goto=false</code>) + RRO + hook <code>MiuiAod</code>.</p>
+            <p class="feat-desc">Unlocks <strong>Always</strong> &amp; <strong>Scheduled</strong> AOD on non-LTPO AMOLED panels via XML (<code>is_only_support_keycode_goto=false</code>) + RRO + FOD-safe <code>MiuiAod</code> hook.</p>
           </div>
-          <div class="seg-group" data-key="FEAT_AOD_UNLOCK" role="group" aria-label="AOD Always-On Non-LTPO">
+          <div class="seg-group" data-key="FEAT_AOD_UNLOCK" role="group" aria-label="Non-LTPO Always-On Display">
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
           </div>
@@ -120,12 +120,12 @@
         <div class="feat-card">
           <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Audio &amp; Speaker Flagship</h3>
+              <h3>Flagship Audio &amp; Speaker</h3>
               <span id="verify-FEAT_FLAGSHIP_AUDIO" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">Dolby/Mi Sound Scenario EQ, Stereo &amp; Clear Speaker, Hi-Fi DAC, Sound Assistant, Spatial Audio &amp; 24-bit Studio Mic Record (reboot 1×).</p>
+            <p class="feat-desc">Dolby/Mi Sound Scenario EQ, Stereo &amp; Clear Speaker, Hi-Fi DAC, Sound Assistant, Spatial Audio &amp; 24-bit Studio Mic Record (1× reboot).</p>
           </div>
-          <div class="seg-group" data-key="FEAT_FLAGSHIP_AUDIO" role="group" aria-label="Audio dan Speaker Flagship">
+          <div class="seg-group" data-key="FEAT_FLAGSHIP_AUDIO" role="group" aria-label="Flagship Audio and Speaker">
             <button type="button" data-val="1">ON</button>
             <button type="button" data-val="0">OFF</button>
           </div>
@@ -137,7 +137,7 @@
               <h3>Flagship Porting Suite</h3>
               <span id="verify-FEAT_FLAGSHIP_SUITE" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">AI Image Engine, Video Toolbox Cinema, Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP &amp; Inner Record, Night Charge AI, Wild Boost &amp; Dynamic Font (reboot 1×).</p>
+            <p class="feat-desc">AI Image Engine, Video Toolbox Cinema, Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP &amp; Inner Record, Night Charge AI, Wild Boost &amp; Dynamic Font (1× reboot).</p>
           </div>
           <div class="seg-group" data-key="FEAT_FLAGSHIP_SUITE" role="group" aria-label="Flagship Porting Suite">
             <button type="button" data-val="1">ON</button>
@@ -149,23 +149,23 @@
 
     <section class="card">
       <div class="card-head">
-        <h2>Status Ringkas</h2>
+        <h2>System Summary</h2>
         <span id="engine-lod-badge" class="pill">-</span>
       </div>
       <div class="kv-list" id="summary-list">
-        <div class="kv-row"><span>Status</span><strong>Memuat…</strong></div>
+        <div class="kv-row"><span>Status</span><strong>Loading…</strong></div>
       </div>
       <div class="quick-actions">
         <button id="btn-install-engine" class="btn btn-secondary" type="button">Install / Update Engine APK</button>
-        <button id="btn-hot-sync" class="btn btn-secondary" type="button">Verifikasi Ulang</button>
-        <button id="btn-export-diag" class="btn btn-secondary" type="button">Salin Diagnostik</button>
+        <button id="btn-hot-sync" class="btn btn-secondary" type="button">Re-Verify</button>
+        <button id="btn-export-diag" class="btn btn-secondary" type="button">Copy Diagnostics</button>
       </div>
     </section>
 
     <section class="card">
       <details>
-        <summary class="summary-title">Log Watchdog &amp; Diagnostik</summary>
-        <pre id="diag-log" class="log-box">Memuat log…</pre>
+        <summary class="summary-title">Watchdog &amp; Diagnostic Log</summary>
+        <pre id="diag-log" class="log-box">Loading logs…</pre>
       </details>
       <div id="diag-export-wrap" class="hidden">
         <textarea id="diag-export-box" class="log-box export-box" rows="7" readonly></textarea>

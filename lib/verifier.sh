@@ -419,6 +419,11 @@ cs_verify_rro_overlays() {
     fi
   fi
   if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
+    if command -v su >/dev/null 2>&1; then
+      _cs_ov_out=$(su --context u:r:shell:s0 2000 -c "cmd overlay list --user 0" 2>&1 || true)
+    fi
+  fi
+  if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
     _cs_ov_out=$(cmd overlay list 2>&1 || true)
   fi
   if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then

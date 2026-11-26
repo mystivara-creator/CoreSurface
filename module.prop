@@ -1,6 +1,6 @@
 id=coresurface
 name=CoreSurface
-version=v1.1.0
-versionCode=110
+version=v1.2.0
+versionCode=120
 author=Mystivara
-description=Pure user-space HyperOS 4-Tier flagship experience: ultra-lightweight 60-144Hz iOS 27 x ColorOS 17 Folme physics, flagship audio & complete porting suite.
+description=Pure user-space HyperOS 3/4 flagship experience: closed-form 60-144Hz Spring ODE physics (iOS Spring / ColorOS Quantum / HyperOS 4 Crisp), Surgical Blur Guard, Non-LTPO AOD unlock, flagship audio & complete porting suite.

@@ -38,7 +38,7 @@ jobs:
         run: sh tests/run_tests.sh
 
   package:
-    name: Build Clean-Room RRO, Flagship Motion Engine & CoreSurface-v1.1.0.zip
+    name: Build Clean-Room RRO, Flagship Motion Engine & CoreSurface-v1.2.0.zip
     needs: lint-and-test
     runs-on: ubuntu-latest
     steps:
@@ -77,16 +77,16 @@ jobs:
 
       - name: Verify ZIP checksum and contents
         run: |
-          unzip -l dist/CoreSurface-v1.1.0.zip
-          (cd dist && sha256sum -c CoreSurface-v1.1.0.zip.sha256)
+          unzip -l dist/CoreSurface-v1.2.0.zip
+          (cd dist && sha256sum -c CoreSurface-v1.2.0.zip.sha256)
 
-      - name: Upload CoreSurface-v1.1.0.zip & CoreSurfaceEngine.apk artifacts
+      - name: Upload CoreSurface-v1.2.0.zip & CoreSurfaceEngine.apk artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: CoreSurface-v1.1.0
+          name: CoreSurface-v1.2.0
           path: |
-            dist/CoreSurface-v1.1.0.zip
-            dist/CoreSurface-v1.1.0.zip.sha256
+            dist/CoreSurface-v1.2.0.zip
+            dist/CoreSurface-v1.2.0.zip.sha256
             dist/CoreSurfaceEngine.apk
           if-no-files-found: error
           retention-days: 30

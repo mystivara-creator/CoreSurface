@@ -219,7 +219,7 @@ public final class TelemetryReporter {
 
             StringBuilder sb = new StringBuilder(420);
             sb.append("ENGINE_ACTIVE=1\n");
-            sb.append("ENGINE_VERSION=1.1.0\n");
+            sb.append("ENGINE_VERSION=1.2.0\n");
             if (!bootId.isEmpty()) {
                 sb.append("BOOT_ID=").append(bootId).append('\n');
             }

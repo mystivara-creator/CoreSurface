@@ -740,10 +740,10 @@ printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" tier flagship >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=flagship" "tier flagship sets CS_TIER_MODE=flagship"
-assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=silk" "tier flagship sets FEAT_MOTION_PROFILE=silk"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=coloros" "tier flagship sets canonical FEAT_MOTION_PROFILE=coloros"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "tier flagship immediately hot-syncs settings"
 assert_file_contains "$SB_SETTINGS_DB" "secure|aod_mode_time=0" "Non-LTPO AOD sets secure/aod_mode_time=0"
-assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=silk;native=1;guard=1;thermallod=1;aod=1" "tier flagship pushes live Motion Engine IPC immediately"
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=coloros;native=1;guard=1;thermallod=1;aod=1" "tier flagship pushes live Motion Engine IPC immediately"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" tier low >/dev/null
@@ -758,7 +758,7 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync
 _diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
 printf '%s\n' "$_diag" > "$SB/diag.txt"
-assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.1.0 Flagship Motion Diagnostic Report ===" "diag-report outputs structured Flagship Motion header"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.2.0 Flagship Motion Diagnostic Report ===" "diag-report outputs structured Flagship Motion v1.2.0 header"
 assert_file_contains "$SB/diag.txt" "Motion Engine:" "diag-report includes Motion Engine telemetry line"
 assert_file_contains "$SB/diag.txt" "Custom Color Expert:" "diag-report includes Custom Color Expert status"
 assert_file_contains "$SB/diag.txt" "AOD Unlock:" "diag-report includes AOD Unlock status"
@@ -1249,8 +1249,8 @@ assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;g
 _act_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/action.sh")
 printf '%s\n' "$_act_out" > "$SB/action.out"
-assert_file_contains "$SB/action.out" "CoreSurface v1.1.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
-assert_file_contains "$SB/action.out" "=== CoreSurface v1.1.0 Flagship Motion Diagnostic Report ===" "action.sh runs diagnostic report cleanly"
+assert_file_contains "$SB/action.out" "CoreSurface v1.2.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
+assert_file_contains "$SB/action.out" "=== CoreSurface v1.2.0 Flagship Motion Diagnostic Report ===" "action.sh runs diagnostic report cleanly"
 
 # Test uninstall.sh disarms active debug.coresurface.cfg and uninstalls CoreSurfaceEngine APK
 printf 'debug.coresurface.cfg=motion=hyperos4;native=1;guard=1;thermallod=1;aod=1\n' > "$SB_PROPS_DB"
@@ -1697,6 +1697,43 @@ if [ -d /opt/android-sdk/build-tools ] || [ -n "${ANDROID_HOME:-}" ] || [ -n "${
   assert_file_contains "$SB/scope.list" "com.miui.aod" "scope.list recommends com.miui.aod"
   assert_file_contains "$SB/scope.list" "com.android.settings" "scope.list recommends com.android.settings"
 fi
+
+# ---------------------------------------------------------------------------
+printf '=== Test 24: v1.2.0 Release Metadata, English UI Localization & Binder Circuit-Breaker ===\n'
+setup_sandbox "t24_v120_english_and_binder_cb"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+
+assert_file_contains "$REPO_ROOT/module.prop" "version=v1.2.0" "module.prop bumps version to v1.2.0"
+assert_file_contains "$REPO_ROOT/module.prop" "versionCode=120" "module.prop bumps versionCode to 120"
+assert_file_contains "$REPO_ROOT/webroot/index.html" '<html lang="en">' "WebUI declares English locale (lang=en)"
+assert_file_contains "$REPO_ROOT/webroot/index.html" 'v1.2.0' "WebUI displays v1.2.0 badge"
+assert_file_contains "$REPO_ROOT/customize.sh" 'SELECT CORESURFACE TIER MODE' "Volume-key installer prompts are in English"
+
+# Verify fast Binder circuit-breaker in lib/settings_tx.sh prevents 40+ wasted forks & log spam
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+SB_SETTINGS_CALLS="$SB/settings_calls.log"
+: > "$SB_SETTINGS_CALLS"
+cat > "$SB_BIN/settings" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$SB_SETTINGS_CALLS"
+printf 'cmd: Failure calling service settings: Failed transaction (2147483646)\n' >&2
+exit 1
+EOF
+chmod +x "$SB_BIN/settings"
+rm -f "$SB_BIN/cmd" "$SB_BIN/su"
+
+run_service
+_call_cnt=$(wc -l < "$SB_SETTINGS_CALLS" | tr -d ' ')
+assert_eq "$( [ "$_call_cnt" -ge 1 ] && [ "$_call_cnt" -le 4 ] && printf 'fast' || printf 'unexpected:%s' "$_call_cnt" )" "fast" "Binder circuit-breaker stops wasted settings subprocess retries (1..4 calls total)"
+assert_file_contains "$SB_STATE/coresurface.log" "using zero-Binder debug.coresurface.cfg bridge" "Settings TX logs clean single-line zero-Binder bridge fallback"
+assert_file_not_contains "$SB_STATE/coresurface.log" "WARN: settings get" "Settings TX does not spam WARN lines on Android 15/16 root Binder block"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"

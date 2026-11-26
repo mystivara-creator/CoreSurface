@@ -172,6 +172,13 @@ cs_rro_enable_staged() {
       fi
       ;;
   esac
+  case "$_cs_ov_list" in
+    ""|*Failure*|*Exception*|*Error*|*Binder*)
+      if command -v su >/dev/null 2>&1; then
+        _cs_ov_list=$(su --context u:r:shell:s0 2000 -c "cmd overlay list --user 0" 2>&1 || true)
+      fi
+      ;;
+  esac
   [ -n "$_cs_ov_list" ] || return 0
 
   _cs_en_count=0
@@ -181,6 +188,8 @@ cs_rro_enable_staged() {
       if cmd overlay enable --user 0 "$_cs_epkg" >/dev/null 2>&1; then
         _cs_en_count=$((_cs_en_count + 1))
       elif command -v su >/dev/null 2>&1 && su 2000 -c "cmd overlay enable --user 0 '${_cs_epkg}'" >/dev/null 2>&1; then
+        _cs_en_count=$((_cs_en_count + 1))
+      elif command -v su >/dev/null 2>&1 && su --context u:r:shell:s0 2000 -c "cmd overlay enable --user 0 '${_cs_epkg}'" >/dev/null 2>&1; then
         _cs_en_count=$((_cs_en_count + 1))
       fi
     fi

@@ -24,9 +24,9 @@ public final class CoreSurfaceChoreographer implements Choreographer.FrameCallba
     public static final int PROP_ROTATION_Y = 5;
     public static final int PROP_ALPHA = 6;
 
-    // 192 pre-allocated slots (~18 KB RAM, ZERO per-frame heap allocation):
-    // supports full 3D staggered Home Screen unlock (32+ icons x 5 axes + Hotseat + Workspace)
-    private static final int MAX_SLOTS = 192;
+    // 128 pre-allocated slots (~12 KB RAM, ZERO per-frame heap allocation):
+    // handles 32 Home Screen icons x 3 axes + Hotseat + Folders + Control Center smoothly
+    private static final int MAX_SLOTS = 128;
     private static final double EPS_PX = 0.25;
     private static final double EPS_PX_VEL = 4.0;
     private static final double EPS_SCALE = 0.0015;
