@@ -1243,6 +1243,22 @@ assert_file_contains "$SB_PROPS_LOG" "persist.sys.bionic_material_supported=true
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.computility.cpulevel=6" "HyperOS 4 Flagship sets computility cpulevel=6"
 assert_file_not_contains "$SB_STATE/os_bugs.state" "LEAKED_PERSIST_PROPS" "HyperOS 4 does not falsely flag native release=5 as leaked prop"
 
+# Simulate HyperOS 4 boot service overwriting persist.sys.advanced_visual_release back to 3 -> service.sh re-asserts 5
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+tmp_db="$SB_PROPS_DB.hos4"
+awk -F '=' '$1 != "persist.sys.advanced_visual_release" { print $0 }' "$SB_PROPS_DB" > "$tmp_db"
+printf 'persist.sys.advanced_visual_release=3\n' >> "$tmp_db"
+mv -f "$tmp_db" "$SB_PROPS_DB"
+run_service
+assert_file_contains "$SB_PROPS_DB" "persist.sys.advanced_visual_release=5" "service.sh re-asserts persist.sys.advanced_visual_release=5 on HyperOS 4 after boot overwrite"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_PROPS_OVERRIDDEN=0" "HyperOS 4 achieves 0 overridden props after re-assertion"
+assert_file_contains "$SB_STATE/verify.state" "COMPAT_SCORE_PCT=100" "HyperOS 4 reaches 100% compatibility score after re-assertion"
+
 # Future HyperOS 4.1+ ROM with stock advanced_visual_release=6 must NEVER be downgraded to 5
 setup_sandbox "t21b_hyperos4_never_downgrade_avr6"
 write_mock_getprop "OS4.1" "" "37" "1" "malachite" "Redmi Note 16 Pro"

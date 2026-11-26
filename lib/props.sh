@@ -253,6 +253,16 @@ cs_reassert_computility_props() {
   cs_set_prop_mem_only "persist.sys.launch_response_optimization.enable" "true"
   if [ "${EFF_FEAT_BLUR:-0}" = "1" ]; then
     cs_set_prop_mem_only "persist.sys.sf.disable_blurs" "false"
+    if [ "${EFF_FEAT_ADV_TEXTURES:-0}" = "1" ]; then
+      if [ "${CS_HYPEROS_MAJOR:-0}" -ge 4 ]; then
+        _cs_ravr=$(cs_max_uint 5 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
+      elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
+        _cs_ravr=$(cs_max_uint 4 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
+      else
+        _cs_ravr=$(cs_max_uint 3 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
+      fi
+      cs_set_prop_mem_only "persist.sys.advanced_visual_release" "$_cs_ravr"
+    fi
   fi
   case "${CS_EFF_TIER:-low}" in
     flagship)
