@@ -1134,7 +1134,8 @@ assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_setting=1"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "HyperOS 3 Flagship sets native Advanced Textures release=4"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.mi_shadow_supported=true" "Non-flagship HOS 3 skips heavy mi_shadow shader to keep GPU cool"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_smoothcorner=true" "HyperOS 3 Flagship sets support_window_smoothcorner=true"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_view_smoothcorner=true" "HyperOS 3 Flagship sets support_view_smoothcorner=true"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.support_view_smoothcorner=true" "Non-flagship HOS 3 skips per-view smoothcorner shader for consistent Recents frame pacing"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=false" "Non-flagship HOS 3 explicitly disables Recents mask blur to prevent App Close -> Recents stutter"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "Non-flagship HOS 3 skips heavy backdrop_sampling shader"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "Non-flagship HOS 3 skips heavy blurnoise shader"
 # Audio & Speaker props
@@ -1175,6 +1176,7 @@ assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="gallery_s
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_local_ocr">true</bool>' "Flagship Suite XML enables on-device Local OCR"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_miplay_cast_privacy">true</bool>' "Flagship Suite XML enables MiPlay Cast Privacy"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_voip_record">true</bool>' "Flagship Suite XML enables VoIP Call Recording"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_super_wallpaper">true</bool>' "Flagship Suite XML enables Super Wallpaper Personalization gate"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<integer name="support_inner_record">1</integer>' "Flagship Suite XML enables Internal Audio Recording"
 
 run_service
