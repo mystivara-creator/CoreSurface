@@ -183,6 +183,11 @@ cs_apply_feat_animations() {
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
   cs_set_prop "FEAT_ANIMATIONS" "persist.sys.launch_response_optimization.enable" "true"
   cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
+  # HyperIsland real-time GLSL shader stacks on top of Control Center / Notification Shade blur
+  # during left/right swipes; disable only the heavy shader pass on mid-range GPUs (keeping Island + animations ON).
+  if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ] && [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
+    cs_set_prop "FEAT_ANIMATIONS" "persist.sys.feature.island.shader" "false"
+  fi
   case "${CS_EFF_TIER:-low}" in
     flagship)
       _cs_cpu=$(cs_max_uint 6 "${CS_STOCK_CPU_LEVEL:-0}")

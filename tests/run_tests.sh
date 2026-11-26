@@ -1136,6 +1136,7 @@ assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.mi_shadow_supported=true" 
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_smoothcorner=true" "HyperOS 3 Flagship sets support_window_smoothcorner=true"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.support_view_smoothcorner=true" "Non-flagship HOS 3 skips per-view smoothcorner shader for consistent Recents frame pacing"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=false" "Non-flagship HOS 3 explicitly disables Recents mask blur to prevent App Close -> Recents stutter"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island.shader=false" "Non-flagship HOS 3 disables heavy HyperIsland GPU shader for smooth Control Center swipes"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "Non-flagship HOS 3 skips heavy backdrop_sampling shader"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "Non-flagship HOS 3 skips heavy blurnoise shader"
 # Audio & Speaker props
