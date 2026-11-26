@@ -5,9 +5,46 @@
 
 CS_SETTINGS_BACKUP_FILE="$CS_STATE_DIR/settings_backup.prop"
 CS_SETTINGS_APPLIED_FILE="$CS_STATE_DIR/settings_applied.list"
+CS_SETTINGS_BINDER_CACHE="$CS_STATE_DIR/.binder_blocked_boot"
+CS_SETTINGS_TRANSPORT=""
+CS_SETTINGS_BINDER_FAILED=0
 
 cs_settings_available() {
   command -v settings >/dev/null 2>&1
+}
+
+cs_settings_boot_id() {
+  _cs_bid_file=${CORESURFACE_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}
+  if [ -r "$_cs_bid_file" ]; then
+    head -n 1 "$_cs_bid_file" 2>/dev/null | tr -d ' \t\r\n'
+  fi
+}
+
+cs_settings_binder_is_cached_blocked() {
+  [ -r "$CS_SETTINGS_BINDER_CACHE" ] || return 1
+  _cs_cb_cur=$(cs_settings_boot_id)
+  [ -n "$_cs_cb_cur" ] || return 1
+  _cs_cb_prev=$(head -n 1 "$CS_SETTINGS_BINDER_CACHE" 2>/dev/null | tr -d ' \t\r\n')
+  [ "$_cs_cb_prev" = "$_cs_cb_cur" ]
+}
+
+cs_settings_binder_mark_blocked() {
+  CS_SETTINGS_BINDER_FAILED=1
+  export CS_SETTINGS_BINDER_FAILED
+  _cs_mb_cur=$(cs_settings_boot_id)
+  if [ -n "$_cs_mb_cur" ] && [ -d "$CS_STATE_DIR" ]; then
+    printf '%s\n' "$_cs_mb_cur" > "$CS_SETTINGS_BINDER_CACHE" 2>/dev/null || true
+  fi
+}
+
+cs_settings_find_busybox() {
+  for _cs_bb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+    if [ -x "$_cs_bb" ]; then
+      printf '%s' "$_cs_bb"
+      return 0
+    fi
+  done
+  return 1
 }
 
 cs_settings_is_error_output() {
@@ -21,7 +58,76 @@ cs_sh_quote() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
 
-# Read a setting: try `--user 0`, `cmd settings`, `su 2000`, `su --context u:r:shell:s0 2000`, then bare `settings`.
+# Execute a settings subcommand via a specific transport.
+# Args: $1=transport, $2=op (get|put|delete), $3=ns, $4=key, $5=val(optional)
+cs_settings_exec_transport() {
+  _cs_et_tr=$1
+  _cs_et_op=$2
+  _cs_et_ns=$3
+  _cs_et_key=$4
+  _cs_et_val=${5:-}
+  CS_SETTINGS_EXEC_OUT=""
+
+  case "$_cs_et_tr" in
+    direct)
+      if [ "$_cs_et_op" = "put" ]; then
+        CS_SETTINGS_EXEC_OUT=$(settings --user 0 put "$_cs_et_ns" "$_cs_et_key" "$_cs_et_val" 2>&1)
+      else
+        CS_SETTINGS_EXEC_OUT=$(settings --user 0 "$_cs_et_op" "$_cs_et_ns" "$_cs_et_key" 2>&1)
+      fi
+      ;;
+    cmd)
+      command -v cmd >/dev/null 2>&1 || return 127
+      if [ "$_cs_et_op" = "put" ]; then
+        CS_SETTINGS_EXEC_OUT=$(cmd settings --user 0 put "$_cs_et_ns" "$_cs_et_key" "$_cs_et_val" 2>&1)
+      else
+        CS_SETTINGS_EXEC_OUT=$(cmd settings --user 0 "$_cs_et_op" "$_cs_et_ns" "$_cs_et_key" 2>&1)
+      fi
+      ;;
+    su2000)
+      command -v su >/dev/null 2>&1 || return 127
+      _cs_q_ns=$(cs_sh_quote "$_cs_et_ns")
+      _cs_q_key=$(cs_sh_quote "$_cs_et_key")
+      if [ "$_cs_et_op" = "put" ]; then
+        _cs_q_val=$(cs_sh_quote "$_cs_et_val")
+        CS_SETTINGS_EXEC_OUT=$(su 2000 -c "settings --user 0 put ${_cs_q_ns} ${_cs_q_key} ${_cs_q_val}" 2>&1)
+      else
+        CS_SETTINGS_EXEC_OUT=$(su 2000 -c "settings --user 0 ${_cs_et_op} ${_cs_q_ns} ${_cs_q_key}" 2>&1)
+      fi
+      ;;
+    su_shell)
+      command -v su >/dev/null 2>&1 || return 127
+      _cs_q_ns=$(cs_sh_quote "$_cs_et_ns")
+      _cs_q_key=$(cs_sh_quote "$_cs_et_key")
+      if [ "$_cs_et_op" = "put" ]; then
+        _cs_q_val=$(cs_sh_quote "$_cs_et_val")
+        CS_SETTINGS_EXEC_OUT=$(su --context u:r:shell:s0 2000 -c "settings --user 0 put ${_cs_q_ns} ${_cs_q_key} ${_cs_q_val}" 2>&1)
+      else
+        CS_SETTINGS_EXEC_OUT=$(su --context u:r:shell:s0 2000 -c "settings --user 0 ${_cs_et_op} ${_cs_q_ns} ${_cs_q_key}" 2>&1)
+      fi
+      ;;
+    setuidgid)
+      _cs_et_bb=$(cs_settings_find_busybox) || return 127
+      if [ "$_cs_et_op" = "put" ]; then
+        CS_SETTINGS_EXEC_OUT=$("$_cs_et_bb" setuidgid 2000 settings --user 0 put "$_cs_et_ns" "$_cs_et_key" "$_cs_et_val" 2>&1)
+      else
+        CS_SETTINGS_EXEC_OUT=$("$_cs_et_bb" setuidgid 2000 settings --user 0 "$_cs_et_op" "$_cs_et_ns" "$_cs_et_key" 2>&1)
+      fi
+      ;;
+    legacy)
+      if [ "$_cs_et_op" = "put" ]; then
+        CS_SETTINGS_EXEC_OUT=$(settings put "$_cs_et_ns" "$_cs_et_key" "$_cs_et_val" 2>&1)
+      else
+        CS_SETTINGS_EXEC_OUT=$(settings "$_cs_et_op" "$_cs_et_ns" "$_cs_et_key" 2>&1)
+      fi
+      ;;
+    *)
+      return 127
+      ;;
+  esac
+}
+
+# Read a setting using cached winning transport (or probe transports once).
 # Sets: CS_SETTINGS_READ_VAL, CS_SETTINGS_LAST_ERR. Returns 0 on success, 1 on Binder/service error.
 cs_settings_get() {
   _cs_sg_ns=$1
@@ -30,55 +136,29 @@ cs_settings_get() {
   CS_SETTINGS_LAST_ERR=""
   export CS_SETTINGS_LAST_ERR
 
-  _cs_sg_out=$(settings --user 0 get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
-  _cs_sg_rc=$?
-  _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
-  if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
-    CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
-    return 0
-  fi
-  [ -n "$_cs_sg_line" ] && CS_SETTINGS_LAST_ERR="$_cs_sg_line"
-
-  if command -v cmd >/dev/null 2>&1; then
-    _cs_sg_out=$(cmd settings --user 0 get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
+  if [ -n "$CS_SETTINGS_TRANSPORT" ]; then
+    cs_settings_exec_transport "$CS_SETTINGS_TRANSPORT" "get" "$_cs_sg_ns" "$_cs_sg_key"
     _cs_sg_rc=$?
-    _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
-    if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
+    _cs_sg_line=$(printf '%s\n' "$CS_SETTINGS_EXEC_OUT" | head -n 1 | tr -d '\r')
+    if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$CS_SETTINGS_EXEC_OUT"; then
+      CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
+      return 0
+    fi
+    CS_SETTINGS_TRANSPORT=""
+  fi
+
+  for _cs_tr in direct cmd su2000 su_shell setuidgid legacy; do
+    cs_settings_exec_transport "$_cs_tr" "get" "$_cs_sg_ns" "$_cs_sg_key"
+    _cs_sg_rc=$?
+    [ "$_cs_sg_rc" -eq 127 ] && continue
+    _cs_sg_line=$(printf '%s\n' "$CS_SETTINGS_EXEC_OUT" | head -n 1 | tr -d '\r')
+    if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$CS_SETTINGS_EXEC_OUT"; then
+      CS_SETTINGS_TRANSPORT="$_cs_tr"
       CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
       return 0
     fi
     [ -n "$_cs_sg_line" ] && CS_SETTINGS_LAST_ERR="$_cs_sg_line"
-  fi
-
-  if command -v su >/dev/null 2>&1; then
-    _cs_q_ns=$(cs_sh_quote "$_cs_sg_ns")
-    _cs_q_key=$(cs_sh_quote "$_cs_sg_key")
-    _cs_sg_out=$(su 2000 -c "settings --user 0 get ${_cs_q_ns} ${_cs_q_key}" 2>&1)
-    _cs_sg_rc=$?
-    _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
-    if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
-      CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
-      return 0
-    fi
-    [ -n "$_cs_sg_line" ] && CS_SETTINGS_LAST_ERR="$_cs_sg_line"
-
-    _cs_sg_out=$(su --context u:r:shell:s0 2000 -c "settings --user 0 get ${_cs_q_ns} ${_cs_q_key}" 2>&1)
-    _cs_sg_rc=$?
-    _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
-    if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
-      CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
-      return 0
-    fi
-  fi
-
-  _cs_sg_out=$(settings get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
-  _cs_sg_rc=$?
-  _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
-  if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
-    CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
-    return 0
-  fi
-  [ -n "$_cs_sg_line" ] && CS_SETTINGS_LAST_ERR="$_cs_sg_line"
+  done
 
   return 1
 }
@@ -88,41 +168,24 @@ cs_settings_put() {
   _cs_sp_key=$2
   _cs_sp_val=$3
 
-  _cs_sp_out=$(settings --user 0 put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1)
-  _cs_sp_rc=$?
-  if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
-    return 0
-  fi
-
-  if command -v cmd >/dev/null 2>&1; then
-    _cs_sp_out=$(cmd settings --user 0 put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1)
+  if [ -n "$CS_SETTINGS_TRANSPORT" ]; then
+    cs_settings_exec_transport "$CS_SETTINGS_TRANSPORT" "put" "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val"
     _cs_sp_rc=$?
-    if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
+    if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$CS_SETTINGS_EXEC_OUT"; then
       return 0
     fi
+    CS_SETTINGS_TRANSPORT=""
   fi
 
-  if command -v su >/dev/null 2>&1; then
-    _cs_q_ns=$(cs_sh_quote "$_cs_sp_ns")
-    _cs_q_key=$(cs_sh_quote "$_cs_sp_key")
-    _cs_q_val=$(cs_sh_quote "$_cs_sp_val")
-    _cs_sp_out=$(su 2000 -c "settings --user 0 put ${_cs_q_ns} ${_cs_q_key} ${_cs_q_val}" 2>&1)
+  for _cs_tr in direct cmd su2000 su_shell setuidgid legacy; do
+    cs_settings_exec_transport "$_cs_tr" "put" "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val"
     _cs_sp_rc=$?
-    if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
+    [ "$_cs_sp_rc" -eq 127 ] && continue
+    if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$CS_SETTINGS_EXEC_OUT"; then
+      CS_SETTINGS_TRANSPORT="$_cs_tr"
       return 0
     fi
-    _cs_sp_out=$(su --context u:r:shell:s0 2000 -c "settings --user 0 put ${_cs_q_ns} ${_cs_q_key} ${_cs_q_val}" 2>&1)
-    _cs_sp_rc=$?
-    if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
-      return 0
-    fi
-  fi
-
-  _cs_sp_out=$(settings put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1)
-  _cs_sp_rc=$?
-  if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
-    return 0
-  fi
+  done
 
   return 1
 }
@@ -131,40 +194,24 @@ cs_settings_delete() {
   _cs_sd_ns=$1
   _cs_sd_key=$2
 
-  _cs_sd_out=$(settings --user 0 delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1)
-  _cs_sd_rc=$?
-  if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
-    return 0
-  fi
-
-  if command -v cmd >/dev/null 2>&1; then
-    _cs_sd_out=$(cmd settings --user 0 delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1)
+  if [ -n "$CS_SETTINGS_TRANSPORT" ]; then
+    cs_settings_exec_transport "$CS_SETTINGS_TRANSPORT" "delete" "$_cs_sd_ns" "$_cs_sd_key"
     _cs_sd_rc=$?
-    if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
+    if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$CS_SETTINGS_EXEC_OUT"; then
       return 0
     fi
+    CS_SETTINGS_TRANSPORT=""
   fi
 
-  if command -v su >/dev/null 2>&1; then
-    _cs_q_ns=$(cs_sh_quote "$_cs_sd_ns")
-    _cs_q_key=$(cs_sh_quote "$_cs_sd_key")
-    _cs_sd_out=$(su 2000 -c "settings --user 0 delete ${_cs_q_ns} ${_cs_q_key}" 2>&1)
+  for _cs_tr in direct cmd su2000 su_shell setuidgid legacy; do
+    cs_settings_exec_transport "$_cs_tr" "delete" "$_cs_sd_ns" "$_cs_sd_key"
     _cs_sd_rc=$?
-    if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
+    [ "$_cs_sd_rc" -eq 127 ] && continue
+    if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$CS_SETTINGS_EXEC_OUT"; then
+      CS_SETTINGS_TRANSPORT="$_cs_tr"
       return 0
     fi
-    _cs_sd_out=$(su --context u:r:shell:s0 2000 -c "settings --user 0 delete ${_cs_q_ns} ${_cs_q_key}" 2>&1)
-    _cs_sd_rc=$?
-    if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
-      return 0
-    fi
-  fi
-
-  _cs_sd_out=$(settings delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1)
-  _cs_sd_rc=$?
-  if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
-    return 0
-  fi
+  done
 
   return 1
 }
@@ -199,7 +246,7 @@ cs_settings_backup_once() {
   fi
 
   if ! cs_settings_get "$_cs_sbo_ns" "$_cs_sbo_key"; then
-    CS_SETTINGS_BINDER_FAILED=1
+    cs_settings_binder_mark_blocked
     return 1
   fi
 
@@ -226,7 +273,7 @@ cs_settings_apply_key() {
     return 0
   fi
 
-  CS_SETTINGS_BINDER_FAILED=1
+  cs_settings_binder_mark_blocked
   return 1
 }
 
@@ -264,7 +311,7 @@ cs_settings_clear_hos3_stuck_blur() {
     fi
     : > "$_cs_cb_marker" 2>/dev/null || true
   else
-    CS_SETTINGS_BINDER_FAILED=1
+    cs_settings_binder_mark_blocked
   fi
 }
 
@@ -272,9 +319,16 @@ cs_settings_sync_all() {
   cs_watchdog_init_dir || return 0
   : > "$CS_SETTINGS_APPLIED_FILE"
   CS_SETTINGS_BINDER_FAILED=0
+  export CS_SETTINGS_BINDER_FAILED
 
   if ! cs_settings_available; then
     cs_log "Settings TX: 'settings' binary unavailable; skipping."
+    return 0
+  fi
+
+  if cs_settings_binder_is_cached_blocked; then
+    CS_SETTINGS_BINDER_FAILED=1
+    export CS_SETTINGS_BINDER_FAILED
     return 0
   fi
 

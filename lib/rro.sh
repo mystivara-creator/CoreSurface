@@ -160,6 +160,8 @@ cs_rro_stage() {
 # Post-boot RRO activator: enables any staged CoreSurface overlay that OverlayManagerService
 # registered as disabled (`[ ] <pkg>`) so all mounted overlays become active (`[x]`).
 cs_rro_enable_staged() {
+  CS_RRO_OV_LIST_CACHE=""
+  export CS_RRO_OV_LIST_CACHE
   [ "${EFF_FEAT_RRO_OVERLAYS:-0}" = "1" ] || return 0
   [ -s "$CS_RRO_STAGED_LIST" ] || return 0
   command -v cmd >/dev/null 2>&1 || return 0
@@ -179,6 +181,16 @@ cs_rro_enable_staged() {
       fi
       ;;
   esac
+  case "$_cs_ov_list" in
+    ""|*Failure*|*Exception*|*Error*|*Binder*)
+      for _cs_rbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+        if [ -x "$_cs_rbb" ]; then
+          _cs_ov_list=$("$_cs_rbb" setuidgid 2000 cmd overlay list --user 0 2>&1 || true)
+          break
+        fi
+      done
+      ;;
+  esac
   [ -n "$_cs_ov_list" ] || return 0
 
   _cs_en_count=0
@@ -191,12 +203,22 @@ cs_rro_enable_staged() {
         _cs_en_count=$((_cs_en_count + 1))
       elif command -v su >/dev/null 2>&1 && su --context u:r:shell:s0 2000 -c "cmd overlay enable --user 0 '${_cs_epkg}'" >/dev/null 2>&1; then
         _cs_en_count=$((_cs_en_count + 1))
+      else
+        for _cs_rbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+          if [ -x "$_cs_rbb" ] && "$_cs_rbb" setuidgid 2000 cmd overlay enable --user 0 "$_cs_epkg" >/dev/null 2>&1; then
+            _cs_en_count=$((_cs_en_count + 1))
+            break
+          fi
+        done
       fi
     fi
   done < "$CS_RRO_STAGED_LIST"
 
   if [ "$_cs_en_count" -gt 0 ]; then
     cs_log "RRO Manager: enabled ${_cs_en_count} registered overlay(s) via OverlayManagerService."
+  else
+    CS_RRO_OV_LIST_CACHE="$_cs_ov_list"
+    export CS_RRO_OV_LIST_CACHE
   fi
   return 0
 }

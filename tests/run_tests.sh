@@ -1317,9 +1317,15 @@ _call_cnt=$(wc -l < "$SB_SETTINGS_CALLS" | tr -d ' ')
 assert_eq "$( [ "$_call_cnt" -ge 1 ] && [ "$_call_cnt" -le 4 ] && printf 'fast' || printf 'unexpected:%s' "$_call_cnt" )" "fast" "Binder circuit-breaker stops wasted settings subprocess retries (1..4 calls total)"
 assert_file_contains "$SB_STATE/coresurface.log" "skipping settings writes cleanly" "Settings TX logs clean single-line Binder circuit-breaker skip"
 assert_file_not_contains "$SB_STATE/coresurface.log" "WARN: settings get" "Settings TX does not spam WARN lines on Android 15/16 root Binder block"
+assert_file_not_contains "$SB_STATE/coresurface.log" "Verifier: settings service rejected Binder call" "Verifier respects CS_SETTINGS_BINDER_FAILED without redundant Binder retry"
+
+# Second run in the same boot hits per-boot Binder cache -> strictly 0 settings calls!
+: > "$SB_SETTINGS_CALLS"
+run_service
+assert_eq "$(wc -l < "$SB_SETTINGS_CALLS" | tr -d ' ')" "0" "Per-boot Binder cache skips settings calls completely on subsequent runs (0 calls)"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 24: Full-Stack Lightness, Audio Never-Downgrade & Balanced Pro Parallel Sweep ===\n'
+printf '=== Test 24: Full-Stack Lightness, Audio HAL Never-Fight, Batch getprop & Balanced Pro Parallel Sweep ===\n'
 setup_sandbox "t24_fullstack_perfection"
 write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
 write_mock_meminfo "7500000"
@@ -1333,9 +1339,37 @@ assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.soundfx.type=mi" "Audi
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.independentequalizer=true" "Flagship Audio unlocks zero-overhead 10-band Graphic EQ"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.earadj=true" "Flagship Audio unlocks earphone acoustic calibration"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.game.effect=true" "Flagship Audio unlocks Game Turbo audio enhancement"
-assert_file_contains "$SB_PROPS_LOG" "persist.vendor.audio.misound.disable=false" "Flagship Audio ensures Mi Sound pipeline is active"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.vendor.audio.misound.disable" "Audio HAL Never-Fight omits persist.vendor.audio.misound.disable so Dolby/audioserver never clashes"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_effect">true</bool>' "Flagship Audio XML enables support_sound_effect"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_spatial_audio">true</bool>' "Flagship Audio XML enables support_spatial_audio"
+
+# Verify single-pass batch getprop ([key]: [value] dump) achieves 100% score & 0 overridden props
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+cat > "$SB_BIN/getprop" <<EOF
+#!/bin/sh
+if [ \$# -eq 0 ]; then
+  awk -F '=' 'NF >= 2 { k=\$1; sub(/^[^=]*=/, ""); printf "[%s]: [%s]\\n", k, \$0 }' "$SB_PROPS_DB" 2>/dev/null || true
+  exit 0
+fi
+case "\$1" in
+  sys.boot_completed) printf '1\\n'; exit 0 ;;
+  ro.mi.os.version.name) printf 'OS3.0\\n'; exit 0 ;;
+  ro.build.version.sdk) printf '36\\n'; exit 0 ;;
+  ro.product.device) printf 'kunzite\\n'; exit 0 ;;
+  ro.product.marketname) printf 'Redmi Note 15 5G\\n'; exit 0 ;;
+esac
+awk -F '=' -v k="\$1" '\$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$SB_PROPS_DB" 2>/dev/null || true
+EOF
+chmod +x "$SB_BIN/getprop"
+run_service
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_PROPS_OVERRIDDEN=0" "Batch getprop verifier reports 0 overridden props"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_FLAGSHIP_AUDIO=verified_active" "Batch getprop verifier confirms FEAT_FLAGSHIP_AUDIO=verified_active"
+assert_file_contains "$SB_STATE/verify.state" "COMPAT_SCORE_PCT=100" "Batch getprop verifier reaches 100% compatibility score"
 
 # Verify balanced_pro receives zero-cost parallel_sweep & FCB
 setup_sandbox "t24b_balanced_pro_parallel"

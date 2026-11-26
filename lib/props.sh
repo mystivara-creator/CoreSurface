@@ -130,7 +130,9 @@ cs_set_prop_mem_only() {
   _cs_sm_key=$1
   _cs_sm_val=$2
   [ -n "$_cs_sm_key" ] && [ -n "$_cs_sm_val" ] || return 0
-  cs_find_resetprop || return 0
+  if [ -z "$CS_RESETPROP_BIN" ]; then
+    cs_find_resetprop || return 0
+  fi
   if [ "$CS_RESETPROP_MODE" = "magisk" ]; then
     "$CS_RESETPROP_BIN" resetprop -n "$_cs_sm_key" "$_cs_sm_val" 2>/dev/null || true
   else
@@ -382,8 +384,9 @@ cs_apply_feat_flagship_audio() {
   [ "$EFF_FEAT_FLAGSHIP_AUDIO" = "1" ] || return 0
 
   # Verified HyperOS / Xiaomi Flagship Speaker & Audio Framework pipeline flags
-  # (pure user-space audio framework/HAL props; zero kernel/sysfs coupling; zero idle DSP load)
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "persist.vendor.audio.misound.disable" "false"
+  # (pure user-space audio framework/HAL props; zero kernel/sysfs coupling; zero idle DSP load).
+  # Audio HAL Never-Fight: do NOT force persist.vendor.audio.misound.disable because vendor
+  # audioserver / Dolby DAX actively owns that runtime property to prevent double-DSP routing.
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.audiovisual" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.scenario" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.independentequalizer" "true"

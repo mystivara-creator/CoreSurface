@@ -63,14 +63,6 @@ cs_verify_settings_get() {
   return 1
 }
 
-cs_telem_get() {
-  _cs_tg_file=$1
-  _cs_tg_key=$2
-  if [ -r "$_cs_tg_file" ]; then
-    awk -F '=' -v k="$_cs_tg_key" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$_cs_tg_file" 2>/dev/null | tr -d '\r'
-  fi
-}
-
 cs_verify_xml_mount() {
   _cs_mounts=${CORESURFACE_PROC_MOUNTS:-/proc/mounts}
   _cs_xml_status=$(cs_state_get "XML_STATUS")
@@ -124,6 +116,7 @@ cs_verify_xml_tag_feature() {
 cs_verify_rro_overlays() {
   CS_V_RRO_ACTIVE=0
   CS_V_RRO_TOTAL=0
+  CS_V_RRO_INACTIVE=""
   _cs_live_ov_dir=${CORESURFACE_LIVE_OVERLAY_DIR:-/product/overlay}
 
   if [ "$CFG_FEAT_RRO_OVERLAYS" = "0" ]; then
@@ -156,7 +149,10 @@ cs_verify_rro_overlays() {
     return 0
   fi
 
-  _cs_ov_out=$(cmd overlay list --user 0 2>&1 || true)
+  _cs_ov_out=${CS_RRO_OV_LIST_CACHE:-}
+  if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
+    _cs_ov_out=$(cmd overlay list --user 0 2>&1 || true)
+  fi
   if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
     if command -v su >/dev/null 2>&1; then
       _cs_ov_out=$(su 2000 -c "cmd overlay list --user 0" 2>&1 || true)
@@ -166,6 +162,14 @@ cs_verify_rro_overlays() {
     if command -v su >/dev/null 2>&1; then
       _cs_ov_out=$(su --context u:r:shell:s0 2000 -c "cmd overlay list --user 0" 2>&1 || true)
     fi
+  fi
+  if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
+    for _cs_vbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+      if [ -x "$_cs_vbb" ]; then
+        _cs_ov_out=$("$_cs_vbb" setuidgid 2000 cmd overlay list --user 0 2>&1 || true)
+        break
+      fi
+    done
   fi
   if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
     _cs_ov_out=$(cmd overlay list 2>&1 || true)
@@ -182,6 +186,13 @@ cs_verify_rro_overlays() {
       CS_V_RRO_TOTAL=$((CS_V_RRO_TOTAL + 1))
       if printf '%s\n' "$_cs_ov_out" | grep -F -q "[x] $_cs_rpkg"; then
         CS_V_RRO_ACTIVE=$((CS_V_RRO_ACTIVE + 1))
+      else
+        _cs_short=${_cs_rpkg##*.}
+        if [ -z "$CS_V_RRO_INACTIVE" ]; then
+          CS_V_RRO_INACTIVE="$_cs_short"
+        else
+          CS_V_RRO_INACTIVE="${CS_V_RRO_INACTIVE},${_cs_short}"
+        fi
       fi
     fi
   done < "$CS_RRO_STAGED_LIST"
@@ -212,6 +223,32 @@ cs_verify_video_depth() {
   fi
 }
 
+# Build a single-pass getprop snapshot to avoid spawning 60+ getprop subshells on Android.
+cs_verify_init_props_snapshot() {
+  CS_V_SNAP_FILE="$CS_STATE_DIR/.getprop_snap.$$"
+  CS_V_SNAP_OK=0
+  if command -v getprop >/dev/null 2>&1; then
+    getprop 2>/dev/null | awk '
+      /^\[[^\]]+\]: \[.*\]$/ {
+        line = $0
+        sub(/^\[/, "", line)
+        idx = index(line, "]: [")
+        if (idx > 0) {
+          k = substr(line, 1, idx - 1)
+          v = substr(line, idx + 4)
+          sub(/\]$/, "", v)
+          print k "=" v
+        }
+      }
+    ' > "$CS_V_SNAP_FILE" 2>/dev/null || true
+    if [ -s "$CS_V_SNAP_FILE" ]; then
+      CS_V_SNAP_OK=1
+    else
+      rm -f "$CS_V_SNAP_FILE" 2>/dev/null || true
+    fi
+  fi
+}
+
 # Verify a single feature's applied props (and settings if any).
 cs_verify_feature() {
   _cs_vf_name=$1
@@ -233,24 +270,62 @@ cs_verify_feature() {
   _cs_vf_mismatch=0
 
   if [ -r "$CS_PROPS_AUDIT_FILE" ]; then
-    while IFS='|' read -r _cs_pf _cs_kv || [ -n "$_cs_pf" ]; do
-      [ "$_cs_pf" = "$_cs_vf_name" ] || continue
-      _cs_pk=${_cs_kv%%=*}
-      _cs_pv=${_cs_kv#*=}
-      [ -n "$_cs_pk" ] || continue
+    if [ "${CS_V_SNAP_OK:-0}" = "1" ] && [ -r "$CS_V_SNAP_FILE" ]; then
+      _cs_vf_stats=$(awk -v feat="$_cs_vf_name" -v ovfile="$CS_OVERRIDDEN_PROPS_FILE" '
+        NR == FNR {
+          eq = index($0, "=")
+          if (eq > 0) snap[substr($0, 1, eq - 1)] = substr($0, eq + 1)
+          next
+        }
+        {
+          bar = index($0, "|")
+          if (bar <= 0) next
+          f = substr($0, 1, bar - 1)
+          if (f != feat) next
+          kv = substr($0, bar + 1)
+          eq = index(kv, "=")
+          if (eq <= 0) next
+          pk = substr(kv, 1, eq - 1)
+          pv = substr(kv, eq + 1)
+          if (pk == "") next
+          checked++
+          actual = (pk in snap) ? snap[pk] : ""
+          if (actual == pv) {
+            matched++
+          } else {
+            mismatch++
+            print feat "|" pk "|" pv "|" (actual == "" ? "<empty>" : actual) >> ovfile
+          }
+        }
+        END { printf "%d %d %d\n", checked + 0, matched + 0, mismatch + 0 }
+      ' "$CS_V_SNAP_FILE" "$CS_PROPS_AUDIT_FILE" 2>/dev/null || printf '0 0 0\n')
+      _cs_vf_checked=${_cs_vf_stats%% *}
+      _cs_vf_rest=${_cs_vf_stats#* }
+      _cs_vf_matched=${_cs_vf_rest%% *}
+      _cs_vf_mismatch=${_cs_vf_rest#* }
+      CS_V_PROPS_TOTAL=$((CS_V_PROPS_TOTAL + _cs_vf_checked))
+      CS_V_PROPS_MATCHED=$((CS_V_PROPS_MATCHED + _cs_vf_matched))
+      CS_V_PROPS_OVERRIDDEN=$((CS_V_PROPS_OVERRIDDEN + _cs_vf_mismatch))
+    else
+      while IFS='|' read -r _cs_pf _cs_kv || [ -n "$_cs_pf" ]; do
+        [ "$_cs_pf" = "$_cs_vf_name" ] || continue
+        _cs_pk=${_cs_kv%%=*}
+        _cs_pv=${_cs_kv#*=}
+        [ -n "$_cs_pk" ] || continue
 
-      _cs_actual=$(cs_getprop "$_cs_pk")
-      _cs_vf_checked=$((_cs_vf_checked + 1))
-      CS_V_PROPS_TOTAL=$((CS_V_PROPS_TOTAL + 1))
+        _cs_actual=$(cs_getprop "$_cs_pk")
+        _cs_vf_checked=$((_cs_vf_checked + 1))
+        CS_V_PROPS_TOTAL=$((CS_V_PROPS_TOTAL + 1))
 
-      if [ "$_cs_actual" = "$_cs_pv" ]; then
-        CS_V_PROPS_MATCHED=$((CS_V_PROPS_MATCHED + 1))
-      else
-        _cs_vf_mismatch=$((_cs_vf_mismatch + 1))
-        CS_V_PROPS_OVERRIDDEN=$((CS_V_PROPS_OVERRIDDEN + 1))
-        printf '%s|%s|%s|%s\n' "$_cs_vf_name" "$_cs_pk" "$_cs_pv" "${_cs_actual:-<empty>}" >> "$CS_OVERRIDDEN_PROPS_FILE"
-      fi
-    done < "$CS_PROPS_AUDIT_FILE"
+        if [ "$_cs_actual" = "$_cs_pv" ]; then
+          CS_V_PROPS_MATCHED=$((CS_V_PROPS_MATCHED + 1))
+        else
+          _cs_vf_mismatch=$((_cs_vf_mismatch + 1))
+          CS_V_PROPS_OVERRIDDEN=$((CS_V_PROPS_OVERRIDDEN + 1))
+          printf '%s|%s|%s|%s\n' "$_cs_vf_name" "$_cs_pk" "$_cs_pv" "${_cs_actual:-<empty>}" >> "$CS_OVERRIDDEN_PROPS_FILE"
+        fi
+      done < "$CS_PROPS_AUDIT_FILE"
+    fi
   fi
 
   if [ "$CS_V_SETTINGS_OK" = "1" ] && [ -r "$CS_SETTINGS_APPLIED_FILE" ]; then
@@ -264,6 +339,9 @@ cs_verify_feature() {
 
       if ! cs_verify_settings_get "$_cs_sns" "$_cs_sk"; then
         CS_V_SETTINGS_OK="0"
+        if command -v cs_settings_binder_mark_blocked >/dev/null 2>&1; then
+          cs_settings_binder_mark_blocked
+        fi
         cs_log "Verifier: settings service rejected Binder call (${CS_SETTINGS_LAST_ERR:-unknown}); skipping remaining settings checks."
         break
       fi
@@ -308,18 +386,24 @@ cs_verifier_run() {
   CS_V_RRO_FEAT="skipped"
   CS_V_RRO_ACTIVE=0
   CS_V_RRO_TOTAL=0
+  CS_V_RRO_INACTIVE=""
   CS_V_VIDEO_DEPTH="skipped"
   CS_V_FEAT_EVALUATED=0
   CS_V_FEAT_VERIFIED=0
   CS_V_SETTINGS_OK="0"
-  if command -v settings >/dev/null 2>&1; then
-    CS_V_SETTINGS_OK="1"
+  if command -v settings >/dev/null 2>&1 && [ "${CS_SETTINGS_BINDER_FAILED:-0}" != "1" ]; then
+    if command -v cs_settings_binder_is_cached_blocked >/dev/null 2>&1 && cs_settings_binder_is_cached_blocked; then
+      CS_V_SETTINGS_OK="0"
+    else
+      CS_V_SETTINGS_OK="1"
+    fi
   fi
 
   : > "$CS_OVERRIDDEN_PROPS_FILE"
   CS_VERIFY_TMP="$CS_VERIFY_FILE.tmp.$$"
   : > "$CS_VERIFY_TMP"
 
+  cs_verify_init_props_snapshot
   cs_verify_xml_mount
   cs_verify_rro_overlays
   cs_verify_video_depth
@@ -341,6 +425,8 @@ cs_verifier_run() {
   _cs_v_audio=$CS_VF_RESULT
   cs_verify_feature "FEAT_FLAGSHIP_SUITE" "$CFG_FEAT_FLAGSHIP_SUITE" "$EFF_FEAT_FLAGSHIP_SUITE"
   _cs_v_suite=$CS_VF_RESULT
+
+  rm -f "${CS_V_SNAP_FILE:-}" 2>/dev/null || true
 
   for _cs_s in \
     "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
@@ -371,6 +457,7 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_XML_MOUNT" "$CS_V_XML_MOUNT"
   cs_verify_set "VERIFY_RRO_ACTIVE" "$CS_V_RRO_ACTIVE"
   cs_verify_set "VERIFY_RRO_TOTAL" "$CS_V_RRO_TOTAL"
+  cs_verify_set "VERIFY_RRO_INACTIVE" "$CS_V_RRO_INACTIVE"
   cs_verify_set "VERIFY_PROPS_TOTAL" "$CS_V_PROPS_TOTAL"
   cs_verify_set "VERIFY_PROPS_MATCHED" "$CS_V_PROPS_MATCHED"
   cs_verify_set "VERIFY_PROPS_OVERRIDDEN" "$CS_V_PROPS_OVERRIDDEN"
@@ -384,6 +471,8 @@ cs_verifier_run() {
     _cs_ov_keys=$(awk -F '|' 'NR <= 4 { if (s != "") s = s ","; s = s $2 } END { print s }' "$CS_OVERRIDDEN_PROPS_FILE" 2>/dev/null || true)
     [ -n "$_cs_ov_keys" ] && _cs_ov_note=" overridden=[${_cs_ov_keys}]"
   fi
-  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}${_cs_ov_note}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}."
+  _cs_rro_note=""
+  [ -n "$CS_V_RRO_INACTIVE" ] && _cs_rro_note=" inactive=[${CS_V_RRO_INACTIVE}]"
+  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}${_cs_ov_note}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}${_cs_rro_note}."
   return 0
 }
