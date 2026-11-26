@@ -439,10 +439,6 @@ cs_apply_feat_flagship_suite() {
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.vendor.battery.ai.predict" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.translate.state.supportAiSubtitles" "true"
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.translate.state.supportVoiceTrans" "true"
-  _cs_vbv=$(cs_getprop "ro.vendor.video_box.version")
-  if [ -z "$_cs_vbv" ] || ! cs_is_uint "$_cs_vbv" || [ "$_cs_vbv" -lt 2 ]; then
-    cs_set_prop "FEAT_FLAGSHIP_SUITE" "ro.vendor.video_box.version" "2"
-  fi
 }
 
 cs_apply_all_props() {
