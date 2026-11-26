@@ -194,12 +194,13 @@ cs_verify_engine() {
   fi
 
   # Single-pass POSIX parser per telemetry file (0 awk forks instead of ~90)
+  _cs_cr=$(printf '\r')
   for _cs_tf in "$_cs_t_sysui" "$_cs_t_home" "$_cs_t_minus" "$_cs_t_aod" "$_cs_t_settings"; do
     [ -r "$_cs_tf" ] || continue
     _cs_act="" _cs_tf_boot="" _cs_mode="" _cs_mp="" _cs_hz="" _cs_lod="" _cs_hk="" _cs_bm=""
     _cs_ng=0 _cs_fh=0 _cs_ag=0 _cs_sp=0 _cs_cv=0 _cs_nt=0 _cs_nr=0 _cs_ct=0
     while IFS='=' read -r _cs_tk _cs_tv || [ -n "$_cs_tk" ]; do
-      _cs_tv=${_cs_tv%$(printf '\r')}
+      _cs_tv=${_cs_tv%"$_cs_cr"}
       case "$_cs_tk" in
         ENGINE_ACTIVE)  _cs_act="$_cs_tv" ;;
         BOOT_ID)        _cs_tf_boot="$_cs_tv" ;;
