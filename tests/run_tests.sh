@@ -912,6 +912,13 @@ CORESURFACE_LIVE_OVERLAY_DIR="$SB/empty_live_overlay" \
   run_service
 assert_file_contains "$SB_STATE/os_bugs.state" "MISSING_META_OVERLAYFS" "Late Device Logic detects missing meta-overlayfs metamodule"
 
+_diag15=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
+printf '%s\n' "$_diag15" > "$SB/diag15.txt"
+assert_file_contains "$SB/diag15.txt" "OS Bug Logic: detected=" "diag-report prints OS Bug Logic line"
+assert_file_not_contains "$SB/diag15.txt" "OS Bug Logic: detected= mitigated=" "diag-report populates OS Bug Logic counts instead of blank values"
+assert_file_contains "$SB/diag15.txt" "HOS3_ADVTEX_TOAST_RECENTS" "diag-report includes detected OS Bug Logic CSV list"
+
 # ---------------------------------------------------------------------------
 printf '=== Test 16: Immutable Stock Snapshot (No Flagship Self-Misclassification) & Never-Downgrade ===\n'
 setup_sandbox "t16_stock_snapshot"

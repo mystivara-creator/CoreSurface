@@ -383,6 +383,10 @@ cs_settings_sync_all() {
     cs_settings_rollback_key "secure" "aod_mode_time" || true
   fi
 
+  if [ "${CS_SETTINGS_BINDER_FAILED:-0}" = "1" ]; then
+    cs_log "Settings TX: Android 15/16 root Binder restricted; skipping settings writes cleanly."
+  fi
+
   return 0
 }
 
