@@ -171,6 +171,7 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_ui_orientation_v2|true\n'
       printf 'bool|support_power_mode|true\n'
       printf 'bool|support_power_save_new|true\n'
+      printf 'bool|support_super_wallpaper|true\n'
       printf 'integer|support_inner_record|1\n'
     fi
   } > "$_cs_spec_file"

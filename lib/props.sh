@@ -203,9 +203,12 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.sf_charge_anim_supported" "true"
-      # Real-time Recents task-card mask blur adds GPU overdraw on mid-range SoCs; enable only on flagship GPUs
+      # Real-time Recents task-card mask blur causes GPU frame-time spikes during App Close -> Recent Apps
+      # on mid-range GPUs; explicitly disable it on stock device_level < 3 (since HOS 3 defaults it to true at device_level=3).
       if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
         cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "true"
+      else
+        cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "false"
       fi
       cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
@@ -227,6 +230,9 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition_v" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
+      if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
+        cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "false"
+      fi
       cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
     *)
@@ -324,8 +330,8 @@ cs_apply_feat_blur() {
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
     cs_set_prop "FEAT_BLUR" "persist.sys.bionic_material_supported" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
-    cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
     if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
+      cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
       cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
       cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
       cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"
@@ -336,14 +342,14 @@ cs_apply_feat_blur() {
     # Lightweight HyperOS 3 Advanced Textures v4 contract (strictly resetprop -n):
     # - Never-Downgrade advanced_visual_release: min 4 (preserves 5+ on HOS 3.1/3.2 ROMs)
     # - Never overwrite persist.sys.background_blur_status_default so HyperOS Settings toggle stays consistent
-    # - Zero-cost G2 SmoothCorner on all devices; heavy GPU shaders (MiShadow, BlurNoise,
-    #   BackdropSampling) gated to native flagship GPUs (stock device_level >= 3) to prevent
-    #   mid-range GPU spikes and -1 Screen black blinks.
+    # - Smooth window corners on all devices; heavy per-view shaders (view_smoothcorner, MiShadow,
+    #   BlurNoise, BackdropSampling) gated to native flagship GPUs (stock device_level >= 3) for
+    #   consistent frame pacing during App Close -> Recent Apps and scrolling on mid-range GPUs.
     _cs_avr=$(cs_max_uint 4 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
-    cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
     if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
+      cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
       cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
       cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
       cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"

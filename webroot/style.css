@@ -213,7 +213,8 @@ code {
 .kv-row {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  align-items: baseline;
+  gap: 14px;
   padding: 8px 0;
   border-bottom: 1px solid rgba(38, 54, 77, 0.7);
 }
@@ -225,12 +226,17 @@ code {
 
 .kv-row span {
   color: var(--muted);
+  font-size: 13px;
   flex-shrink: 0;
 }
 
 .kv-row strong {
   text-align: right;
-  word-break: break-all;
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: normal;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .feat-list {

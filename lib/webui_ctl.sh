@@ -353,6 +353,21 @@ cs_cmd_diag_report() {
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
 
+  _dr_bdet="0" _dr_bmit="0" _dr_bcsv="none"
+  if [ -r "$CS_OS_BUGS_FILE" ]; then
+    while IFS='=' read -r _dr_bk _dr_bv || [ -n "$_dr_bk" ]; do
+      case "$_dr_bk" in
+        OS_BUGS_DETECTED)  [ -n "$_dr_bv" ] && _dr_bdet="$_dr_bv" ;;
+        OS_BUGS_MITIGATED) [ -n "$_dr_bv" ] && _dr_bmit="$_dr_bv" ;;
+        OS_BUGS_CSV)       [ -n "$_dr_bv" ] && _dr_bcsv="$_dr_bv" ;;
+      esac
+    done < "$CS_OS_BUGS_FILE"
+  fi
+
+  _dr_rro_inact=$(cs_verify_get VERIFY_RRO_INACTIVE)
+  _dr_rro_note=""
+  [ -n "$_dr_rro_inact" ] && _dr_rro_note=" inactive=[${_dr_rro_inact}]"
+
   printf '=== CoreSurface v1.3.0 Standalone Diagnostic Report ===\n'
   printf 'ROM: %s (%s) | HyperOS Major: %s | Android SDK: %s\n' \
     "$CS_ROM_FAMILY" "${CS_ROM_VERSION:-Unknown}" "$CS_HYPEROS_MAJOR" "$CS_ANDROID_SDK"
@@ -365,15 +380,14 @@ cs_cmd_diag_report() {
     "$(cs_verify_get VERIFY_FEAT_VERIFIED)" "$(cs_verify_get VERIFY_FEAT_EVALUATED)" \
     "$(cs_verify_get VERIFY_PROPS_MATCHED)" "$(cs_verify_get VERIFY_PROPS_TOTAL)"
   printf 'OS Bug Logic: detected=%s mitigated=%s list=%s\n' \
-    "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_DETECTED)" \
-    "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_MITIGATED)" \
-    "$(cs_telem_get "$CS_OS_BUGS_FILE" OS_BUGS_CSV)"
+    "$_dr_bdet" "$_dr_bmit" "$_dr_bcsv"
   printf 'XML Patcher: status=%s mount=%s tags=%s source=%s\n' \
     "$(cs_state_get XML_STATUS)" "$(cs_verify_get VERIFY_XML_MOUNT)" \
     "$(cs_state_get XML_PATCHED_TAGS)" "$(cs_state_get XML_SOURCE)"
-  printf 'RRO Overlays: status=%s active=%s/%s | Custom Color Expert: %s | AOD Unlock: %s\n' \
+  printf 'RRO Overlays: status=%s active=%s/%s%s | Custom Color Expert: %s | AOD Unlock: %s\n' \
     "$(cs_state_get RRO_STATUS)" "$(cs_verify_get VERIFY_RRO_ACTIVE)" \
-    "$(cs_verify_get VERIFY_RRO_TOTAL)" "$(cs_verify_get VERIFY_FEAT_COLOR_EXPERT)" \
+    "$(cs_verify_get VERIFY_RRO_TOTAL)" "$_dr_rro_note" \
+    "$(cs_verify_get VERIFY_FEAT_COLOR_EXPERT)" \
     "$(cs_verify_get VERIFY_FEAT_AOD_UNLOCK)"
   printf 'Flagship Porting: Audio & Speaker=%s | Porting Suite=%s\n' \
     "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_AUDIO)" \
