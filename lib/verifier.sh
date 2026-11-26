@@ -248,8 +248,10 @@ cs_verify_engine() {
       *";motion="*)
         _cs_live_m=$(printf '%s' "$_cs_live_cfg" | sed -n 's/.*motion=\([^;]*\).*/\1/p')
         case "$_cs_live_m" in
-          ios|coloros|hyperos4|off) CS_V_ENGINE_MOTION="$_cs_live_m" ;;
-          silk) CS_V_ENGINE_MOTION="coloros" ;;
+          snappy|fluid|bouncy|off) CS_V_ENGINE_MOTION="$_cs_live_m" ;;
+          coloros|silk)            CS_V_ENGINE_MOTION="snappy" ;;
+          hyperos4)                CS_V_ENGINE_MOTION="fluid" ;;
+          ios)                     CS_V_ENGINE_MOTION="bouncy" ;;
         esac
         ;;
     esac

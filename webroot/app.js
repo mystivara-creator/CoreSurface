@@ -83,9 +83,9 @@ function makeKvRow(label, value) {
 }
 
 function formatMotion(p) {
-  if (p === 'ios') return 'iOS Spring (CoreSpring)';
-  if (p === 'coloros' || p === 'silk') return 'ColorOS Quantum (CoreSpring)';
-  if (p === 'hyperos4') return 'HyperOS 4 Crisp (CoreSpring)';
+  if (p === 'snappy' || p === 'coloros' || p === 'silk') return 'Snappy (Fast & Crisp)';
+  if (p === 'fluid' || p === 'hyperos4') return 'Fluid (Silky Glide)';
+  if (p === 'bouncy' || p === 'ios') return 'Bouncy (Elastic Spring)';
   if (p === 'off' || p === '0') return 'Stock Flagship (Native)';
   return p || '-';
 }
@@ -130,7 +130,9 @@ function setSegmentValue(key, val) {
   if (!group) return;
   let normalized = (val === 'auto') ? '1' : val;
   if (key === 'FEAT_MOTION_PROFILE') {
-    if (normalized === 'silk') normalized = 'coloros';
+    if (normalized === 'coloros' || normalized === 'silk') normalized = 'snappy';
+    if (normalized === 'hyperos4') normalized = 'fluid';
+    if (normalized === 'ios') normalized = 'bouncy';
     if (normalized === 'off') normalized = '0';
   }
   for (const btn of group.querySelectorAll('button')) {
@@ -242,7 +244,7 @@ async function refreshStatus() {
     tierPill.textContent = kv.eff_tier_label || kv.eff_tier || 'Auto';
 
     // Controls
-    setSegmentValue('FEAT_MOTION_PROFILE', kv.cfg_feat_motion_profile || 'hyperos4');
+    setSegmentValue('FEAT_MOTION_PROFILE', kv.cfg_feat_motion_profile || 'snappy');
     setSegmentValue('FEAT_SURGICAL_GUARD', kv.cfg_feat_surgical_guard || '1');
     setSegmentValue('FEAT_AOD_UNLOCK', kv.cfg_feat_aod_unlock || '1');
     setSegmentValue('FEAT_FLAGSHIP_AUDIO', kv.eff_feat_flagship_audio === '1' ? '1' : '0');

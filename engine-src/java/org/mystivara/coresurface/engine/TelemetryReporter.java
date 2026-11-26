@@ -31,7 +31,7 @@ public final class TelemetryReporter {
     private final String processName;
     private final String bootId;
     private volatile File cacheDir;
-    private volatile String motionProfile = EngineConfig.MOTION_HYPEROS4;
+    private volatile String motionProfile = EngineConfig.MOTION_FLUID;
     private volatile int displayHz = 60;
     private volatile String lodTier = "FULL";
     private volatile int thermalStatus = 0;
@@ -219,7 +219,7 @@ public final class TelemetryReporter {
 
             StringBuilder sb = new StringBuilder(420);
             sb.append("ENGINE_ACTIVE=1\n");
-            sb.append("ENGINE_VERSION=1.2.0\n");
+            sb.append("ENGINE_VERSION=1.3.0\n");
             if (!bootId.isEmpty()) {
                 sb.append("BOOT_ID=").append(bootId).append('\n');
             }

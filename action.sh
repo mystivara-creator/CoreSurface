@@ -1,11 +1,11 @@
 #!/system/bin/sh
-# CoreSurface v1.2.0 - Root Manager Action Button (KernelSU-Next / Magisk 28+ / APatch)
+# CoreSurface v1.3.0 - Root Manager Action Button (KernelSU-Next / Magisk 28+ / APatch)
 # Runs instant live hot-sync & re-verification and prints a clean diagnostic summary.
 
 MODDIR=${CORESURFACE_MODDIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 
 printf '================================================\n'
-printf '  CoreSurface v1.2.0 - Live Sync & Diagnostics\n'
+printf '  CoreSurface v1.3.0 - Live Sync & Diagnostics\n'
 printf '================================================\n'
 
 if [ ! -r "$MODDIR/lib/webui_ctl.sh" ]; then

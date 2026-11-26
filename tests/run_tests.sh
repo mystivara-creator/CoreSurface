@@ -621,10 +621,16 @@ for _gk in FEAT_NATIVE_TIER FEAT_SURGICAL_GUARD FEAT_THERMAL_LOD FEAT_AOD_UNLOCK
   PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set "$_gk" 0 >/dev/null
   assert_file_contains "$SB_STATE/config.prop" "${_gk}=0" "WebUI accepts key ${_gk}=0"
 done
-for _mp in ios coloros hyperos4 silk 0; do
+for _mp in snappy fluid bouncy 0; do
   PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE "$_mp" >/dev/null
   assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=${_mp}" "WebUI accepts FEAT_MOTION_PROFILE=${_mp}"
 done
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE ios >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=bouncy" "Legacy alias ios maps cleanly to bouncy"
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE coloros >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=snappy" "Legacy alias coloros maps cleanly to snappy"
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE hyperos4 >/dev/null
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=fluid" "Legacy alias hyperos4 maps cleanly to fluid"
 if PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE invalid >/dev/null 2>&1; then
   fail "WebUI should reject invalid FEAT_MOTION_PROFILE value"
 else
@@ -740,15 +746,15 @@ printf 'global|disable_window_blurs=1\n' > "$SB_SETTINGS_DB"
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" tier flagship >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=flagship" "tier flagship sets CS_TIER_MODE=flagship"
-assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=coloros" "tier flagship sets canonical FEAT_MOTION_PROFILE=coloros"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=snappy" "tier flagship sets canonical FEAT_MOTION_PROFILE=snappy"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "tier flagship immediately hot-syncs settings"
 assert_file_contains "$SB_SETTINGS_DB" "secure|aod_mode_time=0" "Non-LTPO AOD sets secure/aod_mode_time=0"
-assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=coloros;native=1;guard=1;thermallod=1;aod=1" "tier flagship pushes live Motion Engine IPC immediately"
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=snappy;native=1;guard=1;thermallod=1;aod=1" "tier flagship pushes live Motion Engine IPC immediately"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" tier low >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=low" "tier low sets CS_TIER_MODE=low"
-assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=hyperos4" "tier low sets crisp FEAT_MOTION_PROFILE=hyperos4"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=fluid" "tier low sets smooth FEAT_MOTION_PROFILE=fluid"
 assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "tier low STILL keeps standard blur enabled"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
@@ -758,7 +764,7 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync
 _diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
 printf '%s\n' "$_diag" > "$SB/diag.txt"
-assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.2.0 Flagship Motion Diagnostic Report ===" "diag-report outputs structured Flagship Motion v1.2.0 header"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.3.0 Flagship Motion Diagnostic Report ===" "diag-report outputs structured Flagship Motion v1.3.0 header"
 assert_file_contains "$SB/diag.txt" "Motion Engine:" "diag-report includes Motion Engine telemetry line"
 assert_file_contains "$SB/diag.txt" "Custom Color Expert:" "diag-report includes Custom Color Expert status"
 assert_file_contains "$SB/diag.txt" "AOD Unlock:" "diag-report includes AOD Unlock status"
@@ -881,7 +887,7 @@ CORESURFACE_ENGINE_AOD_TELEM="$SB/aod_telem.prop" \
   run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=1" "Verifier confirms active Engine runtime from telemetry"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MODE=NATIVE_MOTION" "Verifier records honest NATIVE_MOTION engine mode"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MOTION=hyperos4" "Verifier records live MOTION_PROFILE=hyperos4"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MOTION=fluid" "Verifier records live MOTION_PROFILE=fluid (legacy hyperos4 mapped cleanly)"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HZ=120" "Verifier records highest live DISPLAY_HZ=120"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_LOD=FULL" "Verifier reports live Thermal-Adaptive LOD tier"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_HOOKS=ToastGuard,NativeFlagshipTier,FolmePhysics,RecentsGuard,AodNonLtpoUnlock,AodFlagshipTier" "Verifier deduplicates hook names across SystemUI + MiuiHome + MiuiAod"
@@ -900,7 +906,7 @@ PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_
   CORESURFACE_ENGINE_INSTALLED=1 CORESURFACE_ENGINE_SYSUI_TELEM="$SB/sysui_telem.prop" \
   CORESURFACE_ENGINE_HOME_TELEM="$SB/home_telem.prop" CORESURFACE_ENGINE_AOD_TELEM="$SB/aod_telem.prop" \
   sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE silk >/dev/null
-assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=silk;native=1;guard=1;thermallod=1;aod=1" "Live switch updates zero-Binder debug.coresurface.cfg via resetprop -n instantly"
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=snappy;native=1;guard=1;thermallod=1;aod=1" "Live switch updates zero-Binder debug.coresurface.cfg via resetprop -n instantly (legacy silk -> snappy)"
 assert_file_not_contains "$SB_STATE/state.prop" "FEAT_MOTION_PROFILE" "Live Motion Profile switch does NOT add to PENDING_KEYS (zero reboot required)"
 
 # 13d: SELinux-safe pm install -r -S <size> streaming in service.sh (idempotent)
@@ -1007,7 +1013,7 @@ chmod +x "$SB_BIN/getevent"
 PATH="$SB_BIN:$PATH" MODPATH="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/customize.sh" >/dev/null
 assert_file_contains "$SB_STATE/config.prop" "CS_TIER_MODE=balanced_pro" "Volume Up x2 + Volume Down selects balanced_pro tier"
-assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=ios" "Volume Up + Volume Down selects iOS Fluid (ios) profile"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_MOTION_PROFILE=snappy" "Volume Up + Volume Down selects Snappy (snappy) profile"
 assert_eq "$( [ -f "$SB_MOD/system/product/overlay/CoreSurfaceMiWallpaper.apk" ] && printf 'yes' || printf 'no' )" "yes" "customize.sh stages balanced_pro RRO overlays immediately after volume selection"
 
 # Non-interactive fallback leaves CS_TIER_MODE=auto cleanly without hanging
@@ -1203,7 +1209,7 @@ CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
 CORESURFACE_ENGINE_SETTINGS_TELEM="$SB/missing_settings.prop" \
   run_service
 
-assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=hyperos4;native=1;guard=1;thermallod=1;aod=1" "su 2000 -c preserves full semicolon-delimited coresurface_engine_v1 without shell splitting"
+assert_file_contains "$SB_SETTINGS_DB" "global|coresurface_engine_v1=motion=fluid;native=1;guard=1;thermallod=1;aod=1" "su 2000 -c preserves full semicolon-delimited coresurface_engine_v1 without shell splitting"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_ACTIVE=0" "Verifier rejects stale telemetry from previous BOOT_ID"
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=pending_lsposed" "Stale telemetry does not fake verified_active"
 
@@ -1249,8 +1255,8 @@ assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=off;native=0;g
 _act_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/action.sh")
 printf '%s\n' "$_act_out" > "$SB/action.out"
-assert_file_contains "$SB/action.out" "CoreSurface v1.2.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
-assert_file_contains "$SB/action.out" "=== CoreSurface v1.2.0 Flagship Motion Diagnostic Report ===" "action.sh runs diagnostic report cleanly"
+assert_file_contains "$SB/action.out" "CoreSurface v1.3.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
+assert_file_contains "$SB/action.out" "=== CoreSurface v1.3.0 Flagship Motion Diagnostic Report ===" "action.sh runs diagnostic report cleanly"
 
 # Test uninstall.sh disarms active debug.coresurface.cfg and uninstalls CoreSurfaceEngine APK
 printf 'debug.coresurface.cfg=motion=hyperos4;native=1;guard=1;thermallod=1;aod=1\n' > "$SB_PROPS_DB"
@@ -1482,21 +1488,21 @@ chmod +x "$SB_BIN/pidof"
 
 run_post_fs_data
 
-# Live zero-Binder switch to distinct iOS Fluid & ColorOS Quantum profiles (0 reboot!)
+# Live zero-Binder switch to distinct Bouncy & Snappy profiles (0 reboot!)
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
-  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE ios >/dev/null
-assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=ios;" "WebUI live switch pushes motion=ios zero-Binder IPC"
-assert_file_not_contains "$SB_STATE/state.prop" "FEAT_MOTION_PROFILE" "Live iOS Fluid switch requires 0 reboot"
+  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE bouncy >/dev/null
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=bouncy;" "WebUI live switch pushes motion=bouncy zero-Binder IPC"
+assert_file_not_contains "$SB_STATE/state.prop" "FEAT_MOTION_PROFILE" "Live Bouncy switch requires 0 reboot"
 
 PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
-  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE coloros >/dev/null
-assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=coloros;" "WebUI live switch pushes motion=coloros zero-Binder IPC"
+  sh "$SB_MOD/lib/webui_ctl.sh" set FEAT_MOTION_PROFILE snappy >/dev/null
+assert_file_contains "$SB_PROPS_DB" "debug.coresurface.cfg=motion=snappy;" "WebUI live switch pushes motion=snappy zero-Binder IPC"
 
 # Verifier accepts ShellTransitionPhysics / LauncherChoreography as genuine active motion hooks
 cat > "$SB/sysui_wmshell_telem.prop" <<'EOF'
 ENGINE_ACTIVE=1
 ENGINE_MODE=NATIVE_MOTION
-MOTION_PROFILE=coloros
+MOTION_PROFILE=snappy
 DISPLAY_HZ=120
 LOD_TIER=FULL
 HOOKS_BOUND=ToastGuard,ShellTransitionPhysics,SystemUIChoreography
@@ -1508,7 +1514,7 @@ EOF
 cat > "$SB/home_choreo_telem.prop" <<'EOF'
 ENGINE_ACTIVE=1
 ENGINE_MODE=NATIVE_MOTION
-MOTION_PROFILE=coloros
+MOTION_PROFILE=snappy
 DISPLAY_HZ=120
 LOD_TIER=FULL
 HOOKS_BOUND=RecentsGuard,LauncherChoreography
@@ -1523,9 +1529,9 @@ CORESURFACE_ENGINE_HOME_TELEM="$SB/home_choreo_telem.prop" \
 CORESURFACE_ENGINE_AOD_TELEM="$SB/missing_aod.prop" \
   run_service
 assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_MOTION_PROFILE=verified_active" "Verifier marks FEAT_MOTION_PROFILE verified_active via WMShell + LauncherChoreography hooks"
-assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MOTION=coloros" "Verifier reports active coloros physics profile"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_ENGINE_MOTION=snappy" "Verifier reports active snappy physics profile"
 
-# Host JVM mathematical verification of CoreSpringSolver & MotionProfileSpec (exact ODE & interruptibility)
+# Host JVM mathematical verification of CoreSpringSolver & MotionProfileSpec (exact ODE & unmistakable contrast)
 if command -v javac >/dev/null 2>&1 && command -v java >/dev/null 2>&1; then
   _jdir="$SB/jvm_physics_test"
   mkdir -p "$_jdir/classes"
@@ -1536,11 +1542,11 @@ import org.mystivara.coresurface.engine.MotionProfileSpec;
 public final class PhysicsMathTest {
     public static void main(String[] args) {
         // 1. Exact convergence across underdamped, critically damped, and overdamped regimes
-        double[] zetas = new double[] { 0.85, 1.00, 1.20 };
+        double[] zetas = new double[] { 0.66, 0.94, 1.20 };
         for (double z : zetas) {
             CoreSpringSolver s = new CoreSpringSolver(z, 0.34);
             s.reset(0.0, 1.0, 0.0);
-            for (int i = 0; i < 180; i++) {
+            for (int i = 0; i < 240; i++) {
                 s.step(1.0 / 120.0);
             }
             if (Math.abs(s.getPosition() - 1.0) > 0.005 || Double.isNaN(s.getPosition())) {
@@ -1549,7 +1555,7 @@ public final class PhysicsMathTest {
         }
 
         // 2. Unconditional stability under severe frame drop (dt = 50ms)
-        CoreSpringSolver drop = new CoreSpringSolver(0.86, 0.32);
+        CoreSpringSolver drop = new CoreSpringSolver(0.66, 0.38);
         drop.reset(0.0, 100.0, 250.0);
         for (int i = 0; i < 40; i++) {
             drop.step(0.050);
@@ -1580,51 +1586,46 @@ public final class PhysicsMathTest {
             throw new AssertionError("Interrupted spring failed to settle to new target 0: " + intr.getPosition());
         }
 
-        // 4. Distinct physics character: iOS Fluid vs ColorOS Quantum
-        MotionProfileSpec ios = MotionProfileSpec.forProfile("ios", 120.0f, 1.0f);
-        MotionProfileSpec cos = MotionProfileSpec.forProfile("coloros", 120.0f, 1.0f);
-        if (ios.shellAllowOvershoot || !(ios.shellDamping > cos.shellDamping)) {
-            throw new AssertionError("iOS Fluid must be higher-damped critically fluid without overshoot");
+        // 4. Genuine unmistakable contrast across Snappy, Fluid, and Bouncy (not subtle gimmick!)
+        MotionProfileSpec snappy = MotionProfileSpec.forProfile("snappy", 120.0f, 1.0f);
+        MotionProfileSpec fluid  = MotionProfileSpec.forProfile("fluid", 120.0f, 1.0f);
+        MotionProfileSpec bouncy = MotionProfileSpec.forProfile("bouncy", 120.0f, 1.0f);
+
+        if (!(snappy.shellSettleMs <= 260 && fluid.shellSettleMs >= 420)) {
+            throw new AssertionError("Snappy vs Fluid must have wide settle contrast: snappy="
+                    + snappy.shellSettleMs + "ms fluid=" + fluid.shellSettleMs + "ms");
         }
-        if (!(ios.shellSettleMs > cos.shellSettleMs)) {
-            throw new AssertionError("iOS Fluid must have longer fluid settle tail than ColorOS Quantum");
+        if (!(bouncy.shellAllowOvershoot && bouncy.shellMaxOvershoot >= 1.05f && bouncy.appPosDamping <= 0.70f)) {
+            throw new AssertionError("Bouncy must provide genuine visible elastic overshoot");
         }
-        if (!(cos.shellInitialVelocity > ios.shellInitialVelocity) || !(cos.appVelocityScale > ios.appVelocityScale)) {
-            throw new AssertionError("ColorOS Quantum must have snappier launch velocity & handoff than iOS Fluid");
+        if (snappy.shellAllowOvershoot || fluid.shellAllowOvershoot) {
+            throw new AssertionError("Snappy & Fluid must remain zero-overshoot");
         }
-        double iosEarly = CoreSpringSolver.evaluateUnit(ios.shellDamping, ios.shellResponseSec, 0.10, ios.shellInitialVelocity);
-        double cosEarly = CoreSpringSolver.evaluateUnit(cos.shellDamping, cos.shellResponseSec, 0.10, cos.shellInitialVelocity);
-        if (!(cosEarly > iosEarly)) {
-            throw new AssertionError("ColorOS Quantum must launch faster at 100ms than iOS Fluid");
+        if (!(snappy.folmeBlendWeight >= 0.80f && fluid.folmeBlendWeight >= 0.80f && bouncy.folmeBlendWeight >= 0.80f)) {
+            throw new AssertionError("Active profiles must apply strong Folme blend weight (>=0.80)");
         }
-        // Legacy silk alias maps cleanly to coloros
-        MotionProfileSpec legacy = MotionProfileSpec.forProfile("silk", 120.0f, 1.0f);
-        if (!MotionProfileSpec.PROFILE_COLOROS.equals(legacy.profileId)) {
-            throw new AssertionError("Legacy silk alias must map cleanly to coloros");
+        double snappyEarly = CoreSpringSolver.evaluateUnit(snappy.shellDamping, snappy.shellResponseSec, 0.10, snappy.shellInitialVelocity);
+        double fluidEarly  = CoreSpringSolver.evaluateUnit(fluid.shellDamping, fluid.shellResponseSec, 0.10, fluid.shellInitialVelocity);
+        if (!(snappyEarly - fluidEarly > 0.20)) {
+            throw new AssertionError("Snappy must be dramatically ahead of Fluid at 100ms: " + snappyEarly + " vs " + fluidEarly);
         }
 
-        // 5. Clean iOS Bouncy Lock-to-Home unlock verification (profile-isolated, zero Workspace desync)
-        MotionProfileSpec hos4 = MotionProfileSpec.forProfile("hyperos4", 120.0f, 1.0f);
-        if (!ios.unlockBounceEnabled) {
-            throw new AssertionError("iOS profile must enable clean bouncy Lock-to-Home unlock");
+        // Verify real visible overshoot on Bouncy profile
+        double maxBouncy = 0.0;
+        for (int i = 1; i <= 120; i++) {
+            double v = CoreSpringSolver.evaluateUnit(bouncy.shellDamping, bouncy.shellResponseSec, i / 120.0, bouncy.shellInitialVelocity);
+            if (v > maxBouncy) maxBouncy = v;
         }
-        if (cos.unlockBounceEnabled || hos4.unlockBounceEnabled) {
-            throw new AssertionError("ColorOS & HyperOS 4 profiles must stay clean without iOS unlock bounce");
+        if (!(maxBouncy >= 1.04)) {
+            throw new AssertionError("Bouncy curve must visibly overshoot >= 4%: max=" + maxBouncy);
         }
-        CoreSpringSolver unlockScale = new CoreSpringSolver(ios.unlockDamping, ios.unlockResponseSec);
-        unlockScale.reset(ios.unlockStartScale, 1.0, -(ios.unlockStartScale - 1.0) * 3.0);
-        double minScale = ios.unlockStartScale;
-        for (int i = 0; i < 180; i++) {
-            double v = unlockScale.step(1.0 / 120.0);
-            if (v < minScale) {
-                minScale = v;
-            }
-        }
-        if (!(minScale < 0.985 && minScale > 0.90)) {
-            throw new AssertionError("iOS unlock spring did not produce clean elastic bounce: minScale=" + minScale);
-        }
-        if (Math.abs(unlockScale.getPosition() - 1.0) > 0.005) {
-            throw new AssertionError("iOS unlock spring failed to settle at 1.0: " + unlockScale.getPosition());
+
+        // 5. Seamless backward-compatible legacy alias normalization
+        if (!MotionProfileSpec.PROFILE_SNAPPY.equals(MotionProfileSpec.forProfile("coloros", 120.0f, 1.0f).profileId)
+                || !MotionProfileSpec.PROFILE_SNAPPY.equals(MotionProfileSpec.forProfile("silk", 120.0f, 1.0f).profileId)
+                || !MotionProfileSpec.PROFILE_FLUID.equals(MotionProfileSpec.forProfile("hyperos4", 120.0f, 1.0f).profileId)
+                || !MotionProfileSpec.PROFILE_BOUNCY.equals(MotionProfileSpec.forProfile("ios", 120.0f, 1.0f).profileId)) {
+            throw new AssertionError("Legacy aliases must map cleanly to snappy/fluid/bouncy");
         }
         System.out.println("PHYSICS_MATH_OK");
     }
@@ -1635,7 +1636,7 @@ EOF
       "$REPO_ROOT/engine-src/java/org/mystivara/coresurface/engine/MotionProfileSpec.java" \
       "$_jdir/PhysicsMathTest.java" 2>"$_jdir/compile.err" \
     && java -cp "$_jdir/classes" PhysicsMathTest >"$_jdir/run.out" 2>&1; then
-    assert_file_contains "$_jdir/run.out" "PHYSICS_MATH_OK" "CoreSpringSolver ODE, frame-drop stability, mid-flight interruptibility & iOS vs ColorOS math verified"
+    assert_file_contains "$_jdir/run.out" "PHYSICS_MATH_OK" "CoreSpringSolver ODE, frame-drop stability, mid-flight interruptibility & Snappy/Fluid/Bouncy contrast verified"
   else
     fail "CoreSpringSolver host JVM physics verification failed ($(cat "$_jdir/compile.err" "$_jdir/run.out" 2>/dev/null || true))"
   fi
@@ -1699,17 +1700,20 @@ if [ -d /opt/android-sdk/build-tools ] || [ -n "${ANDROID_HOME:-}" ] || [ -n "${
 fi
 
 # ---------------------------------------------------------------------------
-printf '=== Test 24: v1.2.0 Release Metadata, English UI Localization & Binder Circuit-Breaker ===\n'
-setup_sandbox "t24_v120_english_and_binder_cb"
+printf '=== Test 24: v1.3.0 Release Metadata, English UI Localization, Zero Scale Hacks & Binder Circuit-Breaker ===\n'
+setup_sandbox "t24_v130_english_and_binder_cb"
 write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
 write_mock_meminfo "7500000"
 write_sample_xml "$SB_XML_DIR1/kunzite.xml"
 
-assert_file_contains "$REPO_ROOT/module.prop" "version=v1.2.0" "module.prop bumps version to v1.2.0"
-assert_file_contains "$REPO_ROOT/module.prop" "versionCode=120" "module.prop bumps versionCode to 120"
+assert_file_contains "$REPO_ROOT/module.prop" "version=v1.3.0" "module.prop bumps version to v1.3.0"
+assert_file_contains "$REPO_ROOT/module.prop" "versionCode=130" "module.prop bumps versionCode to 130"
 assert_file_contains "$REPO_ROOT/webroot/index.html" '<html lang="en">' "WebUI declares English locale (lang=en)"
-assert_file_contains "$REPO_ROOT/webroot/index.html" 'v1.2.0' "WebUI displays v1.2.0 badge"
+assert_file_contains "$REPO_ROOT/webroot/index.html" 'v1.3.0' "WebUI displays v1.3.0 badge"
 assert_file_contains "$REPO_ROOT/customize.sh" 'SELECT CORESURFACE TIER MODE' "Volume-key installer prompts are in English"
+assert_file_not_contains "$REPO_ROOT/lib/settings_tx.sh" 'window_animation_scale' "Engine never touches Developer Options window_animation_scale"
+assert_file_not_contains "$REPO_ROOT/lib/settings_tx.sh" 'transition_animation_scale' "Engine never touches Developer Options transition_animation_scale"
+assert_file_not_contains "$REPO_ROOT/lib/settings_tx.sh" 'animator_duration_scale' "Engine never touches Developer Options animator_duration_scale"
 
 # Verify fast Binder circuit-breaker in lib/settings_tx.sh prevents 40+ wasted forks & log spam
 cat > "$SB_BIN/pidof" <<'EOF'

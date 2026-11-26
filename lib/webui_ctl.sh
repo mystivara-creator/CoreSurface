@@ -150,7 +150,7 @@ cs_cmd_status() {
   _cs_rro_status=$(cs_state_get "RRO_STATUS")
   _cs_rro_staged=$(cs_state_get "RRO_STAGED_COUNT")
 
-  printf 'module_version=%s\n' "v1.2.0"
+  printf 'module_version=%s\n' "v1.3.0"
   printf 'watchdog_status=%s\n' "${_cs_wd_status:-unknown}"
   printf 'watchdog_reason=%s\n' "${_cs_wd_reason:-none}"
   printf 'boot_strikes=%s\n' "${_cs_strikes:-0}"
@@ -250,8 +250,8 @@ cs_cmd_tier() {
 
   # Pick a matching smooth default motion curve when switching tier
   case "$_cs_tm" in
-    flagship) cs_write_config_key "FEAT_MOTION_PROFILE" "coloros" ;;
-    *)        cs_write_config_key "FEAT_MOTION_PROFILE" "hyperos4" ;;
+    flagship) cs_write_config_key "FEAT_MOTION_PROFILE" "snappy" ;;
+    *)        cs_write_config_key "FEAT_MOTION_PROFILE" "fluid" ;;
   esac
 
   cs_sync_rro_for_next_boot || true
@@ -277,9 +277,12 @@ cs_cmd_set() {
     FEAT_MOTION_PROFILE)
       _cs_is_live="1"
       case "$_cs_set_v" in
-        ios|coloros|hyperos4|silk|0) ;;
+        snappy|fluid|bouncy|0) ;;
+        coloros|silk) _cs_set_v="snappy" ;;
+        hyperos4)     _cs_set_v="fluid" ;;
+        ios)          _cs_set_v="bouncy" ;;
         *)
-          printf 'Invalid value for %s: %s (expected ios|coloros|hyperos4|0)\n' "$_cs_set_k" "$_cs_set_v" >&2
+          printf 'Invalid value for %s: %s (expected snappy|fluid|bouncy|0)\n' "$_cs_set_k" "$_cs_set_v" >&2
           return 1
           ;;
       esac
@@ -395,7 +398,7 @@ cs_cmd_diag_report() {
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
 
-  printf '=== CoreSurface v1.2.0 Flagship Motion Diagnostic Report ===\n'
+  printf '=== CoreSurface v1.3.0 Flagship Motion Diagnostic Report ===\n'
   printf 'ROM: %s (%s) | HyperOS Major: %s | Android SDK: %s\n' \
     "$CS_ROM_FAMILY" "${CS_ROM_VERSION:-Unknown}" "$CS_HYPEROS_MAJOR" "$CS_ANDROID_SDK"
   printf 'RAM: %s MB (%s) | Tier: %s (cfg=%s, detected=%s) | CoreFlow Guard: %s\n' \

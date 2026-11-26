@@ -122,18 +122,18 @@ _cs_tier_key() {
 _cs_motion_label() {
   case "$1" in
     1) printf 'Stock Flagship (100%% Native Xiaomi Folme — Ultra Light)' ;;
-    2) printf 'iOS Spring (Elastic CoreSpring + Clean Bouncy Lock->Home)' ;;
-    3) printf 'ColorOS Quantum (Parallel Interruptible + Snappy Takeoff)' ;;
-    4) printf 'HyperOS 4 Crisp (Taut, Agile & Zero Overshoot)' ;;
+    2) printf 'Snappy (Fast & Crisp App/CC/Page Physics, ~220ms Settle)' ;;
+    3) printf 'Fluid (Heavy, Silky Cushioned Glide, ~560ms Tail)' ;;
+    4) printf 'Bouncy (Distinct Elastic Overshoot on App/CC/Page)' ;;
   esac
 }
 
 _cs_motion_key() {
   case "$1" in
     1) printf '0' ;;
-    2) printf 'ios' ;;
-    3) printf 'coloros' ;;
-    4) printf 'hyperos4' ;;
+    2) printf 'snappy' ;;
+    3) printf 'fluid' ;;
+    4) printf 'bouncy' ;;
   esac
 }
 
@@ -187,13 +187,13 @@ _cs_run_vol_selector() {
   _cs_chosen_tier=$(_cs_tier_key "$_cs_sel")
   _cs_cfg_write_key "$_cs_vs_cfg" "CS_TIER_MODE" "$_cs_chosen_tier"
 
-  # Step 2: Select Live True Physics Motion Profile (default: 1 = Stock Flagship)
+  # Step 2: Select Live Physics Motion Profile (default: 1 = Stock Flagship)
   _cs_msel=1
   case "${CFG_FEAT_MOTION_PROFILE:-}" in
-    ios)           _cs_msel=2 ;;
-    coloros|silk)  _cs_msel=3 ;;
-    hyperos4)      _cs_msel=4 ;;
-    *)             _cs_msel=1 ;;
+    snappy|coloros|silk) _cs_msel=2 ;;
+    fluid|hyperos4)      _cs_msel=3 ;;
+    bouncy|ios)          _cs_msel=4 ;;
+    *)                   _cs_msel=1 ;;
   esac
 
   _cs_ui_print ""
@@ -231,7 +231,7 @@ _cs_modpath=${MODPATH:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 _cs_state_dir=${CORESURFACE_STATE_DIR:-/data/adb/coresurface}
 _cs_rom_supported="0"
 
-_cs_ui_print "- Installing CoreSurface v1.2.0 (Pure Flagship Motion & 4-Tier Experience)"
+_cs_ui_print "- Installing CoreSurface v1.3.0 (Pure Flagship Motion & 4-Tier Experience)"
 
 mkdir -p "$_cs_state_dir" 2>/dev/null || true
 

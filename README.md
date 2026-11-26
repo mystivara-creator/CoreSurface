@@ -1,11 +1,11 @@
-# CoreSurface v1.2.0
+# CoreSurface v1.3.0
 
-**CoreSurface** is a clean-room, **100% pure user-space** HyperOS 3 / HyperOS 4 (and MIUI) **4-Tier Flagship Experience** suite — preserving **100% original HyperOS UI**, ultra-lightweight even on **Max Flagship**, and strictly zero-gimmick:
+**CoreSurface** is a clean-room, **100% pure user-space** HyperOS 3 / HyperOS 4 (and MIUI) **4-Tier Flagship Experience** suite — preserving **100% original HyperOS UI** (including 100% stock Lock Screen → Home Screen), ultra-lightweight even on **Max Flagship**, and strictly zero-gimmick:
 
 1. **Layer 1 — CoreSurface Universal Base (KernelSU-Next / Magisk / APatch / Recovery — Standalone):** Runs fully even without LSPosed. Includes an English **Volume Up/Down Interactive Installer** (4 Tier Modes + 4 Motion Profiles), **Immutable Factory Stock Snapshot**, **Action button (`action.sh`)**, strictly non-persistent `resetprop -n` properties (HyperOS 3 Advanced Textures v4 & HyperOS 4 Bionic Material v5 with Never-Downgrade), fail-closed **Dynamic `device_features` XML Patcher** (Custom Color Expert, Flagship Audio & Speaker, Complete Flagship Porting Suite, FOD-safe Non-LTPO AOD), 5 clean-room RRO overlays with SELinux `system_file` labeling, anti-bootloop 2-Strike Watchdog, and fast Binder-safe transactional `settings` rollback.
-2. **Layer 2 — CoreSurface True Physics & Guard Engine (`CoreSurfaceEngine.apk`, ~52 KB, Optional LSPosed):** Zero-allocation, lock-free, zero `system_server` hooks, 0% idle overhead, and **persistent signing** so LSPosed enabled state & scopes survive every update automatically:
-   - **Closed-Form Analytical Spring ODE (`CoreSpringSolver`):** Exact underdamped / critically-damped / overdamped solver driving **WMShell SurfaceControl window transitions** (`ShellTransitionPhysicsEngine`), **Launcher `RectFSpringAnim` app open/close** + **clean bouncy Lock→Home unlock** (`LauncherChoreographyHook`), and **interruptible Control Center & Folder choreography** (`CoreSurfaceChoreographer`).
-   - **4 Distinct Live Profiles (0 Reboot via zero-Binder `debug.coresurface.cfg`):** `Stock Flagship` (100% native Xiaomi Folme), `iOS Spring`, `ColorOS Quantum`, and `HyperOS 4 Crisp`.
+2. **Layer 2 — CoreSurface True Physics & Guard Engine (`CoreSurfaceEngine.apk`, ~50 KB, Optional LSPosed):** Zero-allocation, lock-free, zero `system_server` hooks, 0% idle overhead, and **persistent signing** so LSPosed enabled state & scopes survive every update automatically:
+   - **Closed-Form Analytical Spring ODE (`CoreSpringSolver`):** Exact underdamped / critically-damped / overdamped solver driving the animations you interact with most — **App Open/Close (`RectFSpringAnim`)**, **Control Center & Folders (`Folme` + `CoreSurfaceChoreographer`)**, and **Page/Activity Transitions (`ShellTransitionPhysicsEngine`)** — without ever touching Android's 3 Developer Options window animation scales, while keeping Lock Screen → Home Screen 100% original HyperOS.
+   - **4 Distinct Live Profiles (0 Reboot via zero-Binder `debug.coresurface.cfg`):** `Stock Flagship` (100% native Xiaomi Folme), `Snappy` (ultra-fast crisp ~220ms), `Fluid` (heavy silky cushioned glide ~560ms), and `Bouncy` (genuine elastic overshoot).
    - **Surgical Blur & FOD-Safe AOD Guards:** Prevents HyperOS 3 bloated Toasts, black Recent Apps, and solid black **-1 Screen (App Vault)** backdrops (`com.mi.android.globalminusscreen` / `com.miui.personalassistant`), while keeping Non-LTPO optical fingerprint AOD completely free of white flash regressions.
 
 Designed as an independent sister module to **CoreFlow-Engine** (**Zero Coupling**, **Zero Kernel/Sysfs Touch**, **Zero Gimmick**).
@@ -36,11 +36,12 @@ Recommended scope (auto-pinned at the top of LSPosed via dual `xposedscope` + `M
 
 `android` / `system_server` are hard-blocked for **0% bootloop risk**.
 
-- **True Physics Engine (`CoreSpringSolver` + `MotionProfileSpec`):**
+- **True Physics Engine (`CoreSpringSolver` + `MotionProfileSpec` — Zero Window-Scale Hacks):**
   - **`0` (Stock Flagship):** 100% pass-through native unlocked Xiaomi Folme.
-  - **`ios` (iOS Spring):** Mass-weighted elastic app springs + clean, zero-pop bouncy Lock Screen → Home Screen fly-in (icons + Hotseat dock, zero Workspace layout desync).
-  - **`coloros` (ColorOS Quantum):** Explosive initial takeoff, fast parallel mid-flight interruptibility, and subtle spatial cushion (`≤ 1.5%`).
-  - **`hyperos4` (HyperOS 4 Crisp):** Taut, agile, zero-overshoot precision.
+  - **`snappy` (Snappy):** Ultra-fast, crisp, high-stiffness takeoff (~220ms settle) across App Open/Close, Control Center & Page Transitions.
+  - **`fluid` (Fluid):** Heavy, liquid, cushioned glide (~560ms smooth deceleration tail, zero bounce).
+  - **`bouncy` (Bouncy):** Genuine under-damped elastic spring (`ζ ≈ 0.66`, visible ~7% overshoot & rebound) on App Open/Close, Control Center, Folders & Page Transitions.
+  - *(Legacy profile names `coloros`/`silk` → `snappy`, `hyperos4` → `fluid`, `ios` → `bouncy` are seamlessly mapped on upgrade.)*
 - **Persistent In-Place Updates:** CI builds reuse a persistent signing keystore (`CORESURFACE_KEYSTORE_B64` secret or cached CI keystore) and upgrade via `pm install -r -d`, preserving LSPosed enabled status and scopes across updates.
 - **FOD-Safe Non-LTPO AOD Unlock:** Unlocks **Always** & **Scheduled** AOD via XML (`is_only_support_keycode_goto=false`) + RRO + `LivingFlowAodHook` without triggering optical fingerprint ring fade-out white blinks.
 - **Thermal-Adaptive Motion Safety (`ThermalLodController`):** Uses official Android `PowerManager.OnThermalStatusChangedListener` (zero kernel/sysfs coupling) to keep frame pacing smooth under heat.
@@ -49,7 +50,7 @@ Recommended scope (auto-pinned at the top of LSPosed via dual `xposedscope` + `M
 
 ## Quick Installation
 
-1. Flash `CoreSurface-v1.2.0.zip` in **KernelSU-Next** (ensure `meta-overlayfs` is installed for RRO overlays), **Magisk**, or **APatch** → choose **Tier Mode** & **Motion Profile** with **Volume Up / Volume Down** → reboot once.
+1. Flash `CoreSurface-v1.3.0.zip` in **KernelSU-Next** (ensure `meta-overlayfs` is installed for RRO overlays), **Magisk**, or **APatch** → choose **Tier Mode** & **Motion Profile** with **Volume Up / Volume Down** → reboot once.
 2. *(Optional for Live Physics, Toast/Recents/-1 Screen Guard & Non-LTPO AOD)*: Enable **CoreSurface Engine** once in **LSPosed** (all recommended apps appear pinned at the top; future updates stay enabled automatically).
 3. Open **KernelSU-Next → Modules → CoreSurface → Open WebUI** (or tap **Action**) to switch Tier Modes or Live Motion Profiles anytime.
 

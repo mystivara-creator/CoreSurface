@@ -4,7 +4,7 @@
 CS_TIER_MODE=auto
 
 # Live Motion Physics Profile (LSPosed Runtime — hot-reload without reboot):
-#   0 (Stock Flagship) | ios (iOS Fluid) | coloros (ColorOS Quantum) | hyperos4 (HyperOS 4 Crisp)
+#   0 (Stock Flagship) | snappy (Fast & Crisp) | fluid (Silky Glide) | bouncy (Elastic Overshoot)
 FEAT_MOTION_PROFILE=0
 
 # Core User Toggles:

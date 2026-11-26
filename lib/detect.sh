@@ -285,7 +285,7 @@ cs_load_config() {
   _cs_cfg_file=$1
 
   CFG_TIER_MODE="auto"
-  CFG_FEAT_MOTION_PROFILE="hyperos4"
+  CFG_FEAT_MOTION_PROFILE="snappy"
   CFG_FEAT_NATIVE_TIER="auto"
   CFG_FEAT_SURGICAL_GUARD="1"
   CFG_FEAT_THERMAL_LOD="auto"
@@ -326,8 +326,11 @@ cs_load_config() {
         ;;
       FEAT_MOTION_PROFILE)
         case "$_cs_v" in
-          ios|coloros|hyperos4|silk|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
-          off) CFG_FEAT_MOTION_PROFILE="0" ;;
+          snappy|fluid|bouncy|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
+          coloros|silk)          CFG_FEAT_MOTION_PROFILE="snappy" ;;
+          hyperos4)              CFG_FEAT_MOTION_PROFILE="fluid" ;;
+          ios)                   CFG_FEAT_MOTION_PROFILE="bouncy" ;;
+          off)                   CFG_FEAT_MOTION_PROFILE="0" ;;
         esac
         ;;
       FEAT_NATIVE_TIER)
@@ -399,7 +402,7 @@ cs_resolve_features() {
     motion_only)  CS_EFF_TIER_LABEL="Native Flagship (Motion-Only Passthrough)" ;;
     flagship)     CS_EFF_TIER_LABEL="Max Flagship" ;;
     balanced_pro) CS_EFF_TIER_LABEL="Balanced Pro / Pro+" ;;
-    *)            CS_EFF_TIER_LABEL="Lite (Blur Standar, Tanpa Advanced Textures)" ;;
+    *)            CS_EFF_TIER_LABEL="Lite (Standard Blur, No Advanced Textures)" ;;
   esac
 
   EFF_FEAT_MOTION_PROFILE="off"
@@ -430,11 +433,10 @@ cs_resolve_features() {
 
   # Live Motion Profile & Safety Controllers (active across ALL tiers including Native Flagship)
   case "$CFG_FEAT_MOTION_PROFILE" in
-    ios)      EFF_FEAT_MOTION_PROFILE="ios" ;;
-    coloros)  EFF_FEAT_MOTION_PROFILE="coloros" ;;
-    hyperos4) EFF_FEAT_MOTION_PROFILE="hyperos4" ;;
-    silk)     EFF_FEAT_MOTION_PROFILE="silk" ;;
-    *)        EFF_FEAT_MOTION_PROFILE="off" ;;
+    snappy|coloros|silk) EFF_FEAT_MOTION_PROFILE="snappy" ;;
+    fluid|hyperos4)      EFF_FEAT_MOTION_PROFILE="fluid" ;;
+    bouncy|ios)          EFF_FEAT_MOTION_PROFILE="bouncy" ;;
+    *)                   EFF_FEAT_MOTION_PROFILE="off" ;;
   esac
   case "$CFG_FEAT_SURGICAL_GUARD" in
     1|auto) EFF_FEAT_SURGICAL_GUARD="1" ;;

@@ -36,7 +36,7 @@ public final class EngineStatusActivity extends Activity {
         String liveCfg = cfg.getRawConfig();
 
         TextView title = new TextView(this);
-        title.setText("CoreSurface Flagship Motion Engine v1.2.0");
+        title.setText("CoreSurface Flagship Motion Engine v1.3.0");
         title.setTextColor(Color.parseColor("#F1F5F9"));
         title.setTextSize(19.0f);
         root.addView(title);

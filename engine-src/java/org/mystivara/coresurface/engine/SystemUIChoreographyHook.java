@@ -23,6 +23,8 @@ public final class SystemUIChoreographyHook {
     private static final String[] PANEL_VIEW_CLASSES = new String[] {
             "com.android.systemui.controlcenter.phone.ControlCenterPanelView",
             "com.android.systemui.controlcenter.panel.MiuiControlCenterPanelView",
+            "com.android.systemui.controlcenter.phone.ControlPanelWindowView",
+            "com.android.systemui.controlcenter.view.ControlCenterView",
             "com.android.systemui.controlcenter.phone.widget.ControlCenterContainer",
             "com.android.systemui.qs.MiuiQSContainerImpl"
     };

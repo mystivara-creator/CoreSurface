@@ -1,6 +1,6 @@
 id=coresurface
 name=CoreSurface
-version=v1.2.0
-versionCode=120
+version=v1.3.0
+versionCode=130
 author=Mystivara
-description=Pure user-space HyperOS 3/4 flagship experience: closed-form 60-144Hz Spring ODE physics (iOS Spring / ColorOS Quantum / HyperOS 4 Crisp), Surgical Blur Guard, Non-LTPO AOD unlock, flagship audio & complete porting suite.
+description=Pure user-space HyperOS 3/4 flagship experience: distinct 60-144Hz Spring ODE physics (Snappy / Fluid / Bouncy for App, Control Center & Page Transitions), Surgical Blur Guard, Non-LTPO AOD unlock, flagship audio & complete porting suite.

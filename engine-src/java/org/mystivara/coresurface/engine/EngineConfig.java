@@ -14,17 +14,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Reads non-persistent memory property `debug.coresurface.cfg` set via `resetprop -n`
  * (~2 microseconds, zero Binder calls, 100% SELinux-safe on Android 16 KernelSU-Next).
  *
- * Format: motion=hyperos4|silk|off;native=1|0;guard=1|0;thermallod=1|0;aod=1|0
+ * Format: motion=snappy|fluid|bouncy|off;native=1|0;guard=1|0;thermallod=1|0;aod=1|0
  */
 public final class EngineConfig {
     public static final String PROP_KEY = "debug.coresurface.cfg";
     public static final String SETTINGS_KEY = "coresurface_engine_v1";
 
     public static final String MOTION_OFF = "off";
-    public static final String MOTION_IOS = "ios";
-    public static final String MOTION_COLOROS = "coloros";
-    public static final String MOTION_HYPEROS4 = "hyperos4";
-    public static final String MOTION_SILK = "silk"; // legacy alias -> coloros
+    public static final String MOTION_SNAPPY = "snappy";
+    public static final String MOTION_FLUID = "fluid";
+    public static final String MOTION_BOUNCY = "bouncy";
 
     private static final long REFRESH_INTERVAL_MS = 500L;
 
@@ -165,15 +164,7 @@ public final class EngineConfig {
                 boolean on = "1".equals(v) || "true".equalsIgnoreCase(v);
                 switch (k) {
                     case "motion":
-                        if (MOTION_IOS.equals(v)) {
-                            motionProfile = MOTION_IOS;
-                        } else if (MOTION_COLOROS.equals(v) || MOTION_SILK.equals(v)) {
-                            motionProfile = MOTION_COLOROS;
-                        } else if (MOTION_HYPEROS4.equals(v)) {
-                            motionProfile = MOTION_HYPEROS4;
-                        } else {
-                            motionProfile = MOTION_OFF;
-                        }
+                        motionProfile = MotionProfileSpec.normalizeProfile(v);
                         break;
                     case "native":
                     case "livingflow":

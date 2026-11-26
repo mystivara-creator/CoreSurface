@@ -20,9 +20,9 @@ import de.robv.android.xposed.XposedHelpers;
  * Strictly zero-gimmick, ultra-low overhead:
  * - NEVER hijacks global Android ValueAnimator, ViewPropertyAnimator, or XML Animation.
  * - In `off` (Stock Flagship) mode: 100% pass-through so native unlocked Xiaomi Folme runs untouched.
- * - In `ios`, `coloros`, or `hyperos4` mode: provides the live-synchronized MotionProfileSpec
+ * - In `snappy`, `fluid`, or `bouncy` mode: provides the live-synchronized MotionProfileSpec
  *   (60–144 Hz + Thermal LOD) to ShellTransitionPhysicsEngine, LauncherChoreographyHook,
- *   SystemUIChoreographyHook, and gently calibrates native Folme/SpringForce springs.
+ *   SystemUIChoreographyHook, and strongly calibrates native Folme/SpringForce springs.
  */
 public final class FolmePhysicsHook {
     private static final int DEFAULT_SPRING_STYLE = -2;
@@ -38,8 +38,8 @@ public final class FolmePhysicsHook {
     private volatile float currentRefreshHz = 60.0f;
     private volatile float cachedThermalScale = 1.0f;
     private volatile MotionProfileSpec activeSpec = MotionProfileSpec.forProfile(
-            EngineConfig.MOTION_HYPEROS4, 60.0f, 1.0f);
-    private volatile String activeSpecProfile = EngineConfig.MOTION_HYPEROS4;
+            EngineConfig.MOTION_FLUID, 60.0f, 1.0f);
+    private volatile String activeSpecProfile = EngineConfig.MOTION_FLUID;
 
     public FolmePhysicsHook(EngineConfig config, ThermalLodController lodController,
                             DeviceBugGuard bugGuard, TelemetryReporter telemetry) {
@@ -261,8 +261,8 @@ public final class FolmePhysicsHook {
                         }
                         float damping = factors[0];
                         float response = factors[1];
-                        // Only calibrate normal UI transition springs; leave micro/extreme springs native
-                        if (damping < 0.65f || damping > 1.05f || response < 0.18f || response > 0.70f) {
+                        // Calibrate UI transition springs; leave extreme micro/infinite springs native
+                        if (damping < 0.55f || damping > 1.12f || response < 0.14f || response > 0.78f) {
                             return;
                         }
                         float[] copy = factors.clone();
@@ -308,7 +308,7 @@ public final class FolmePhysicsHook {
                         }
                         float damping = (float) factors[0];
                         float response = (float) factors[1];
-                        if (damping < 0.65f || damping > 1.05f || response < 0.18f || response > 0.70f) {
+                        if (damping < 0.55f || damping > 1.12f || response < 0.14f || response > 0.78f) {
                             return;
                         }
                         double[] copy = factors.clone();
@@ -350,11 +350,11 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         float d = (Float) param.args[0];
-                        if (d < 0.70f || d > 1.05f) {
+                        if (d < 0.58f || d > 1.12f) {
                             return;
                         }
                         float w = spec.folmeBlendWeight;
-                        param.args[0] = clamp(d * (1.0f - w) + spec.folmeDamping * w, 0.82f, 0.99f);
+                        param.args[0] = clamp(d * (1.0f - w) + spec.folmeDamping * w, 0.62f, 0.99f);
                         telemetry.incSpringsTuned();
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringDamp");
@@ -382,12 +382,12 @@ public final class FolmePhysicsHook {
                             return;
                         }
                         float s = (Float) param.args[0];
-                        if (s < 150.0f || s > 1800.0f) {
+                        if (s < 100.0f || s > 2400.0f) {
                             return;
                         }
-                        double w = spec.folmeBlendWeight * 0.85;
+                        double w = spec.folmeBlendWeight * 0.90;
                         double targetK = Math.pow(s, 1.0 - w) * Math.pow(spec.folmeStiffnessK, w);
-                        param.args[0] = clamp((float) targetK, 150.0f, 1650.0f);
+                        param.args[0] = clamp((float) targetK, 100.0f, 2400.0f);
                     } catch (Throwable ignored) {
                         bugGuard.recordHookFault("SpringStiff");
                     }
@@ -403,15 +403,15 @@ public final class FolmePhysicsHook {
     private static void applyProfileSpringBlend(float[] out, float stockDamp, float stockResp,
                                                 MotionProfileSpec spec) {
         float w = spec.folmeBlendWeight;
-        out[0] = clamp(stockDamp * (1.0f - w) + spec.folmeDamping * w, 0.82f, 0.99f);
-        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.20f, 0.52f);
+        out[0] = clamp(stockDamp * (1.0f - w) + spec.folmeDamping * w, 0.62f, 0.99f);
+        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.15f, 0.62f);
     }
 
     private static void applyProfileSpringBlendDouble(double[] out, float stockDamp, float stockResp,
                                                       MotionProfileSpec spec) {
         float w = spec.folmeBlendWeight;
-        out[0] = clamp(stockDamp * (1.0f - w) + spec.folmeDamping * w, 0.82f, 0.99f);
-        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.20f, 0.52f);
+        out[0] = clamp(stockDamp * (1.0f - w) + spec.folmeDamping * w, 0.62f, 0.99f);
+        out[1] = clamp(stockResp * (1.0f - w) + spec.folmeResponseSec * w, 0.15f, 0.62f);
     }
 
     private static int resolveSpringStyleConstant(Class<?> easeClass) {
