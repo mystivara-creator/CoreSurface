@@ -41,6 +41,11 @@ cs_detect_rom() {
     _cs_major=$(printf '%s\n' "$_cs_hos_ver" | sed -n 's/^[^0-9]*\([0-9][0-9]*\).*/\1/p')
     if cs_is_uint "$_cs_major"; then
       CS_HYPEROS_MAJOR="$_cs_major"
+    else
+      _cs_hos_code=$(cs_getprop "ro.mi.os.version.code")
+      if cs_is_uint "$_cs_hos_code"; then
+        CS_HYPEROS_MAJOR="$_cs_hos_code"
+      fi
     fi
     return 0
   fi
@@ -71,9 +76,10 @@ cs_probe_stock_capabilities() {
   CS_STOCK_DEVICE_LEVEL_LIST=""
   CS_STOCK_CPU_LEVEL="0"
   CS_STOCK_GPU_LEVEL="0"
+  CS_STOCK_ADV_VISUAL_RELEASE="0"
   export CS_STOCK_DEVICE_LEVEL CS_STOCK_HAS_BLUR CS_STOCK_HAS_EXPERT_COLOR \
     CS_STOCK_BLURS_EXPENSIVE CS_STOCK_LOW_RAM CS_STOCK_DEVICE_LEVEL_LIST \
-    CS_STOCK_CPU_LEVEL CS_STOCK_GPU_LEVEL
+    CS_STOCK_CPU_LEVEL CS_STOCK_GPU_LEVEL CS_STOCK_ADV_VISUAL_RELEASE
 
   _cs_sdir=${CS_STATE_DIR:-${CORESURFACE_STATE_DIR:-/data/adb/coresurface}}
   _cs_snap_file="${_cs_sdir}/stock_caps.prop"
@@ -97,6 +103,7 @@ cs_probe_stock_capabilities() {
           STOCK_DEVICE_LEVEL_LIST) CS_STOCK_DEVICE_LEVEL_LIST="$_cs_sv" ;;
           STOCK_CPU_LEVEL) cs_is_uint "$_cs_sv" && CS_STOCK_CPU_LEVEL="$_cs_sv" ;;
           STOCK_GPU_LEVEL) cs_is_uint "$_cs_sv" && CS_STOCK_GPU_LEVEL="$_cs_sv" ;;
+          STOCK_ADV_VISUAL_RELEASE) cs_is_uint "$_cs_sv" && CS_STOCK_ADV_VISUAL_RELEASE="$_cs_sv" ;;
         esac
       done < "$_cs_snap_file"
       return 0
@@ -114,6 +121,10 @@ cs_probe_stock_capabilities() {
   _cs_sgpu=$(cs_getprop "persist.sys.computility.gpulevel")
   if cs_is_uint "$_cs_sgpu"; then
     CS_STOCK_GPU_LEVEL="$_cs_sgpu"
+  fi
+  _cs_savr=$(cs_getprop "persist.sys.advanced_visual_release")
+  if cs_is_uint "$_cs_savr"; then
+    CS_STOCK_ADV_VISUAL_RELEASE="$_cs_savr"
   fi
   if [ "$(cs_getprop "ro.sf.blurs_are_expensive")" = "1" ]; then
     CS_STOCK_BLURS_EXPENSIVE="1"
@@ -165,6 +176,7 @@ cs_probe_stock_capabilities() {
       printf 'STOCK_DEVICE_LEVEL_LIST=%s\n' "$CS_STOCK_DEVICE_LEVEL_LIST"
       printf 'STOCK_CPU_LEVEL=%s\n' "$CS_STOCK_CPU_LEVEL"
       printf 'STOCK_GPU_LEVEL=%s\n' "$CS_STOCK_GPU_LEVEL"
+      printf 'STOCK_ADV_VISUAL_RELEASE=%s\n' "$CS_STOCK_ADV_VISUAL_RELEASE"
     } > "$_cs_snap_tmp" 2>/dev/null; then
       mv -f "$_cs_snap_tmp" "$_cs_snap_file" 2>/dev/null || rm -f "$_cs_snap_tmp" 2>/dev/null || true
     else
@@ -314,7 +326,7 @@ cs_load_config() {
         ;;
       FEAT_MOTION_PROFILE)
         case "$_cs_v" in
-          hyperos4|silk|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
+          ios|coloros|hyperos4|silk|0) CFG_FEAT_MOTION_PROFILE="$_cs_v" ;;
           off) CFG_FEAT_MOTION_PROFILE="0" ;;
         esac
         ;;
@@ -418,6 +430,8 @@ cs_resolve_features() {
 
   # Live Motion Profile & Safety Controllers (active across ALL tiers including Native Flagship)
   case "$CFG_FEAT_MOTION_PROFILE" in
+    ios)      EFF_FEAT_MOTION_PROFILE="ios" ;;
+    coloros)  EFF_FEAT_MOTION_PROFILE="coloros" ;;
     hyperos4) EFF_FEAT_MOTION_PROFILE="hyperos4" ;;
     silk)     EFF_FEAT_MOTION_PROFILE="silk" ;;
     *)        EFF_FEAT_MOTION_PROFILE="off" ;;

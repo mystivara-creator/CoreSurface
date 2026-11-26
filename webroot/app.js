@@ -16,7 +16,7 @@ function setBusy(busy) {
 
 function ksuExec(command) {
   if (!window.ksu || typeof window.ksu.exec !== 'function') {
-    return Promise.reject(new Error('Buka WebUI ini melalui KernelSU-Next Manager'));
+    return Promise.reject(new Error('Open this WebUI from KernelSU-Next / MMRL Manager'));
   }
 
   return new Promise((resolve, reject) => {
@@ -25,7 +25,7 @@ function ksuExec(command) {
 
     const timer = setTimeout(() => {
       delete window[cbName];
-      reject(new Error('Perintah shell timeout (30 detik)'));
+      reject(new Error('Shell command timed out (30s)'));
     }, 30000);
 
     window[cbName] = (code, stdout, stderr) => {
@@ -34,7 +34,7 @@ function ksuExec(command) {
       const out = String(stdout == null ? '' : stdout).trim();
       const err = String(stderr == null ? '' : stderr).trim();
       if (Number(code) !== 0) {
-        reject(new Error(err || out || ('Shell keluar dengan kode ' + code)));
+        reject(new Error(err || out || ('Shell exited with code ' + code)));
       } else {
         resolve(out);
       }
@@ -83,9 +83,10 @@ function makeKvRow(label, value) {
 }
 
 function formatMotion(p) {
-  if (p === 'silk') return 'iOS · ColorOS 17 Silk';
-  if (p === 'hyperos4') return 'HyperOS 4 Flagship';
-  if (p === 'off' || p === '0') return 'Stock ROM';
+  if (p === 'ios') return 'iOS Spring (CoreSpring)';
+  if (p === 'coloros' || p === 'silk') return 'ColorOS Quantum (CoreSpring)';
+  if (p === 'hyperos4') return 'HyperOS 4 Crisp (CoreSpring)';
+  if (p === 'off' || p === '0') return 'Stock Flagship (Native)';
   return p || '-';
 }
 
@@ -103,15 +104,15 @@ function renderVerifyPill(featKey, status, isPending) {
   switch (status) {
     case 'verified_active':
       el.classList.add('v-ok');
-      el.textContent = 'Aktif';
+      el.textContent = 'Active';
       break;
     case 'pending_lsposed':
       el.classList.add('v-info');
-      el.textContent = 'Aktifkan di LSPosed';
+      el.textContent = 'Enable in LSPosed';
       break;
     case 'ignored_by_rom':
       el.classList.add('v-danger');
-      el.textContent = 'Ditolak ROM';
+      el.textContent = 'Rejected by ROM';
       break;
     case 'disabled':
       el.classList.add('v-neutral');
@@ -127,7 +128,11 @@ function renderVerifyPill(featKey, status, isPending) {
 function setSegmentValue(key, val) {
   const group = document.querySelector('.seg-group[data-key="' + key + '"]');
   if (!group) return;
-  const normalized = (val === 'auto') ? '1' : val;
+  let normalized = (val === 'auto') ? '1' : val;
+  if (key === 'FEAT_MOTION_PROFILE') {
+    if (normalized === 'silk') normalized = 'coloros';
+    if (normalized === 'off') normalized = '0';
+  }
   for (const btn of group.querySelectorAll('button')) {
     btn.classList.toggle('active', btn.dataset.val === normalized);
   }
@@ -143,7 +148,7 @@ async function refreshStatus() {
     const raw = await ksuExec(CTL_SCRIPT + ' status');
     const { kv, logs } = parseStatus(raw);
     if (!kv.rom_family) {
-      throw new Error('Respons status tidak lengkap');
+      throw new Error('Incomplete status response');
     }
 
     // Watchdog badge
@@ -157,7 +162,7 @@ async function refreshStatus() {
       wdBadge.classList.add('badge-danger');
       wdBadge.textContent = 'Watchdog: Safe-Mode';
       if (safeReason && kv.watchdog_reason && kv.watchdog_reason !== 'none') {
-        safeReason.textContent = 'Alasan: ' + kv.watchdog_reason + ' (strikes: ' + (kv.boot_strikes || '0') + '/2).';
+        safeReason.textContent = 'Reason: ' + kv.watchdog_reason + ' (strikes: ' + (kv.boot_strikes || '0') + '/2).';
       }
       safeBanner.classList.remove('hidden');
     } else if (kv.watchdog_status === 'healthy') {
@@ -213,7 +218,7 @@ async function refreshStatus() {
     if (kv.compat_score_pct && evalCount > 0) {
       const pct = Number(kv.compat_score_pct);
       compatBadge.className = 'badge ' + (pct >= 85 ? 'badge-ok' : (pct >= 50 ? 'badge-warn' : 'badge-danger'));
-      compatBadge.textContent = 'Skor: ' + pct + '% (' + (kv.verify_feat_verified || '0') + '/' + evalCount + ')';
+      compatBadge.textContent = 'Score: ' + pct + '% (' + (kv.verify_feat_verified || '0') + '/' + evalCount + ')';
     } else {
       compatBadge.classList.add('hidden');
     }
@@ -230,7 +235,7 @@ async function refreshStatus() {
     }
     const autoHint = document.getElementById('auto-tier-hint');
     if (autoHint && kv.detected_tier_label) {
-      autoHint.textContent = 'Terdeteksi: ' + kv.detected_tier_label;
+      autoHint.textContent = 'Detected: ' + kv.detected_tier_label;
     }
     const tierPill = document.getElementById('active-tier-pill');
     tierPill.className = 'pill on';
@@ -252,8 +257,8 @@ async function refreshStatus() {
     // Compact Summary
     const romStr = (kv.rom_family || '').toUpperCase() + ' ' + (kv.rom_version || '') + ' · SDK ' + (kv.android_sdk || '-');
     const blurMode = kv.eff_tier === 'motion_only'
-      ? 'Factory Flagship (Passthrough Utuh)'
-      : (kv.eff_feat_adv_textures === '1' ? 'Blur Penuh (HOS3 Safe)' : 'Blur Standar (No Adv. Textures)');
+      ? 'Factory Flagship (Full Passthrough)'
+      : (kv.eff_feat_adv_textures === '1' ? 'Full Blur (HOS3/4 Safe)' : 'Standard Blur (No Adv. Textures)');
     const colorMode = (kv.eff_feat_color_expert === '1' || kv.stock_has_expert_color === '1')
       ? 'Custom Color ON'
       : 'Stock Color';
@@ -263,27 +268,27 @@ async function refreshStatus() {
       + ' · Gates: ' + (kv.verify_engine_native_gates || '0')
       + ' · Springs: ' + (kv.verify_engine_springs || '0')
       + ' · UI Curves: ' + (kv.verify_engine_curves || '0')
-      + ' · Recents Fix: ' + (kv.verify_engine_recents || '0')
+      + ' · Guard Fix: ' + (kv.verify_engine_recents || '0')
       + ' · AOD Gates: ' + (kv.verify_engine_aod_gates || '0');
-    const bugSummary = (kv.os_bugs_mitigated || '0') + '/' + (kv.os_bugs_detected || '0') + ' termitigasi'
+    const bugSummary = (kv.os_bugs_mitigated || '0') + '/' + (kv.os_bugs_detected || '0') + ' mitigated'
       + (kv.os_bugs_csv ? (' (' + kv.os_bugs_csv.split(',').slice(0, 3).join(', ') + ')') : '');
 
     summary.replaceChildren(
       makeKvRow('ROM & RAM', romStr + ' · ' + (kv.ram_mb || '0') + ' MB'),
-      makeKvRow('Mode Blur & Warna', blurMode + ' · ' + colorMode),
-      makeKvRow('Audio & Porting', audioSuiteStr),
-      makeKvRow('Profil Animasi', formatMotion(kv.verify_engine_motion && kv.verify_engine_motion !== 'N/A' ? kv.verify_engine_motion : kv.eff_feat_motion_profile)),
+      makeKvRow('Blur & Color', blurMode + ' · ' + colorMode),
+      makeKvRow('Audio & Suite', audioSuiteStr),
+      makeKvRow('Motion Profile', formatMotion(kv.verify_engine_motion && kv.verify_engine_motion !== 'N/A' ? kv.verify_engine_motion : kv.eff_feat_motion_profile)),
       makeKvRow('OS Bug Logic', bugSummary),
-      makeKvRow('Statistik Live', active ? stats : 'Aktifkan CoreSurface Engine di LSPosed'),
+      makeKvRow('Live Telemetry', active ? stats : 'Enable CoreSurface Engine in LSPosed'),
       makeKvRow('Base Layer 1', 'Props ' + (kv.verify_props_matched || '0') + '/' + (kv.verify_props_total || '0')
         + ' · XML ' + (kv.verify_xml_mount || kv.xml_status || '-')
         + ' · RRO ' + (kv.verify_rro_active || '0') + '/' + (kv.verify_rro_total || kv.rro_staged_count || '0'))
     );
 
-    document.getElementById('diag-log').textContent = logs.join('\n') || 'Belum ada entri log.';
+    document.getElementById('diag-log').textContent = logs.join('\n') || 'No log entries yet.';
   } catch (err) {
-    summary.replaceChildren(makeKvRow('Kesalahan', err.message));
-    setToast('Gagal membaca status: ' + err.message);
+    summary.replaceChildren(makeKvRow('Error', err.message));
+    setToast('Failed to read status: ' + err.message);
   }
 }
 
@@ -299,21 +304,21 @@ async function runAction(toastBusy, fn) {
 }
 
 async function selectTier(tier) {
-  await runAction('Menyimpan Mode Tier "' + tier + '"…', async () => {
+  await runAction('Saving Tier Mode "' + tier + '"…', async () => {
     try {
       const res = await ksuExec(CTL_SCRIPT + ' tier ' + tier);
       document.getElementById('reboot-banner').classList.remove('hidden');
       setToast(res);
       await refreshStatus();
     } catch (err) {
-      setToast('Gagal mengubah tier: ' + err.message);
+      setToast('Failed to change tier: ' + err.message);
     }
   });
 }
 
 async function updateConfig(key, value) {
   const isLive = LIVE_KEYS.has(key);
-  await runAction((isLive ? 'Menerapkan LIVE ' : 'Menyimpan ') + key + '=' + value + '…', async () => {
+  await runAction((isLive ? 'Applying LIVE ' : 'Saving ') + key + '=' + value + '…', async () => {
     try {
       const res = await ksuExec(CTL_SCRIPT + ' set ' + key + ' ' + value);
       if (!isLive) {
@@ -322,53 +327,53 @@ async function updateConfig(key, value) {
       setToast(res);
       await refreshStatus();
     } catch (err) {
-      setToast('Gagal menyimpan: ' + err.message);
+      setToast('Failed to save: ' + err.message);
     }
   });
 }
 
 document.getElementById('btn-refresh').addEventListener('click', () => {
-  runAction('Memperbarui status…', async () => {
+  runAction('Refreshing status…', async () => {
     await refreshStatus();
     setToast('');
   });
 });
 
 document.getElementById('btn-reset-safemode').addEventListener('click', () => {
-  runAction('Mereset Safe-Mode…', async () => {
+  runAction('Resetting Safe-Mode…', async () => {
     try {
       setToast(await ksuExec(CTL_SCRIPT + ' reset-safemode'));
       await refreshStatus();
     } catch (err) {
-      setToast('Gagal reset: ' + err.message);
+      setToast('Reset failed: ' + err.message);
     }
   });
 });
 
 document.getElementById('btn-hot-sync').addEventListener('click', () => {
-  runAction('Menjalankan verifikasi ulang…', async () => {
+  runAction('Running re-verification…', async () => {
     try {
       setToast(await ksuExec(CTL_SCRIPT + ' hot-sync'));
       await refreshStatus();
     } catch (err) {
-      setToast('Gagal verifikasi: ' + err.message);
+      setToast('Verification failed: ' + err.message);
     }
   });
 });
 
 document.getElementById('btn-install-engine').addEventListener('click', () => {
-  runAction('Memasang CoreSurfaceEngine.apk…', async () => {
+  runAction('Installing CoreSurfaceEngine.apk…', async () => {
     try {
       setToast(await ksuExec(CTL_SCRIPT + ' install-engine'));
       await refreshStatus();
     } catch (err) {
-      setToast('Gagal memasang APK: ' + err.message);
+      setToast('APK install failed: ' + err.message);
     }
   });
 });
 
 document.getElementById('btn-export-diag').addEventListener('click', () => {
-  runAction('Menyiapkan laporan diagnostik…', async () => {
+  runAction('Generating diagnostic report…', async () => {
     try {
       const report = await ksuExec(CTL_SCRIPT + ' diag-report');
       const wrap = document.getElementById('diag-export-wrap');
@@ -378,7 +383,7 @@ document.getElementById('btn-export-diag').addEventListener('click', () => {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         try {
           await navigator.clipboard.writeText(report);
-          setToast('Laporan diagnostik disalin ke clipboard.');
+          setToast('Diagnostic report copied to clipboard.');
           return;
         } catch (_clipErr) {
           // Fallback to textarea
@@ -386,9 +391,9 @@ document.getElementById('btn-export-diag').addEventListener('click', () => {
       }
       box.focus();
       box.select();
-      setToast('Laporan siap disalin dari kotak teks di bawah.');
+      setToast('Report ready to copy from the text box below.');
     } catch (err) {
-      setToast('Gagal membuat laporan: ' + err.message);
+      setToast('Failed to generate report: ' + err.message);
     }
   });
 });

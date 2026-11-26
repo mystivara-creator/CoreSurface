@@ -83,7 +83,11 @@ cs_os_bug_scan() {
   # 7. Leaked legacy persist.* props (e.g. HOS 2 release=3) from third-party/preview modules on HyperOS 3+
   if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
     _cs_leak_avr=$(cs_getprop "persist.sys.advanced_visual_release")
-    if [ -n "$_cs_leak_avr" ] && [ "$_cs_leak_avr" != "4" ]; then
+    _cs_min_avr=4
+    if [ "${CS_HYPEROS_MAJOR:-0}" -ge 4 ]; then
+      _cs_min_avr=5
+    fi
+    if [ -n "$_cs_leak_avr" ] && cs_is_uint "$_cs_leak_avr" && [ "$_cs_leak_avr" -lt "$_cs_min_avr" ]; then
       CS_OS_BUGS_DETECTED=$((CS_OS_BUGS_DETECTED + 1))
       CS_OS_BUGS_MITIGATED=$((CS_OS_BUGS_MITIGATED + 1))
       CS_OS_BUGS_CSV=$(cs_bug_append_csv "$CS_OS_BUGS_CSV" "LEAKED_PERSIST_PROPS")

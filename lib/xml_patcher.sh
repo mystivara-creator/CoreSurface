@@ -102,11 +102,11 @@ cs_xml_build_patch_spec() {
 
     if [ "$EFF_FEAT_AOD_UNLOCK" = "1" ]; then
       printf 'bool|support_aod|true\n'
-      printf 'bool|support_aod_aon|true\n'
       printf 'bool|aod_support_keycode_goto_dismiss|true\n'
-      printf 'bool|is_video_screen|true\n'
       # Critical non-LTPO AOD unlock (verified from HyperOS MiuiAod & HyperUnlocked):
       # Stock non-LTPO XML ships is_only_support_keycode_goto=true which hides "Always" & "Scheduled".
+      # NOTE: Deliberately omit support_aod_aon and is_video_screen so non-LTPO optical-FOD panels
+      # do not trigger AON/fullscreen Doze state transitions (which cause white flashes when the FOD ring fades out).
       printf 'bool|is_only_support_keycode_goto|false\n'
       # HyperOS 3 dynamic safety gate: avoid support_aod_fullscreen on HOS 3+
       if [ "${CS_HYPEROS_MAJOR:-0}" -lt 3 ]; then
@@ -115,7 +115,7 @@ cs_xml_build_patch_spec() {
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_AUDIO:-0}" = "1" ]; then
-      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Assistant, Audio Share, 24-bit/Stereo Record)
+      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Assistant, Audio Share, 24-bit/Stereo/Studio Mic Record)
       printf 'bool|support_dolby|true\n'
       printf 'bool|support_hifi|true\n'
       printf 'bool|support_sound_assist|true\n'
@@ -125,10 +125,15 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_lhdc_offload|true\n'
       printf 'bool|support_audio_loopback|true\n'
       printf 'bool|support_phone_call_noise_suppression|true\n'
+      printf 'bool|support_interview_record_param|true\n'
+      printf 'bool|support_hd_record_param|true\n'
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_SUITE:-0}" = "1" ]; then
-      # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost, Power Modes)
+      # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost,
+      # Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP Record, Power Modes)
+      # NOTE: Deliberately omit panel-specific HBM brighten flags (support_hdr_hbm_brighten /
+      # support_manual_brightness_boost / support_dolby_version_brighten) to avoid FOD HBM white flashes on AOD.
       printf 'bool|support_AI_display|true\n'
       printf 'bool|support_super_resolution|true\n'
       printf 'bool|support_hdr_enhance|true\n'
@@ -139,15 +144,31 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_videobox_cinema_adapt_ce|true\n'
       printf 'bool|support_displayfeature_gamemode|true\n'
       printf 'bool|support_displayfeature_gamemode_HDR|true\n'
+      printf 'bool|support_touchfeature_gamemode|true\n'
+      printf 'bool|support_game_mi_time|true\n'
       printf 'bool|support_wild_boost|true\n'
       printf 'bool|support_wild_boost_bat_perf|true\n'
       printf 'bool|support_mi_game_macro|true\n'
       printf 'bool|support_game_gunsight|true\n'
+      printf 'bool|support_gallery_hdr|true\n'
+      printf 'bool|gallery_support_dolby|true\n'
+      printf 'bool|gallery_support_analytic_face_and_scene|true\n'
+      printf 'bool|gallery_support_video_compress|true\n'
+      printf 'bool|gallery_support_time_burst_video|true\n'
+      printf 'bool|support_local_ocr|true\n'
+      printf 'bool|support_miplay_cast_privacy|true\n'
+      printf 'bool|support_voip_record|true\n'
+      printf 'bool|support_conversation_toolbox_voiprecord|true\n'
+      printf 'bool|support_new_silentmode|true\n'
+      printf 'bool|support_dark_mode_notify|true\n'
+      printf 'bool|support_autobrightness_optimize|true\n'
+      printf 'bool|support_autobrightness_by_application_category|true\n'
       printf 'bool|support_app_hiding|true\n'
       printf 'bool|is_support_partial_screenshot|true\n'
       printf 'bool|support_ui_orientation_v2|true\n'
       printf 'bool|support_power_mode|true\n'
       printf 'bool|support_power_save_new|true\n'
+      printf 'integer|support_inner_record|1\n'
     fi
   } > "$_cs_spec_file"
 }

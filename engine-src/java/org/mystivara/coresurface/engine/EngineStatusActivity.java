@@ -36,7 +36,7 @@ public final class EngineStatusActivity extends Activity {
         String liveCfg = cfg.getRawConfig();
 
         TextView title = new TextView(this);
-        title.setText("CoreSurface Flagship Motion Engine v1.0.0");
+        title.setText("CoreSurface Flagship Motion Engine v1.2.0");
         title.setTextColor(Color.parseColor("#F1F5F9"));
         title.setTextSize(19.0f);
         root.addView(title);
@@ -46,8 +46,8 @@ public final class EngineStatusActivity extends Activity {
         status.setTextColor(active ? Color.parseColor("#34D399") : Color.parseColor("#FBBF24"));
         status.setTextSize(15.0f);
         status.setText(active
-                ? "STATUS: ACTIVE IN LSPOSED (60/90/120 Hz Folme + Universal UI Curves)"
-                : "STATUS: ENABLE MODULE IN LSPOSED MANAGER\nScope: System UI, System Launcher (MiuiHome), Always-on Display, Settings");
+                ? "STATUS: ACTIVE IN LSPOSED (60-144 Hz CoreSpring + Surgical Blur Guard)"
+                : "STATUS: ENABLE MODULE IN LSPOSED MANAGER\nRecommended scope: System UI, Launcher, App Vault (-1 Screen), Always-on Display, Settings");
         root.addView(status);
 
         TextView details = new TextView(this);

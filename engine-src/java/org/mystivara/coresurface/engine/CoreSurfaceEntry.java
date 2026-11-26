@@ -23,6 +23,9 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
     private static final String SELF_PKG = "org.mystivara.coresurface.engine";
     private static final String PKG_SYSTEMUI = "com.android.systemui";
     private static final String PKG_HOME = "com.miui.home";
+    private static final String PKG_POCO_HOME = "com.mi.android.globallauncher";
+    private static final String PKG_GLOBAL_MINUS_ONE = "com.mi.android.globalminusscreen";
+    private static final String PKG_CN_MINUS_ONE = "com.miui.personalassistant";
     private static final String PKG_AOD = "com.miui.aod";
 
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
@@ -58,17 +61,26 @@ public final class CoreSurfaceEntry implements IXposedHookLoadPackage {
             ProcessBootstrap bootstrap = new ProcessBootstrap(config, telemetry, lodController, bugGuard, folmeHook);
 
             if (PKG_SYSTEMUI.equals(pkg)) {
-                new LivingFlowSystemUIHook(bootstrap, folmeHook, blurGuard, deviceLevelHook)
+                CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(telemetry);
+                ShellTransitionPhysicsEngine shellEngine = new ShellTransitionPhysicsEngine(folmeHook, bugGuard, telemetry);
+                SystemUIChoreographyHook sysUiChoreo = new SystemUIChoreographyHook(folmeHook, choreo, bugGuard, telemetry);
+                new LivingFlowSystemUIHook(bootstrap, folmeHook, blurGuard, deviceLevelHook, shellEngine, sysUiChoreo)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Universal Motion + BugGuard in com.android.systemui");
-            } else if (PKG_HOME.equals(pkg)) {
-                new LivingFlowHomeHook(bootstrap, bugGuard, folmeHook, blurGuard, deviceLevelHook, telemetry)
+                XposedBridge.log("CoreSurfaceEngine: initialized True Physics (WMShell + Shade + Folme) in com.android.systemui");
+            } else if (PKG_HOME.equals(pkg) || PKG_POCO_HOME.equals(pkg)) {
+                CoreSurfaceChoreographer choreo = new CoreSurfaceChoreographer(telemetry);
+                LauncherChoreographyHook launcherChoreo = new LauncherChoreographyHook(folmeHook, choreo, bugGuard, telemetry);
+                new LivingFlowHomeHook(bootstrap, bugGuard, folmeHook, blurGuard, deviceLevelHook, launcherChoreo, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Universal Motion + RecentsGuard in com.miui.home");
+                XposedBridge.log("CoreSurfaceEngine: initialized True Physics (RectF + Folder + RecentsGuard) in " + pkg);
+            } else if (PKG_GLOBAL_MINUS_ONE.equals(pkg) || PKG_CN_MINUS_ONE.equals(pkg)) {
+                blurGuard.installMinusOneAppGuard(lpparam.classLoader);
+                bootstrap.install();
+                XposedBridge.log("CoreSurfaceEngine: initialized -1 Screen (App Vault) Black-Backdrop Blur Guard in " + pkg);
             } else if (PKG_AOD.equals(pkg)) {
-                new LivingFlowAodHook(config, bootstrap, bugGuard, folmeHook, deviceLevelHook, telemetry)
+                new LivingFlowAodHook(config, bootstrap, bugGuard, telemetry)
                         .install(lpparam.classLoader);
-                XposedBridge.log("CoreSurfaceEngine: initialized Motion + Non-LTPO AOD Unlock in com.miui.aod");
+                XposedBridge.log("CoreSurfaceEngine: initialized Non-LTPO AOD Unlock (native Doze timing) in com.miui.aod");
             } else {
                 // Settings & any additional user-scoped UI app: universal SpringPhysicsCurve,
                 // Toast window blur guard (protects Toasts under Advanced Textures v4), & self-unhooking bootstrap

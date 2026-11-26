@@ -138,12 +138,17 @@ public final class SurgicalBlurGuardHook {
             }
         }
 
-        // 2. Intercept MIUI View background blur setters ONLY on true Recents/Overview/NavStub views
-        //    (explicitly excludes Folder, -1 Screen / App Vault, Wallpaper, Workspace & Control Center)
-        hooked += hookViewMiBlurForRecents("setMiBackgroundBlurMode");
-        hooked += hookViewMiBlurForRecents("setMiViewBlurMode");
+        // 2. Intercept MIUI View background blur setters ONLY on true Recents/Overview/NavStub & MinusOne views
+        //    (explicitly excludes Folder, Wallpaper, Workspace & Control Center;
+        //    skipped cleanly when MiBlur API is absent)
+        if (bugGuard.hasMiBlurApi()) {
+            hooked += hookViewMiBlurForRecents("setMiBackgroundBlurMode");
+            hooked += hookViewMiBlurForRecents("setMiViewBlurMode");
+            hooked += hookViewPassWindowBlurForHome();
+        }
 
-        // 3. Guard MiuiHome Recents window FLAG_BLUR_BEHIND / blurBehindRadius
+        // 3. Guard MiuiHome Recents & -1 Screen (App Vault / MinusOne) cross-window FLAG_BLUR_BEHIND
+        //    so SurfaceFlinger never drops the wallpaper layer to solid #000000 black under Advanced Textures.
         try {
             Class<?> wmgClass = XposedHelpers.findClassIfExists("android.view.WindowManagerGlobal", cl);
             if (wmgClass != null) {
@@ -162,7 +167,7 @@ public final class SurgicalBlurGuardHook {
                             }
                             View view = (View) param.args[0];
                             WindowManager.LayoutParams lp = (WindowManager.LayoutParams) param.args[1];
-                            if (isRecentsWindow(view, lp)) {
+                            if (isRecentsWindow(view, lp) || isMinusOneWindow(view, lp)) {
                                 boolean stripped = false;
                                 if ((lp.flags & WindowManager.LayoutParams.FLAG_BLUR_BEHIND) != 0) {
                                     lp.flags &= ~WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
@@ -181,6 +186,7 @@ public final class SurgicalBlurGuardHook {
                         }
                     }
                 };
+                XposedBridge.hookAllMethods(wmgClass, "addView", recentsWinHook);
                 XposedBridge.hookAllMethods(wmgClass, "updateViewLayout", recentsWinHook);
                 hooked++;
             }
@@ -190,6 +196,177 @@ public final class SurgicalBlurGuardHook {
         if (hooked > 0) {
             telemetry.recordHookBound("RecentsGuard");
         }
+    }
+
+    /**
+     * Installed strictly inside com.mi.android.globalminusscreen & com.miui.personalassistant (-1 Screen).
+     * Fixes solid #000000 black -1 Screen backdrop when HyperOS 3 Advanced Textures is enabled on
+     * mid-range GPUs by disabling broken cross-process pass-window blur and opaque black scrims.
+     */
+    public void installMinusOneAppGuard(ClassLoader cl) {
+        int hooked = 0;
+        try {
+            Class<?> wmgClass = XposedHelpers.findClassIfExists("android.view.WindowManagerGlobal", cl);
+            if (wmgClass != null) {
+                XC_MethodHook minusWinHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (bugGuard.isHookTripped("MinusOneWinGuard")) {
+                            return;
+                        }
+                        try {
+                            if (!config.isSurgicalGuard() || param.args == null || param.args.length < 2) {
+                                return;
+                            }
+                            if (!(param.args[0] instanceof View) || !(param.args[1] instanceof WindowManager.LayoutParams)) {
+                                return;
+                            }
+                            View root = (View) param.args[0];
+                            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) param.args[1];
+                            boolean stripped = false;
+                            if ((lp.flags & WindowManager.LayoutParams.FLAG_BLUR_BEHIND) != 0) {
+                                lp.flags &= ~WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+                                stripped = true;
+                            }
+                            if (Build.VERSION.SDK_INT >= 31 && lp.getBlurBehindRadius() > 0) {
+                                lp.setBlurBehindRadius(0);
+                                stripped = true;
+                            }
+                            if (sanitizeOpaqueBlackBackdrop(root)) {
+                                stripped = true;
+                            }
+                            if (stripped) {
+                                telemetry.incRecentsGuarded();
+                            }
+                        } catch (Throwable ignored) {
+                            bugGuard.recordHookFault("MinusOneWinGuard");
+                        }
+                    }
+                };
+                XposedBridge.hookAllMethods(wmgClass, "addView", minusWinHook);
+                XposedBridge.hookAllMethods(wmgClass, "updateViewLayout", minusWinHook);
+                hooked++;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        if (bugGuard.hasMiBlurApi()) {
+            hooked += hookMinusOneMiBlurMode("setMiBackgroundBlurMode");
+            hooked += hookMinusOneMiBlurMode("setMiViewBlurMode");
+            hooked += hookMinusOnePassWindowBlur();
+        }
+
+        if (hooked > 0) {
+            telemetry.recordHookBound("MinusOneGuard");
+            telemetry.recordOsBugMitigated("HOS3_MINUS_ONE_BLACK");
+        }
+    }
+
+    private int hookMinusOneMiBlurMode(String methodName) {
+        try {
+            Method m = View.class.getMethod(methodName, int.class);
+            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("MinusOneMiBlur")) {
+                        return;
+                    }
+                    try {
+                        if (!config.isSurgicalGuard() || param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        if (param.args[0] instanceof Integer && ((Integer) param.args[0]) != 0) {
+                            param.args[0] = 0;
+                            telemetry.incRecentsGuarded();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("MinusOneMiBlur");
+                    }
+                }
+            });
+            return 1;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private int hookMinusOnePassWindowBlur() {
+        try {
+            Method m = View.class.getMethod("setPassWindowBlurEnabled", boolean.class);
+            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("MinusOnePassBlur")) {
+                        return;
+                    }
+                    try {
+                        if (config.isSurgicalGuard() && param.args != null && param.args.length >= 1
+                                && Boolean.TRUE.equals(param.args[0])) {
+                            param.args[0] = Boolean.FALSE;
+                            telemetry.incRecentsGuarded();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("MinusOnePassBlur");
+                    }
+                }
+            });
+            return 1;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private int hookViewPassWindowBlurForHome() {
+        try {
+            Method m = View.class.getMethod("setPassWindowBlurEnabled", boolean.class);
+            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (bugGuard.isHookTripped("HomePassBlur")) {
+                        return;
+                    }
+                    try {
+                        if (!config.isSurgicalGuard() || !(param.thisObject instanceof View)
+                                || param.args == null || param.args.length < 1
+                                || !Boolean.TRUE.equals(param.args[0])) {
+                            return;
+                        }
+                        Class<?> vClass = param.thisObject.getClass();
+                        if (isRecentsClass(vClass) || isMinusOneClass(vClass)) {
+                            param.args[0] = Boolean.FALSE;
+                            telemetry.incRecentsGuarded();
+                        }
+                    } catch (Throwable ignored) {
+                        bugGuard.recordHookFault("HomePassBlur");
+                    }
+                }
+            });
+            return 1;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static boolean sanitizeOpaqueBlackBackdrop(View view) {
+        if (view == null) {
+            return false;
+        }
+        try {
+            Drawable bg = view.getBackground();
+            if (bg instanceof ColorDrawable) {
+                int color = ((ColorDrawable) bg).getColor();
+                int alpha = Color.alpha(color);
+                int r = Color.red(color);
+                int g = Color.green(color);
+                int b = Color.blue(color);
+                if (alpha >= 230 && r <= 18 && g <= 18 && b <= 18) {
+                    view.setBackgroundColor(Color.argb(110, 14, 18, 26));
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private boolean hookReturnFalseWhenGuarded(Method m) {
@@ -231,11 +408,16 @@ public final class SurgicalBlurGuardHook {
                             return;
                         }
                         Object arg = param.args[0];
-                        if (!(arg instanceof Integer) || ((Integer) arg) == 0) {
+                        if (!(arg instanceof Integer)) {
+                            return;
+                        }
+                        int mode = (Integer) arg;
+                        if (mode == 0) {
                             return;
                         }
                         View v = (View) param.thisObject;
-                        if (isRecentsClass(v.getClass())) {
+                        Class<?> vClass = v.getClass();
+                        if (isRecentsClass(vClass) || isMinusOneClass(vClass)) {
                             param.args[0] = 0;
                             telemetry.incRecentsGuarded();
                         }
@@ -248,6 +430,31 @@ public final class SurgicalBlurGuardHook {
         } catch (Throwable ignored) {
             return 0;
         }
+    }
+
+    private static boolean isMinusOneClass(Class<?> clazz) {
+        String cls = clazz.getName().toLowerCase(Locale.ROOT);
+        return cls.contains("minusone")
+                || cls.contains("minus_one")
+                || cls.contains("personalassistant")
+                || cls.contains("assistant")
+                || cls.contains("appvault")
+                || cls.contains("blurmask")
+                || cls.contains("launcher.overlay.");
+    }
+
+    private boolean isMinusOneWindow(View view, WindowManager.LayoutParams lp) {
+        if (isMinusOneClass(view.getClass())) {
+            return true;
+        }
+        CharSequence title = lp.getTitle();
+        if (title != null) {
+            String t = title.toString().toLowerCase(Locale.ROOT);
+            return t.contains("minusone") || t.contains("minus_one")
+                    || t.contains("personalassistant") || t.contains("assistant")
+                    || t.contains("appvault") || t.contains("globalminusscreen");
+        }
+        return false;
     }
 
     public boolean isRecentsClass(Class<?> clazz) {

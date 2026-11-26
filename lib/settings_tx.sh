@@ -21,19 +21,33 @@ cs_sh_quote() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
 
-# Read a setting: try `--user 0`, then `su 2000 -c` (Android 16 Binder), then bare `settings`.
-# Sets: CS_SETTINGS_READ_VAL, returns 0 on success, 1 on Binder/service error.
+# Read a setting: try `--user 0`, `cmd settings`, `su 2000`, `su --context u:r:shell:s0 2000`, then bare `settings`.
+# Sets: CS_SETTINGS_READ_VAL, CS_SETTINGS_LAST_ERR. Returns 0 on success, 1 on Binder/service error.
 cs_settings_get() {
   _cs_sg_ns=$1
   _cs_sg_key=$2
   CS_SETTINGS_READ_VAL=""
+  CS_SETTINGS_LAST_ERR=""
+  export CS_SETTINGS_LAST_ERR
 
   _cs_sg_out=$(settings --user 0 get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
   _cs_sg_rc=$?
   _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
-  if [ "$_cs_sg_rc" -eq 0 ] && [ -n "$_cs_sg_line" ] && ! cs_settings_is_error_output "$_cs_sg_line"; then
-    CS_SETTINGS_READ_VAL="$_cs_sg_line"
+  if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
+    CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
     return 0
+  fi
+  [ -n "$_cs_sg_line" ] && CS_SETTINGS_LAST_ERR="$_cs_sg_line"
+
+  if command -v cmd >/dev/null 2>&1; then
+    _cs_sg_out=$(cmd settings --user 0 get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
+    _cs_sg_rc=$?
+    _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
+    if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
+      CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
+      return 0
+    fi
+    [ -n "$_cs_sg_line" ] && CS_SETTINGS_LAST_ERR="$_cs_sg_line"
   fi
 
   if command -v su >/dev/null 2>&1; then
@@ -42,8 +56,17 @@ cs_settings_get() {
     _cs_sg_out=$(su 2000 -c "settings --user 0 get ${_cs_q_ns} ${_cs_q_key}" 2>&1)
     _cs_sg_rc=$?
     _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
-    if [ "$_cs_sg_rc" -eq 0 ] && [ -n "$_cs_sg_line" ] && ! cs_settings_is_error_output "$_cs_sg_line"; then
-      CS_SETTINGS_READ_VAL="$_cs_sg_line"
+    if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
+      CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
+      return 0
+    fi
+    [ -n "$_cs_sg_line" ] && CS_SETTINGS_LAST_ERR="$_cs_sg_line"
+
+    _cs_sg_out=$(su --context u:r:shell:s0 2000 -c "settings --user 0 get ${_cs_q_ns} ${_cs_q_key}" 2>&1)
+    _cs_sg_rc=$?
+    _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
+    if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
+      CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
       return 0
     fi
   fi
@@ -51,10 +74,11 @@ cs_settings_get() {
   _cs_sg_out=$(settings get "$_cs_sg_ns" "$_cs_sg_key" 2>&1)
   _cs_sg_rc=$?
   _cs_sg_line=$(printf '%s\n' "$_cs_sg_out" | head -n 1 | tr -d '\r')
-  if [ "$_cs_sg_rc" -eq 0 ] && [ -n "$_cs_sg_line" ] && ! cs_settings_is_error_output "$_cs_sg_line"; then
-    CS_SETTINGS_READ_VAL="$_cs_sg_line"
+  if [ "$_cs_sg_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sg_out"; then
+    CS_SETTINGS_READ_VAL="${_cs_sg_line:-null}"
     return 0
   fi
+  [ -n "$_cs_sg_line" ] && CS_SETTINGS_LAST_ERR="$_cs_sg_line"
 
   return 1
 }
@@ -70,11 +94,24 @@ cs_settings_put() {
     return 0
   fi
 
+  if command -v cmd >/dev/null 2>&1; then
+    _cs_sp_out=$(cmd settings --user 0 put "$_cs_sp_ns" "$_cs_sp_key" "$_cs_sp_val" 2>&1)
+    _cs_sp_rc=$?
+    if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
+      return 0
+    fi
+  fi
+
   if command -v su >/dev/null 2>&1; then
     _cs_q_ns=$(cs_sh_quote "$_cs_sp_ns")
     _cs_q_key=$(cs_sh_quote "$_cs_sp_key")
     _cs_q_val=$(cs_sh_quote "$_cs_sp_val")
     _cs_sp_out=$(su 2000 -c "settings --user 0 put ${_cs_q_ns} ${_cs_q_key} ${_cs_q_val}" 2>&1)
+    _cs_sp_rc=$?
+    if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
+      return 0
+    fi
+    _cs_sp_out=$(su --context u:r:shell:s0 2000 -c "settings --user 0 put ${_cs_q_ns} ${_cs_q_key} ${_cs_q_val}" 2>&1)
     _cs_sp_rc=$?
     if [ "$_cs_sp_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sp_out"; then
       return 0
@@ -100,10 +137,23 @@ cs_settings_delete() {
     return 0
   fi
 
+  if command -v cmd >/dev/null 2>&1; then
+    _cs_sd_out=$(cmd settings --user 0 delete "$_cs_sd_ns" "$_cs_sd_key" 2>&1)
+    _cs_sd_rc=$?
+    if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
+      return 0
+    fi
+  fi
+
   if command -v su >/dev/null 2>&1; then
     _cs_q_ns=$(cs_sh_quote "$_cs_sd_ns")
     _cs_q_key=$(cs_sh_quote "$_cs_sd_key")
     _cs_sd_out=$(su 2000 -c "settings --user 0 delete ${_cs_q_ns} ${_cs_q_key}" 2>&1)
+    _cs_sd_rc=$?
+    if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
+      return 0
+    fi
+    _cs_sd_out=$(su --context u:r:shell:s0 2000 -c "settings --user 0 delete ${_cs_q_ns} ${_cs_q_key}" 2>&1)
     _cs_sd_rc=$?
     if [ "$_cs_sd_rc" -eq 0 ] && ! cs_settings_is_error_output "$_cs_sd_out"; then
       return 0
@@ -149,7 +199,7 @@ cs_settings_backup_once() {
   fi
 
   if ! cs_settings_get "$_cs_sbo_ns" "$_cs_sbo_key"; then
-    cs_log "WARN: settings get ${_cs_sbo_ns}/${_cs_sbo_key} failed (Binder error); skipping backup/override."
+    CS_SETTINGS_BINDER_FAILED=1
     return 1
   fi
 
@@ -168,6 +218,7 @@ cs_settings_apply_key() {
   _cs_sak_val=$4
 
   cs_settings_available || return 0
+  [ "${CS_SETTINGS_BINDER_FAILED:-0}" = "1" ] && return 1
   cs_settings_backup_once "$_cs_sak_ns" "$_cs_sak_key" || return 1
 
   if cs_settings_put "$_cs_sak_ns" "$_cs_sak_key" "$_cs_sak_val"; then
@@ -175,7 +226,7 @@ cs_settings_apply_key() {
     return 0
   fi
 
-  cs_log "WARN: settings put ${_cs_sak_ns} ${_cs_sak_key} ${_cs_sak_val} failed."
+  CS_SETTINGS_BINDER_FAILED=1
   return 1
 }
 
@@ -211,6 +262,7 @@ cs_settings_build_engine_ipc() {
 cs_settings_sync_engine_ipc() {
   cs_watchdog_init_dir || return 0
   cs_settings_available || return 0
+  CS_SETTINGS_BINDER_FAILED=0
   _cs_ipc_val=$(cs_settings_build_engine_ipc)
   cs_settings_apply_key "FEAT_MOTION_PROFILE" "global" "coresurface_engine_v1" "$_cs_ipc_val" || true
 }
@@ -227,13 +279,16 @@ cs_settings_clear_hos3_stuck_blur() {
       cs_settings_put "secure" "background_blur_enable" "0" || true
       cs_log "Cleanup v3: reset stuck HyperOS 3 secure/background_blur_enable=0 to clear Toast/Recents regression."
     fi
+    : > "$_cs_cb_marker" 2>/dev/null || true
+  else
+    CS_SETTINGS_BINDER_FAILED=1
   fi
-  : > "$_cs_cb_marker" 2>/dev/null || true
 }
 
 cs_settings_sync_all() {
   cs_watchdog_init_dir || return 0
   : > "$CS_SETTINGS_APPLIED_FILE"
+  CS_SETTINGS_BINDER_FAILED=0
 
   if ! cs_settings_available; then
     cs_log "Settings TX: 'settings' binary unavailable; skipping."
@@ -242,9 +297,17 @@ cs_settings_sync_all() {
 
   # Clear any stuck HyperOS 3 Advanced Textures flag once on upgrade
   cs_settings_clear_hos3_stuck_blur || true
+  if [ "$CS_SETTINGS_BINDER_FAILED" = "1" ]; then
+    cs_log "Settings TX: Android 15/16 root Binder restricted; using zero-Binder debug.coresurface.cfg bridge."
+    return 0
+  fi
 
   # Push Live Engine IPC config (instant hot-reload in SystemUI / MiuiHome / MiuiAod)
   cs_settings_sync_engine_ipc || true
+  if [ "$CS_SETTINGS_BINDER_FAILED" = "1" ]; then
+    cs_log "Settings TX: Android 15/16 root Binder restricted; using zero-Binder debug.coresurface.cfg bridge."
+    return 0
+  fi
 
   if [ "$EFF_FEAT_ANIMATIONS" = "1" ]; then
     case "${CS_EFF_TIER:-low}" in

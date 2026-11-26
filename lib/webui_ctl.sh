@@ -150,7 +150,7 @@ cs_cmd_status() {
   _cs_rro_status=$(cs_state_get "RRO_STATUS")
   _cs_rro_staged=$(cs_state_get "RRO_STAGED_COUNT")
 
-  printf 'module_version=%s\n' "v1.0.0"
+  printf 'module_version=%s\n' "v1.2.0"
   printf 'watchdog_status=%s\n' "${_cs_wd_status:-unknown}"
   printf 'watchdog_reason=%s\n' "${_cs_wd_reason:-none}"
   printf 'boot_strikes=%s\n' "${_cs_strikes:-0}"
@@ -250,7 +250,7 @@ cs_cmd_tier() {
 
   # Pick a matching smooth default motion curve when switching tier
   case "$_cs_tm" in
-    flagship) cs_write_config_key "FEAT_MOTION_PROFILE" "silk" ;;
+    flagship) cs_write_config_key "FEAT_MOTION_PROFILE" "coloros" ;;
     *)        cs_write_config_key "FEAT_MOTION_PROFILE" "hyperos4" ;;
   esac
 
@@ -261,7 +261,7 @@ cs_cmd_tier() {
   cs_verifier_run || true
   cs_add_pending_key "CS_TIER_MODE"
   cs_log "WebUI set CS_TIER_MODE=${_cs_tm} (eff=${CS_EFF_TIER}; Motion & Computility live-synced, reboot for early-boot props/XML/RRO)."
-  printf 'Mode Tier "%s" disimpan (Motion & Computility aktif LIVE; reboot 1x untuk prop/XML/RRO).\n' "$_cs_tm"
+  printf 'Tier mode "%s" saved (Motion & Computility active LIVE; reboot once for props/XML/RRO).\n' "$_cs_tm"
 }
 
 cs_cmd_set() {
@@ -277,9 +277,9 @@ cs_cmd_set() {
     FEAT_MOTION_PROFILE)
       _cs_is_live="1"
       case "$_cs_set_v" in
-        hyperos4|silk|0) ;;
+        ios|coloros|hyperos4|silk|0) ;;
         *)
-          printf 'Invalid value for %s: %s (expected hyperos4|silk|0)\n' "$_cs_set_k" "$_cs_set_v" >&2
+          printf 'Invalid value for %s: %s (expected ios|coloros|hyperos4|0)\n' "$_cs_set_k" "$_cs_set_v" >&2
           return 1
           ;;
       esac
@@ -321,7 +321,7 @@ cs_cmd_set() {
     cs_settings_sync_engine_ipc || true
     cs_verifier_run || true
     cs_log "WebUI live-updated ${_cs_set_k}=${_cs_set_v} (instant reload via debug.coresurface.cfg, 0 reboot)."
-    printf 'LIVE Applied %s=%s (langsung aktif tanpa reboot!).\n' "$_cs_set_k" "$_cs_set_v"
+    printf 'LIVE Applied %s=%s (active immediately without reboot!).\n' "$_cs_set_k" "$_cs_set_v"
     return 0
   fi
 
@@ -332,7 +332,7 @@ cs_cmd_set() {
   fi
   cs_add_pending_key "$_cs_set_k"
   cs_log "WebUI updated ${_cs_set_k}=${_cs_set_v} (reboot required for early-boot props/XML/RRO)."
-  printf 'Disimpan %s=%s. Reboot 1x agar RRO/XML/prop berlaku.\n' "$_cs_set_k" "$_cs_set_v"
+  printf 'Saved %s=%s. Reboot once to apply RRO/XML/props.\n' "$_cs_set_k" "$_cs_set_v"
 }
 
 cs_cmd_preset() {
@@ -356,22 +356,23 @@ cs_cmd_hot_sync() {
   cs_resolve_features
   cs_reassert_computility_props || true
   cs_sync_engine_live_prop || true
+  cs_rro_enable_staged || true
   cs_settings_sync_all || true
   cs_os_bug_scan "late" "$MODDIR" || true
   cs_verifier_run || true
-  cs_log "WebUI triggered instant Motion Engine + Computility + settings hot-sync & re-verification."
-  printf 'Hot-Apply & verifikasi ulang selesai tanpa reboot.\n'
+  cs_log "WebUI triggered instant Motion Engine + Computility + RRO + settings hot-sync & re-verification."
+  printf 'Hot-Sync & re-verification completed without reboot.\n'
 }
 
 cs_cmd_install_engine() {
   _cs_apk="$CS_STATE_DIR/CoreSurfaceEngine.apk"
   [ -r "$_cs_apk" ] || _cs_apk="$MODDIR/engine/CoreSurfaceEngine.apk"
   if [ ! -r "$_cs_apk" ]; then
-    printf 'CoreSurfaceEngine.apk tidak ditemukan di modul.\n' >&2
+    printf 'CoreSurfaceEngine.apk not found inside module.\n' >&2
     return 1
   fi
   if ! command -v pm >/dev/null 2>&1; then
-    printf 'Perintah pm tidak tersedia.\n' >&2
+    printf 'Android pm command is unavailable.\n' >&2
     return 1
   fi
 
@@ -379,11 +380,11 @@ cs_cmd_install_engine() {
     cs_engine_write_stamp "$_cs_apk"
     cs_verifier_run || true
     cs_log "WebUI installed/updated CoreSurfaceEngine.apk."
-    printf 'CoreSurfaceEngine.apk terpasang! Aktifkan di LSPosed (SystemUI, MiuiHome, MiuiAod, Settings).\n'
+    printf 'CoreSurfaceEngine.apk installed! Enable once in LSPosed (Recommended scope is auto-pinned at top).\n'
     return 0
   fi
 
-  printf 'Gagal memasang APK (%s). Pasang manual dari %s\n' "${CS_PM_LAST_OUT:-unknown}" "$_cs_apk" >&2
+  printf 'Failed to install APK (%s). Install manually from %s\n' "${CS_PM_LAST_OUT:-unknown}" "$_cs_apk" >&2
   return 1
 }
 
@@ -394,7 +395,7 @@ cs_cmd_diag_report() {
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
 
-  printf '=== CoreSurface v1.0.0 Flagship Motion Diagnostic Report ===\n'
+  printf '=== CoreSurface v1.2.0 Flagship Motion Diagnostic Report ===\n'
   printf 'ROM: %s (%s) | HyperOS Major: %s | Android SDK: %s\n' \
     "$CS_ROM_FAMILY" "${CS_ROM_VERSION:-Unknown}" "$CS_HYPEROS_MAJOR" "$CS_ANDROID_SDK"
   printf 'RAM: %s MB (%s) | Tier: %s (cfg=%s, detected=%s) | CoreFlow Guard: %s\n' \

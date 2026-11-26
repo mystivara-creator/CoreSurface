@@ -15,6 +15,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 . "$MODDIR/lib/props.sh"
 # shellcheck source=lib/engine_ctl.sh
 . "$MODDIR/lib/engine_ctl.sh"
+# shellcheck source=lib/rro.sh
+. "$MODDIR/lib/rro.sh"
 # shellcheck source=lib/settings_tx.sh
 . "$MODDIR/lib/settings_tx.sh"
 # shellcheck source=lib/verifier.sh
@@ -53,6 +55,7 @@ if cs_watchdog_monitor_systemui; then
 
   cs_install_engine_if_needed "$MODDIR" || true
   cs_reassert_computility_props || true
+  cs_rro_enable_staged || true
   cs_settings_sync_all || true
   cs_os_bug_scan "late" "$MODDIR" || true
   cs_verifier_run || true

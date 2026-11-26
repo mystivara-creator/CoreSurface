@@ -240,6 +240,21 @@ cs_verify_engine() {
     cs_is_uint "$_cs_ct" && CS_V_ENGINE_CIRCUITS=$((CS_V_ENGINE_CIRCUITS + _cs_ct))
   done
 
+  # Reconcile live motion profile from zero-Binder debug.coresurface.cfg when Engine is active
+  # (prevents stale telemetry cache from showing the previous profile right after a live WebUI switch)
+  if [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
+    _cs_live_cfg=$(cs_getprop "debug.coresurface.cfg")
+    case ";${_cs_live_cfg};" in
+      *";motion="*)
+        _cs_live_m=$(printf '%s' "$_cs_live_cfg" | sed -n 's/.*motion=\([^;]*\).*/\1/p')
+        case "$_cs_live_m" in
+          ios|coloros|hyperos4|off) CS_V_ENGINE_MOTION="$_cs_live_m" ;;
+          silk) CS_V_ENGINE_MOTION="coloros" ;;
+        esac
+        ;;
+    esac
+  fi
+
   # 3. Map honest per-feature verification for Layer 2 Motion Engine capabilities
   _cs_base_eng="skipped"
   if [ "$CS_V_ENGINE_INSTALLED" = "1" ] && [ "$CS_V_ENGINE_ACTIVE" != "1" ]; then
@@ -253,7 +268,7 @@ cs_verify_engine() {
     CS_V_MOTION_PROFILE="skipped"
   elif [ "$CS_V_ENGINE_ACTIVE" = "1" ]; then
     case ",$CS_V_ENGINE_HOOKS," in
-      *,FolmePhysics,*)
+      *,FolmePhysics,*|*,ShellTransitionPhysics,*|*,LauncherChoreography,*|*,SystemUIChoreography,*)
         CS_V_MOTION_PROFILE="verified_active"
         ;;
       *)
@@ -404,6 +419,11 @@ cs_verify_rro_overlays() {
     fi
   fi
   if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
+    if command -v su >/dev/null 2>&1; then
+      _cs_ov_out=$(su --context u:r:shell:s0 2000 -c "cmd overlay list --user 0" 2>&1 || true)
+    fi
+  fi
+  if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
     _cs_ov_out=$(cmd overlay list 2>&1 || true)
   fi
   if [ -z "$_cs_ov_out" ] || cs_verify_is_settings_err "$_cs_ov_out"; then
@@ -500,7 +520,7 @@ cs_verify_feature() {
 
       if ! cs_verify_settings_get "$_cs_sns" "$_cs_sk"; then
         CS_V_SETTINGS_OK="0"
-        cs_log "Verifier: settings service rejected Binder call; skipping remaining settings checks."
+        cs_log "Verifier: settings service rejected Binder call (${CS_SETTINGS_LAST_ERR:-unknown}); skipping remaining settings checks."
         break
       fi
 
@@ -644,6 +664,11 @@ cs_verifier_run() {
   cs_verify_set "COMPAT_SCORE_PCT" "$_cs_compat_pct"
 
   mv -f "$CS_VERIFY_TMP" "$CS_VERIFY_FILE"
-  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (motion=${CS_V_ENGINE_MOTION}, hz=${CS_V_ENGINE_HZ}, folme=${CS_V_ENGINE_FOLME_HOOKS}, gates=${CS_V_ENGINE_NATIVE_GATES}, lod=${CS_V_ENGINE_LOD})."
+  _cs_ov_note=""
+  if [ "$CS_V_PROPS_OVERRIDDEN" -gt 0 ] && [ -s "$CS_OVERRIDDEN_PROPS_FILE" ]; then
+    _cs_ov_keys=$(awk -F '|' 'NR <= 4 { if (s != "") s = s ","; s = s $2 } END { print s }' "$CS_OVERRIDDEN_PROPS_FILE" 2>/dev/null || true)
+    [ -n "$_cs_ov_keys" ] && _cs_ov_note=" overridden=[${_cs_ov_keys}]"
+  fi
+  cs_log "Verifier: score=${_cs_compat_pct}% (${CS_V_FEAT_VERIFIED}/${CS_V_FEAT_EVALUATED}), tier=${CS_EFF_TIER:-low}, props=${CS_V_PROPS_MATCHED}/${CS_V_PROPS_TOTAL}${_cs_ov_note}, xml=${CS_V_XML_MOUNT}, rro=${CS_V_RRO_ACTIVE}/${CS_V_RRO_TOTAL}, engine=${CS_V_ENGINE_ACTIVE} (motion=${CS_V_ENGINE_MOTION}, hz=${CS_V_ENGINE_HZ}, folme=${CS_V_ENGINE_FOLME_HOOKS}, gates=${CS_V_ENGINE_NATIVE_GATES}, lod=${CS_V_ENGINE_LOD})."
   return 0
 }

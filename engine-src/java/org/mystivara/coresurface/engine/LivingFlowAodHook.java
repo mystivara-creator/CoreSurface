@@ -34,32 +34,25 @@ public final class LivingFlowAodHook {
     private final EngineConfig config;
     private final ProcessBootstrap bootstrap;
     private final DeviceBugGuard bugGuard;
-    private final FolmePhysicsHook folmeHook;
-    private final DeviceLevelUnlockHook deviceLevelHook;
     private final TelemetryReporter telemetry;
 
     public LivingFlowAodHook(EngineConfig config, ProcessBootstrap bootstrap,
-                             DeviceBugGuard bugGuard, FolmePhysicsHook folmeHook,
-                             DeviceLevelUnlockHook deviceLevelHook, TelemetryReporter telemetry) {
+                             DeviceBugGuard bugGuard, TelemetryReporter telemetry) {
         this.config = config;
         this.bootstrap = bootstrap;
         this.bugGuard = bugGuard;
-        this.folmeHook = folmeHook;
-        this.deviceLevelHook = deviceLevelHook;
         this.telemetry = telemetry;
     }
 
     public void install(ClassLoader cl) {
-        int nativeGates = deviceLevelHook.install(cl);
-        folmeHook.install(cl);
-
+        // Keep com.miui.aod animation & Doze/HBM timing 100% native (never install FolmePhysicsHook
+        // inside com.miui.aod) so optical FOD fingerprint ring fade-out stays locked to Doze teardown
+        // with zero white-screen flash.
         int aodGates = installFeatureParserAodHook(cl);
         aodGates += installNonLtpoAodGates(cl);
         if (aodGates > 0) {
             telemetry.addAodGatesHooked(aodGates);
             telemetry.recordHookBound("AodNonLtpoUnlock");
-        }
-        if (nativeGates > 0 || aodGates > 0) {
             telemetry.recordHookBound("AodFlagshipTier");
         }
 
@@ -96,9 +89,7 @@ public final class LivingFlowAodHook {
                         if ("is_only_support_keycode_goto".equals(key)) {
                             param.setResult(Boolean.FALSE);
                         } else if ("support_aod".equals(key)
-                                || "support_aod_aon".equals(key)
-                                || "aod_support_keycode_goto_dismiss".equals(key)
-                                || "is_video_screen".equals(key)) {
+                                || "aod_support_keycode_goto_dismiss".equals(key)) {
                             param.setResult(Boolean.TRUE);
                         }
                     } catch (Throwable ignored) {

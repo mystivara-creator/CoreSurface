@@ -35,7 +35,7 @@ cs_pm_try_install_once() {
   CS_PM_LAST_OUT=""
 
   if [ -n "$_cs_pi_size" ] && [ "$_cs_pi_size" -gt 0 ] 2>/dev/null; then
-    CS_PM_LAST_OUT=$(pm install -r -S "$_cs_pi_size" < "$_cs_pi_apk" 2>&1 || true)
+    CS_PM_LAST_OUT=$(pm install -r -d -S "$_cs_pi_size" < "$_cs_pi_apk" 2>&1 || true)
     case "$CS_PM_LAST_OUT" in
       *Success*) return 0 ;;
       *INSTALL_FAILED_UPDATE_INCOMPATIBLE*) return 2 ;;
@@ -46,7 +46,7 @@ cs_pm_try_install_once() {
   _cs_pi_tmp="/data/local/tmp/coresurface_engine_install.apk"
   if cp "$_cs_pi_apk" "$_cs_pi_tmp" 2>/dev/null; then
     chmod 0644 "$_cs_pi_tmp" 2>/dev/null || true
-    CS_PM_LAST_OUT=$(pm install -r "$_cs_pi_tmp" 2>&1 || true)
+    CS_PM_LAST_OUT=$(pm install -r -d "$_cs_pi_tmp" 2>&1 || true)
     case "$CS_PM_LAST_OUT" in
       *Success*)
         rm -f "$_cs_pi_tmp" 2>/dev/null || true
@@ -58,7 +58,7 @@ cs_pm_try_install_once() {
         ;;
     esac
     if command -v su >/dev/null 2>&1; then
-      CS_PM_LAST_OUT=$(su 2000 -c "pm install -r '${_cs_pi_tmp}'" 2>&1 || true)
+      CS_PM_LAST_OUT=$(su 2000 -c "pm install -r -d '${_cs_pi_tmp}'" 2>&1 || true)
       case "$CS_PM_LAST_OUT" in
         *Success*)
           rm -f "$_cs_pi_tmp" 2>/dev/null || true
@@ -80,6 +80,7 @@ cs_pm_install_apk() {
   _cs_pi_target=$1
   [ -r "$_cs_pi_target" ] || return 1
   command -v pm >/dev/null 2>&1 || return 1
+  CS_PM_REPLACED_SIG=0
 
   cs_pm_try_install_once "$_cs_pi_target"
   _cs_pi_rc=$?
@@ -87,6 +88,7 @@ cs_pm_install_apk() {
     return 0
   fi
   if [ "$_cs_pi_rc" -eq 2 ]; then
+    CS_PM_REPLACED_SIG=1
     cs_pm_uninstall_engine
     cs_log "Engine Installer: replaced previous signature build of CoreSurfaceEngine.apk."
     cs_pm_try_install_once "$_cs_pi_target"
@@ -122,13 +124,22 @@ cs_install_engine_if_needed() {
   _cs_prev_sig=""
   [ -r "$_cs_stamp" ] && _cs_prev_sig=$(cat "$_cs_stamp" 2>/dev/null || true)
 
-  if [ -n "$_cs_cur_sig" ] && [ "$_cs_cur_sig" = "$_cs_prev_sig" ] && cs_pm_is_installed; then
+  _cs_was_installed=0
+  if cs_pm_is_installed; then
+    _cs_was_installed=1
+  fi
+
+  if [ -n "$_cs_cur_sig" ] && [ "$_cs_cur_sig" = "$_cs_prev_sig" ] && [ "$_cs_was_installed" -eq 1 ]; then
     return 0
   fi
 
   if cs_pm_install_apk "$_cs_apk"; then
     cs_engine_write_stamp "$_cs_apk"
-    cs_log "Engine Installer: installed/updated CoreSurfaceEngine.apk (enable in LSPosed)."
+    if [ "$_cs_was_installed" -eq 1 ] && [ "${CS_PM_REPLACED_SIG:-0}" -eq 0 ]; then
+      cs_log "Engine Installer: upgraded CoreSurfaceEngine.apk in-place (LSPosed enabled state & scopes preserved)."
+    else
+      cs_log "Engine Installer: installed CoreSurfaceEngine.apk (enable once in LSPosed; future updates preserve state)."
+    fi
   else
     cs_log "Engine Installer: automatic pm install skipped (install manually from ${_cs_apk})."
   fi
