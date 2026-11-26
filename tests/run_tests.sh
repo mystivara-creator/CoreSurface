@@ -1391,5 +1391,80 @@ assert_file_contains "$SB_PROPS_LOG" "persist.sys.enable_parallel_sweep=true" "B
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.shell_anim_enable_fcb=true" "Balanced Pro receives Frame Callback Booster (FCB)"
 
 # ---------------------------------------------------------------------------
+printf '=== Test 25: High-Priority RRO (9999) & Hardware-Verified 90Hz Refresh Rate Unlock ===\n'
+assert_file_contains "$REPO_ROOT/overlays-src/miwallpaper/AndroidManifest.xml" 'android:priority="9999"' "MiWallpaper RRO uses priority=9999 to override vendor Super Wallpaper gates"
+assert_file_contains "$REPO_ROOT/overlays-src/thememanager/AndroidManifest.xml" 'android:priority="9999"' "ThemeManager RRO uses priority=9999"
+assert_file_contains "$REPO_ROOT/overlays-src/miuiaod/AndroidManifest.xml" 'android:priority="9999"' "MiuiAod RRO uses priority=9999"
+assert_file_contains "$REPO_ROOT/overlays-src/systemui-ui/AndroidManifest.xml" 'android:priority="9998"' "SystemUI RRO uses priority=9998"
+assert_file_contains "$REPO_ROOT/overlays-src/systemui-lite-blur/AndroidManifest.xml" 'android:priority="9999"' "SystemUILiteBlur RRO uses priority=9999 above SystemUI"
+
+# 25a: Panel with hardware 90Hz in dumpsys display -> safely injects <item>90</item> into fpsList + support_smart_fps=true
+setup_sandbox "t25a_hw_90hz_supported"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+write_mock_meminfo "7500000"
+cat > "$SB_XML_DIR1/kunzite.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">false</bool>
+    <integer name="device_level">1</integer>
+    <integer-array name="fpsList">
+        <item>120</item>
+        <item>60</item>
+    </integer-array>
+</features>
+EOF
+cat > "$SB/dumpsys_90.txt" <<'EOF'
+  mSupportedModesByDisplay:
+    Mode{id=1, width=1080, height=2400, fps=120.00001}
+    Mode{id=2, width=1080, height=2400, fps=90.00001}
+    Mode{id=3, width=1080, height=2400, fps=60.000004}
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_DISPLAY="$SB/dumpsys_90.txt" run_service
+assert_file_contains "$SB_STATE/hw_fps.list" "60 90 120" "cs_probe_hw_fps extracts hardware-verified 60 90 120 Hz from dumpsys display"
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<item>90</item>' "XML patcher injects <item>90</item> into fpsList when panel hardware supports 90Hz"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<item>120</item>' "XML patcher preserves stock <item>120</item> in fpsList"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<item>60</item>' "XML patcher preserves stock <item>60</item> in fpsList"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_smart_fps">true</bool>' "XML patcher enables support_smart_fps=true when 90Hz is hardware-verified"
+
+# 25b: Panel WITHOUT 90Hz in dumpsys display -> fpsList remains 100% untouched (fail-closed)
+setup_sandbox "t25b_hw_no_90hz"
+write_mock_getprop "OS3.0" "" "36" "1" "no90dev" "Redmi Note 15"
+write_mock_meminfo "7500000"
+cat > "$SB_XML_DIR1/no90dev.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">false</bool>
+    <integer name="device_level">1</integer>
+    <integer-array name="fpsList">
+        <item>120</item>
+        <item>60</item>
+    </integer-array>
+</features>
+EOF
+cat > "$SB/dumpsys_no90.txt" <<'EOF'
+    Mode{id=1, width=1080, height=2400, fps=120.0}
+    Mode{id=2, width=1080, height=2400, fps=60.0}
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_DISPLAY="$SB/dumpsys_no90.txt" run_service
+assert_file_contains "$SB_STATE/hw_fps.list" "60 120" "cs_probe_hw_fps records only 60 120 on non-90Hz panel"
+run_post_fs_data
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<item>90</item>' "XML patcher refuses to inject 90Hz on panels without hardware 90Hz support"
+
+# ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

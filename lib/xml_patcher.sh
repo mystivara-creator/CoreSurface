@@ -174,11 +174,76 @@ cs_xml_build_patch_spec() {
       printf 'bool|support_super_wallpaper|true\n'
       printf 'integer|support_inner_record|1\n'
     fi
+
+    if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ] && cs_hw_supports_90hz; then
+      printf 'bool|support_smart_fps|true\n'
+    fi
   } > "$_cs_spec_file"
 }
 
+CS_HW_FPS_FILE="$CS_STATE_DIR/hw_fps.list"
+
+# Probe real hardware-supported display refresh rates via `dumpsys display`
+# (called during customize.sh while Android is live, and during service.sh post-boot).
+cs_probe_hw_fps() {
+  cs_watchdog_init_dir || return 0
+  _cs_ds_out=""
+  if [ -n "${CORESURFACE_DUMPSYS_DISPLAY:-}" ] && [ -r "${CORESURFACE_DUMPSYS_DISPLAY}" ]; then
+    _cs_ds_out=$(cat "$CORESURFACE_DUMPSYS_DISPLAY" 2>/dev/null || true)
+  elif command -v dumpsys >/dev/null 2>&1; then
+    _cs_ds_out=$(dumpsys display 2>/dev/null || true)
+    if [ -z "$_cs_ds_out" ] && command -v su >/dev/null 2>&1; then
+      _cs_ds_out=$(su 2000 -c "dumpsys display" 2>/dev/null || true)
+    fi
+    if [ -z "$_cs_ds_out" ]; then
+      for _cs_dbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+        if [ -x "$_cs_dbb" ]; then
+          _cs_ds_out=$("$_cs_dbb" setuidgid 2000 dumpsys display 2>/dev/null || true)
+          break
+        fi
+      done
+    fi
+  fi
+
+  [ -n "$_cs_ds_out" ] || return 0
+  _cs_fps_vals=$(printf '%s\n' "$_cs_ds_out" | awk '
+    {
+      s = $0
+      while (match(s, /fps=[0-9]+(\.[0-9]+)?/)) {
+        m = substr(s, RSTART + 4, RLENGTH - 4)
+        sub(/\..*/, "", m)
+        if (m + 0 >= 24 && m + 0 <= 240) seen[m + 0] = 1
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }
+    END {
+      out = ""
+      for (f = 24; f <= 240; f++) {
+        if (f in seen) out = (out == "" ? f : out " " f)
+      }
+      if (out != "") print out
+    }
+  ' 2>/dev/null || true)
+
+  if [ -n "$_cs_fps_vals" ]; then
+    printf '%s\n' "$_cs_fps_vals" > "$CS_HW_FPS_FILE" 2>/dev/null || true
+  fi
+  return 0
+}
+
+cs_hw_supports_90hz() {
+  [ -r "$CS_HW_FPS_FILE" ] || return 1
+  _cs_hw_fps=$(head -n 1 "$CS_HW_FPS_FILE" 2>/dev/null | tr -d '\r')
+  case " $_cs_hw_fps " in
+    *" 90 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Non-destructive XML patcher using POSIX awk:
-# - Protected tags (fpsList, color/screen_effect, double_tap) are never modified.
+# - Protected tags (fpsList, color/screen_effect, double_tap) are never modified,
+#   EXCEPT inserting <item>90</item> into fpsList + support_smart_fps=true ONLY when
+#   90Hz is verified in hardware display modes (hw_fps.list).
 # - Capability <bool>: only upgrades false -> true; never downgrades true -> false.
 # - Whitelisted restriction-removal <bool> (is_only_support_keycode_goto): flips true -> false.
 # - <integer>: only upgrades when desired > existing; never lowers an existing higher value.
@@ -187,9 +252,16 @@ cs_xml_patch_file() {
   _cs_src=$1
   _cs_spec=$2
   _cs_dst=$3
+  _cs_add_90hz=0
+  if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ] && cs_hw_supports_90hz; then
+    _cs_add_90hz=1
+  fi
 
-  awk -F '|' '
+  awk -F '|' -v add_90hz="$_cs_add_90hz" '
     function is_protected(name) {
+      if (add_90hz == 1 && name == "support_smart_fps") {
+        return 0
+      }
       if (name ~ /(fps|refresh|double_tap|screen_effect|color_mode|color_gamut|vivid|saturat|paper_mode|eyecare|sunlight)/) {
         return 1
       }
@@ -209,6 +281,31 @@ cs_xml_patch_file() {
     }
     {
       line = $0
+      if (add_90hz == 1) {
+        if (line ~ /<integer-array[ \t]+name="fpsList"/) {
+          in_fps_list = 1
+          has_90 = 0
+          fps_indent = "        "
+          print line
+          next
+        }
+        if (in_fps_list) {
+          if (line ~ /<item>[ \t]*90[ \t]*<\/item>/) {
+            has_90 = 1
+          }
+          if (line ~ /<item>/ && match(line, /^[ \t]*/)) {
+            fps_indent = substr(line, 1, RLENGTH)
+          }
+          if (line ~ /<\/integer-array>/) {
+            if (!has_90) {
+              printf "%s<item>90</item>\n", fps_indent
+            }
+            in_fps_list = 0
+          }
+          print line
+          next
+        }
+      }
       if (line ~ /<\/features>/) {
         for (i = 1; i <= n; i++) {
           k = order[i]

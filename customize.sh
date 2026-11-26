@@ -232,6 +232,11 @@ if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ] && 
   . "$_cs_modpath/lib/props.sh"
   cs_clear_system_prop "$_cs_modpath" || true
   if [ "$_cs_rom_supported" = "1" ]; then
+    if [ -r "$_cs_modpath/lib/xml_patcher.sh" ]; then
+      # shellcheck source=lib/xml_patcher.sh
+      . "$_cs_modpath/lib/xml_patcher.sh"
+      cs_probe_hw_fps || true
+    fi
     cs_rro_stage "$_cs_modpath" || true
     _cs_ui_print "- Staged ${CS_RRO_COUNT:-0} clean-room RRO overlay(s) for next boot"
     # On KernelSU / KernelSU-Next without a metamodule, warn user that RRO needs meta-overlayfs
