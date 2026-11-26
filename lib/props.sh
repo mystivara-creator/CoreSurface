@@ -404,28 +404,23 @@ cs_apply_feat_display_hz() {
 cs_apply_feat_flagship_audio() {
   [ "$EFF_FEAT_FLAGSHIP_AUDIO" = "1" ] || return 0
 
-  # Verified HyperOS / Xiaomi Flagship Speaker & Audio Framework pipeline flags
-  # (pure user-space audio framework/HAL props; zero kernel/sysfs coupling; zero idle DSP load).
-  # Audio HAL Never-Fight: do NOT force persist.vendor.audio.misound.disable because vendor
-  # audioserver / Dolby DAX actively owns that runtime property to prevent double-DSP routing.
+  # Verified 100% real HyperOS Audio & Speaker user-space props (zero gimmick, zero idle DSP load):
+  # - Unlocks 10-band Graphic EQ, Earphone Acoustic Calibration, Sound Scenarios, Clear Speaker,
+  #   Game Turbo Audio & Voice Changer.
+  # - Omits hardware-locked/placebo props (hifi DAC, spk.stereo, dolby.dax, spatializer) and
+  #   never fights vendor audioserver's persist.vendor.audio.misound.disable.
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.audiovisual" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.scenario" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.independentequalizer" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.sfx.earadj" "true"
   cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.game.effect" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.dolby.dax.support" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.voice.change.support" "true"
+  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.clean" "true"
   # Never-Downgrade: preserve stock Dolby/Harman/Dirac soundfx type if factory ROM sets one
   _cs_sfx_type=$(cs_getprop "ro.vendor.audio.soundfx.type")
   if [ -z "$_cs_sfx_type" ]; then
     cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.soundfx.type" "mi"
   fi
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.misound.bluetooth.enable" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.stereo" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.spk.clean" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.hifi" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.vendor.audio.voice.change.support" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "ro.audio.spatializer_enabled" "true"
-  cs_set_prop "FEAT_FLAGSHIP_AUDIO" "persist.vendor.audio.hifi.int_codec" "true"
 }
 
 cs_apply_feat_flagship_suite() {

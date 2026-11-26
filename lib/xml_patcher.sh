@@ -115,17 +115,13 @@ cs_xml_build_patch_spec() {
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_AUDIO:-0}" = "1" ]; then
-      # Flagship Audio & Speaker Suite (Dolby, Hi-Fi, Sound Effects/Spatial Audio, Sound Assistant,
-      # Audio Share, 24-bit/Stereo/Studio Mic Record)
-      printf 'bool|support_dolby|true\n'
-      printf 'bool|support_hifi|true\n'
+      # Verified 100% real Audio & Recorder XML capabilities (Sound Assistant, Audio Share,
+      # Stereo/24-bit/HD/Interview Mic Record). Omits hardware-locked DAC/Dolby/LHDC/Spatializer.
       printf 'bool|support_sound_effect|true\n'
-      printf 'bool|support_spatial_audio|true\n'
       printf 'bool|support_sound_assist|true\n'
       printf 'bool|support_audio_share|true\n'
       printf 'bool|support_stereo_record|true\n'
       printf 'bool|support_24bit_record|true\n'
-      printf 'bool|support_lhdc_offload|true\n'
       printf 'bool|support_audio_loopback|true\n'
       printf 'bool|support_phone_call_noise_suppression|true\n'
       printf 'bool|support_interview_record_param|true\n'
@@ -133,15 +129,10 @@ cs_xml_build_patch_spec() {
     fi
 
     if [ "${EFF_FEAT_FLAGSHIP_SUITE:-0}" = "1" ]; then
-      # Flagship Exclusive Porting Suite (AI Image Engine, Video Toolbox, Game Turbo Wild Boost,
-      # Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP Record, Power Modes)
-      # NOTE: Deliberately omit panel-specific HBM brighten flags (support_hdr_hbm_brighten /
-      # support_manual_brightness_boost / support_dolby_version_brighten) to avoid FOD HBM white flashes on AOD.
-      printf 'bool|support_AI_display|true\n'
-      printf 'bool|support_super_resolution|true\n'
-      printf 'bool|support_hdr_enhance|true\n'
-      printf 'bool|support_screen_enhance_engine|true\n'
-      printf 'bool|support_truetone|true\n'
+      # Verified 100% real Flagship Porting Suite (Video Toolbox + DisplayFeature Cinema LUTs,
+      # Game Turbo Wild Boost/Gunsight/Macro, Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP & Inner Record).
+      # NOTE: Deliberately omits hardware-locked AI Image Engine/MEMC/Super-Resolution, TrueTone RGB sensor,
+      # and panel HBM brighten flags (no dummy toggles, no FOD white flashes).
       printf 'bool|is_support_video_tool_box|true\n'
       printf 'bool|support_videobox_display_effect|true\n'
       printf 'bool|support_videobox_cinema_adapt_ce|true\n'

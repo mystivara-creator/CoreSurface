@@ -1139,17 +1139,17 @@ assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=fa
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island.shader=false" "Non-flagship HOS 3 disables heavy HyperIsland GPU shader for smooth Control Center swipes"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "Non-flagship HOS 3 skips heavy backdrop_sampling shader"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "Non-flagship HOS 3 skips heavy blurnoise shader"
-# Audio & Speaker props
-assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Flagship Audio sets ro.vendor.audio.spk.stereo=true"
+# Audio & Speaker props (100% real user-space; zero hardware-locked gimmicks)
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Flagship Audio sets ro.vendor.audio.spk.clean=true"
-assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.dolby.dax.support=true" "Flagship Audio sets ro.vendor.audio.dolby.dax.support=true"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.scenario=true" "Flagship Audio sets ro.vendor.audio.sfx.scenario=true"
-assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.hifi=true" "Flagship Audio sets ro.vendor.audio.hifi=true"
-assert_file_contains "$SB_PROPS_LOG" "persist.vendor.audio.hifi.int_codec=true" "Flagship Audio sets persist.vendor.audio.hifi.int_codec=true"
-assert_file_contains "$SB_PROPS_LOG" "ro.audio.spatializer_enabled=true" "Flagship Audio sets ro.audio.spatializer_enabled=true"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.voice.change.support=true" "Flagship Audio sets ro.vendor.audio.voice.change.support=true"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.hifi=true" "Zero-gimmick Audio omits hardware-locked ro.vendor.audio.hifi"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Zero-gimmick Audio omits redundant ro.vendor.audio.spk.stereo"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.dolby.dax.support=true" "Zero-gimmick Audio omits vendor-owned dolby.dax.support"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.audio.spatializer_enabled=true" "Zero-gimmick Audio omits hardware-locked spatializer_enabled"
 # Audio XML tags
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Flagship Audio XML enables support_dolby"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hifi">true</bool>' "Flagship Audio XML enables support_hifi"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hifi">true</bool>' "Zero-gimmick Audio XML omits hardware-locked support_hifi"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Zero-gimmick Audio XML omits vendor-owned support_dolby"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_assist">true</bool>' "Flagship Audio XML enables support_sound_assist"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_24bit_record">true</bool>' "Flagship Audio XML enables support_24bit_record"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_stereo_record">true</bool>' "Flagship Audio XML enables support_stereo_record"
@@ -1165,10 +1165,11 @@ assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_ai_wakeup_effect=true"
 assert_file_contains "$SB_PROPS_LOG" "persist.vendor.night.charge=true" "Flagship Suite sets optimized Night Charge"
 assert_file_contains "$SB_PROPS_LOG" "persist.vendor.battery.ai.predict=true" "Flagship Suite sets AI Battery Prediction"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.translate.state.supportAiSubtitles=true" "Flagship Suite sets supportAiSubtitles=true"
-# Flagship Porting Suite XML tags
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_AI_display">true</bool>' "Flagship Suite XML enables support_AI_display"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_super_resolution">true</bool>' "Flagship Suite XML enables support_super_resolution"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_hdr_enhance">true</bool>' "Flagship Suite XML enables support_hdr_enhance"
+# Flagship Porting Suite XML tags (zero-gimmick: omits dummy AI HDR/Super-Res/TrueTone; keeps real features)
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_super_resolution' "Zero-gimmick Suite omits hardware-locked support_super_resolution"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_hdr_enhance' "Zero-gimmick Suite omits hardware-locked support_hdr_enhance"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_truetone' "Zero-gimmick Suite omits RGB-sensor-dependent support_truetone"
+assert_file_not_contains "$REPO_ROOT/overlays-src/systemui-ui/res/values/bools.xml" 'support_aod_linkage_anim' "SystemUI RRO omits support_aod_linkage_anim to prevent 30Hz Video-Mode AOD wake blink"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="is_support_video_tool_box">true</bool>' "Flagship Suite XML enables is_support_video_tool_box"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Flagship Suite XML enables support_wild_boost"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_game_gunsight">true</bool>' "Flagship Suite XML enables support_game_gunsight"
@@ -1208,9 +1209,9 @@ write_sample_xml "$SB_XML_DIR1/kunzite.xml"
 printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "Lite tier skips Advanced Textures v4 release=4"
-assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Lite tier keeps Flagship Audio & Speaker ON by default"
+assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Lite tier keeps Flagship Audio & Speaker ON by default"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Lite tier keeps heavy Flagship Porting Suite OFF by default"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_dolby">true</bool>' "Lite tier XML enables Audio support_dolby"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_assist">true</bool>' "Lite tier XML enables Audio support_sound_assist"
 assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_wild_boost">true</bool>' "Lite tier XML skips Flagship Porting Suite tags"
 
 # Native Flagship Passthrough (motion_only): skips both Audio & Porting Suite overrides
@@ -1228,7 +1229,7 @@ cat > "$SB_XML_DIR1/houji.xml" <<'EOF'
 EOF
 printf 'CS_TIER_MODE=auto\n' > "$SB_STATE/config.prop"
 run_post_fs_data
-assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.stereo=true" "Native Flagship motion_only skips Flagship Audio prop overrides"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Native Flagship motion_only skips Flagship Audio prop overrides"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.ui.font.animation=enable" "Native Flagship motion_only skips Flagship Suite prop overrides"
 
 # ---------------------------------------------------------------------------
@@ -1367,7 +1368,8 @@ assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.earadj=true" "Flagship
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.game.effect=true" "Flagship Audio unlocks Game Turbo audio enhancement"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.vendor.audio.misound.disable" "Audio HAL Never-Fight omits persist.vendor.audio.misound.disable so Dolby/audioserver never clashes"
 assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_sound_effect">true</bool>' "Flagship Audio XML enables support_sound_effect"
-assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_spatial_audio">true</bool>' "Flagship Audio XML enables support_spatial_audio"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_audio_share">true</bool>' "Flagship Audio XML enables support_audio_share"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" '<bool name="support_spatial_audio">true</bool>' "Zero-gimmick Audio XML omits hardware-locked support_spatial_audio"
 
 # Verify single-pass batch getprop ([key]: [value] dump) achieves 100% score & 0 overridden props
 cat > "$SB_BIN/pidof" <<'EOF'
