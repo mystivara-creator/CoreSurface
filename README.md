@@ -1,4 +1,4 @@
-# CoreSurface v1.4.0
+# CoreSurface v1.4.1
 
 **CoreSurface** is a clean-room, **100% standalone pure user-space** HyperOS 3 / HyperOS 4 (and MIUI) **4-Tier Flagship Experience** module — preserving **100% original HyperOS UI**, **0 KB background daemon overhead**, and strictly zero-gimmick engineering:
 
@@ -13,7 +13,7 @@
 
 Part of the **[Mystivara Ecosystem](https://mystivara-creator.github.io)** — designed as an independent sister module to **CoreFlow-Engine** and **CoreType** (**Zero Coupling**, **Zero Kernel/Sysfs Touch**, **Zero Gimmick**).
 
-> **Leica Companion Note:** CoreSurface v1.4.0 ships the built-in **Camera Pro Engine** + **Dual-Support Leica Bridge** + **0 KB Crash Inspector**. Optional SDK/SoC-matched **Leica Companion Packs** remain separate so CoreSurface stays ~80 KB and crash-free (* currently in development).
+> **Leica Companion Note:** CoreSurface v1.4.1 ships the built-in **Camera Pro Engine** + **Dual-Support Leica Bridge** + **0 KB Crash Inspector**. Optional SDK/SoC-matched **Leica Companion Packs** remain separate so CoreSurface stays ~80 KB and crash-free (* currently in development).
 
 ---
 
@@ -32,7 +32,7 @@ During installation, use **`[Vol+]` = Next Option** and **`[Vol-]` = Confirm** (
 
 ## Quick Installation
 
-1. Flash `CoreSurface-v1.4.0.zip` in **KernelSU-Next** (ensure `meta-overlayfs` is installed for RRO overlays), **Magisk**, or **APatch**.
+1. Flash `CoreSurface-v1.4.1.zip` in **KernelSU-Next** (ensure `meta-overlayfs` is installed for RRO overlays), **Magisk**, or **APatch**.
 2. Choose your **Tier Mode** using **Volume Up / Volume Down** → reboot once.
 3. Open **KernelSU-Next → Modules → CoreSurface → Open WebUI** (or tap **Action**) to switch Tier Modes, inspect real Camera2 hardware capabilities, toggle AOD/Audio/Camera/Porting Suite, run Hot-Sync & Verify, or export diagnostics to `/sdcard/Download/coresurface-diag.txt`.
 *(Upgrading from v1.0–v1.2 automatically removes the legacy `CoreSurfaceEngine.apk` on first boot — no manual cleanup needed.)*

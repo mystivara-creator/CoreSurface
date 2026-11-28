@@ -183,9 +183,8 @@ cs_apply_feat_animations() {
   cs_set_prop "FEAT_ANIMATIONS" "debug.sysui.use_control_center" "1"
   cs_set_prop "FEAT_ANIMATIONS" "persist.sys.launch_response_optimization.enable" "true"
   cs_set_prop "FEAT_ANIMATIONS" "ro.miui.shell_anim_enable_fcb" "true"
-  # HyperIsland real-time GLSL shader stacks on top of Control Center / Notification Shade blur
-  # during left/right swipes; disable only the heavy shader pass on mid-range GPUs (keeping Island + animations ON).
-  if [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ] && [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
+  # Only trim heavy HyperIsland shader pass on Lite tier; keep full compositor shaders intact on Flagship/Balanced Pro.
+  if [ "${CS_EFF_TIER:-low}" = "low" ] && [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ] && [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
     cs_set_prop "FEAT_ANIMATIONS" "persist.sys.feature.island.shader" "false"
   fi
   case "${CS_EFF_TIER:-low}" in
@@ -208,13 +207,9 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.sf_charge_anim_supported" "true"
-      # Real-time Recents task-card mask blur causes GPU frame-time spikes during App Close -> Recent Apps
-      # on mid-range GPUs; explicitly disable it on stock device_level < 3 (since HOS 3 defaults it to true at device_level=3).
-      if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
-        cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "true"
-      else
-        cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "false"
-      fi
+      # Keep Recents task-card mask blur enabled on Max Flagship so HyperOS 3/4 Advanced Textures
+      # renders translucent Recents cleanly (never opaque black) with fluid parallel swipe-up transitions.
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
     balanced_pro)
@@ -235,9 +230,7 @@ cs_apply_feat_animations() {
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.hyper_transition_v" "3"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.element_transition_supported" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.sys.enable_parallel_sweep" "true"
-      if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -lt 3 ]; then
-        cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "false"
-      fi
+      cs_set_prop "FEAT_ANIMATIONS" "persist.sys.multi_task.mask_blur_enable" "true"
       cs_set_prop "FEAT_ANIMATIONS" "persist.hyper.barfollow_anim" "true"
       ;;
     *)
@@ -281,7 +274,11 @@ cs_reassert_computility_props() {
       cs_set_prop_mem_only "persist.sys.computilityV2.devicelevel" "4"
       cs_set_prop_mem_only "persist.sys.computilityV2.version" "2026"
       cs_set_prop_mem_only "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 3 3)"
+      cs_set_prop_mem_only "persist.sys.hyper_transition" "true"
       cs_set_prop_mem_only "persist.sys.hyper_transition_v" "3"
+      cs_set_prop_mem_only "persist.sys.element_transition_supported" "true"
+      cs_set_prop_mem_only "persist.sys.enable_parallel_sweep" "true"
+      cs_set_prop_mem_only "persist.sys.multi_task.mask_blur_enable" "true"
       cs_set_prop_mem_only "persist.hyper.barfollow_anim" "true"
       cs_log "Re-asserted flagship computility (cpu=${_cs_rcpu}, gpu=${_cs_rgpu}, V2=4) via resetprop -n."
       ;;
@@ -296,7 +293,11 @@ cs_reassert_computility_props() {
       cs_set_prop_mem_only "persist.sys.computilityV2.devicelevel" "3"
       cs_set_prop_mem_only "persist.sys.computilityV2.version" "2026"
       cs_set_prop_mem_only "persist.sys.deviceLevelList" "$(cs_resolve_never_downgrade_level_list 2 3)"
+      cs_set_prop_mem_only "persist.sys.hyper_transition" "true"
       cs_set_prop_mem_only "persist.sys.hyper_transition_v" "3"
+      cs_set_prop_mem_only "persist.sys.element_transition_supported" "true"
+      cs_set_prop_mem_only "persist.sys.enable_parallel_sweep" "true"
+      cs_set_prop_mem_only "persist.sys.multi_task.mask_blur_enable" "true"
       cs_set_prop_mem_only "persist.hyper.barfollow_anim" "true"
       cs_log "Re-asserted balanced_pro computility (cpu=${_cs_rcpu}, gpu=${_cs_rgpu}, V2=3) via resetprop -n."
       ;;
@@ -317,10 +318,9 @@ cs_apply_feat_blur() {
   cs_set_prop "FEAT_BLUR" "ro.miui.has_real_blur" "1"
   cs_set_prop "FEAT_BLUR" "ro.miui.cc_blur_supported" "true"
   cs_set_prop "FEAT_BLUR" "persist.sys.miui_folder_blur" "1"
-  # Full-screen real-time GPU blur on frame 0 of app launch causes a noticeable 1-3 frame
-  # hesitation/stutter on mid-range GPUs (stock device_level < 3). Keep it 0 on mid-range
-  # GPUs for instant icon-tap takeoff, and 1 only on native flagship GPUs.
-  if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
+  # Max Flagship (or native flagship GPU) enables full app-launch parallel blur curve;
+  # Lite & Balanced Pro on mid-range GPUs keep appLaunch=0 for ultra-light frame-0 takeoff.
+  if [ "${CS_EFF_TIER:-low}" = "flagship" ] || [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
     cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "1"
   else
     cs_set_prop "FEAT_BLUR" "ro.launcher.blur.appLaunch" "0"
@@ -337,39 +337,38 @@ cs_apply_feat_blur() {
   if [ "${EFF_FEAT_ADV_TEXTURES:-0}" != "1" ]; then
     cs_set_prop "FEAT_BLUR" "persist.sys.background_blur_status_default" "false"
   elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 4 ]; then
-    # Native HyperOS 4+ Bionic Material & Advanced Textures contract (verified against OS4.0 factory dump):
+    # Complete HyperOS 4+ Bionic Material & Advanced Textures v5 contract (strictly resetprop -n):
     # - Never-Downgrade advanced_visual_release: min 5 (preserves 6+ on future HOS 4.1+ ROMs)
-    # - Never overwrite persist.sys.background_blur_status_default so HyperOS Settings toggle stays consistent
-    # - Enables persist.sys.bionic_material_supported=true + G2 SmoothCorner (plus MiShadow/Backdrop on flagship GPU)
+    # - Complete smoothcorner + window mishadow + blurnoise tokens prevent black Recents & stiff parallel corners
     _cs_avr=$(cs_max_uint 5 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
     cs_set_prop "FEAT_BLUR" "persist.sys.bionic_material_supported" "true"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
-    if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
-      cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
+    if [ "${CS_EFF_TIER:-low}" = "flagship" ] || [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
       cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
-      cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
       cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"
       cs_set_prop "FEAT_BLUR" "ro.miui.backdrop_sampling_enabled" "true"
-      cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
     fi
   elif [ "${CS_HYPEROS_MAJOR:-0}" -ge 3 ]; then
-    # Lightweight HyperOS 3 Advanced Textures v4 contract (strictly resetprop -n):
+    # Complete HyperOS 3 Advanced Textures v4 contract (strictly resetprop -n):
     # - Never-Downgrade advanced_visual_release: min 4 (preserves 5+ on HOS 3.1/3.2 ROMs)
     # - Never overwrite persist.sys.background_blur_status_default so HyperOS Settings toggle stays consistent
-    # - Smooth window corners on all devices; heavy per-view shaders (view_smoothcorner, MiShadow,
-    #   BlurNoise, BackdropSampling) gated to native flagship GPUs (stock device_level >= 3) for
-    #   consistent frame pacing during App Close -> Recent Apps and scrolling on mid-range GPUs.
+    # - Complete smoothcorner (window+view) + window mishadow + blurnoise tokens keep Recent Apps
+    #   translucent (zero black screen) and parallel app-switch corner morphing fluid.
+    # - Max Flagship (or native flagship GPU) completes full MiShadow + BackdropSampling shaders.
     _cs_avr=$(cs_max_uint 4 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")
     cs_set_prop "FEAT_BLUR" "persist.sys.advanced_visual_release" "$_cs_avr"
     cs_set_prop "FEAT_BLUR" "persist.sys.support_window_smoothcorner" "true"
-    if [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
-      cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_view_smoothcorner" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
+    cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
+    if [ "${CS_EFF_TIER:-low}" = "flagship" ] || [ "${CS_STOCK_DEVICE_LEVEL:-0}" -ge 3 ]; then
       cs_set_prop "FEAT_BLUR" "persist.sys.mi_shadow_supported" "true"
-      cs_set_prop "FEAT_BLUR" "persist.sys.support_window_mishadow" "true"
       cs_set_prop "FEAT_BLUR" "persist.sys.support_view_mishadow" "true"
       cs_set_prop "FEAT_BLUR" "ro.miui.backdrop_sampling_enabled" "true"
-      cs_set_prop "FEAT_BLUR" "persist.sys.add_blurnoise_supported" "true"
     fi
   else
     _cs_avr=$(cs_max_uint 3 "${CS_STOCK_ADV_VISUAL_RELEASE:-0}")

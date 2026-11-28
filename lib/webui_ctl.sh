@@ -202,7 +202,7 @@ cs_cmd_status() {
     done < "$CS_OS_BUGS_FILE"
   fi
 
-  printf 'module_version=%s\n' "v1.4.0"
+  printf 'module_version=%s\n' "v1.4.1"
   printf 'watchdog_status=%s\n' "${_cs_wd_status:-unknown}"
   printf 'watchdog_reason=%s\n' "${_cs_wd_reason:-none}"
   printf 'boot_strikes=%s\n' "${_cs_strikes:-0}"
@@ -427,7 +427,7 @@ cs_cmd_diag_report() {
   _dr_rro_note=""
   [ -n "$_dr_rro_inact" ] && _dr_rro_note=" inactive=[${_dr_rro_inact}]"
 
-  printf '=== CoreSurface v1.4.0 Standalone Diagnostic Report ===\n'
+  printf '=== CoreSurface v1.4.1 Standalone Diagnostic Report ===\n'
   printf 'ROM: %s (%s) | HyperOS Major: %s | Android SDK: %s\n' \
     "$CS_ROM_FAMILY" "${CS_ROM_VERSION:-Unknown}" "$CS_HYPEROS_MAJOR" "$CS_ANDROID_SDK"
   printf 'RAM: %s MB (%s) | Tier: %s (cfg=%s, detected=%s) | CoreFlow Guard: %s\n' \

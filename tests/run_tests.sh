@@ -748,7 +748,7 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync
 _diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
 printf '%s\n' "$_diag" > "$SB/diag.txt"
-assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.4.0 Standalone Diagnostic Report ===" "diag-report outputs structured Standalone v1.4.0 header"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.4.1 Standalone Diagnostic Report ===" "diag-report outputs structured Standalone v1.4.1 header"
 assert_file_contains "$SB/diag.txt" "Custom Color Expert:" "diag-report includes Custom Color Expert status"
 assert_file_contains "$SB/diag.txt" "AOD Unlock:" "diag-report includes AOD Unlock status"
 
@@ -1045,8 +1045,8 @@ run_service
 _act_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/action.sh")
 printf '%s\n' "$_act_out" > "$SB/action.out"
-assert_file_contains "$SB/action.out" "CoreSurface v1.4.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
-assert_file_contains "$SB/action.out" "=== CoreSurface v1.4.0 Standalone Diagnostic Report ===" "action.sh runs standalone diagnostic report cleanly"
+assert_file_contains "$SB/action.out" "CoreSurface v1.4.1 - Live Sync & Diagnostics" "action.sh prints live sync banner"
+assert_file_contains "$SB/action.out" "=== CoreSurface v1.4.1 Standalone Diagnostic Report ===" "action.sh runs standalone diagnostic report cleanly"
 
 # Test uninstall.sh cleanly removes state directory
 PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
@@ -1127,18 +1127,19 @@ EOF
 chmod +x "$SB_BIN/pidof"
 
 run_post_fs_data
-# Lightweight HyperOS 3 Advanced Textures v4 contract on non-flagship (prevents -1 Screen black blink & GPU heat)
+# Complete HyperOS 3 Advanced Textures v4 contract on Max Flagship (eliminates black Recent Apps & stiff parallel anim while keeping -1 Screen blink-free)
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.sf.disable_blurs=false" "Blur contract sets persist.sys.sf.disable_blurs=false"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.launcher_blur_supported=true" "Non-flagship HOS 3 omits launcher_blur_supported to prevent -1 Screen black blink"
 assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.background_blur_setting=1" "Blur contract omits conflicting user-toggle background_blur_setting prop"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.advanced_visual_release=4" "HyperOS 3 Flagship sets native Advanced Textures release=4"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.mi_shadow_supported=true" "Non-flagship HOS 3 skips heavy mi_shadow shader to keep GPU cool"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.mi_shadow_supported=true" "Max Flagship completes mi_shadow_supported=true for Advanced Textures v4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_mishadow=true" "Max Flagship completes support_window_mishadow=true for Advanced Textures v4"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_window_smoothcorner=true" "HyperOS 3 Flagship sets support_window_smoothcorner=true"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.support_view_smoothcorner=true" "Non-flagship HOS 3 skips per-view smoothcorner shader for consistent Recents frame pacing"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=false" "Non-flagship HOS 3 explicitly disables Recents mask blur to prevent App Close -> Recents stutter"
-assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island.shader=false" "Non-flagship HOS 3 disables heavy HyperIsland GPU shader for smooth Control Center swipes"
-assert_file_not_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "Non-flagship HOS 3 skips heavy backdrop_sampling shader"
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "Non-flagship HOS 3 skips heavy blurnoise shader"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.support_view_smoothcorner=true" "Max Flagship restores support_view_smoothcorner=true for fluid parallel corner morphing"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=true" "Max Flagship restores multi_task.mask_blur_enable=true to prevent black Recent Apps"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.feature.island.shader=false" "Max Flagship never cripples HyperIsland shader"
+assert_file_contains "$SB_PROPS_LOG" "ro.miui.backdrop_sampling_enabled=true" "Max Flagship restores backdrop_sampling_enabled=true for Advanced Textures v4"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.add_blurnoise_supported=true" "Max Flagship restores add_blurnoise_supported=true for Advanced Textures v4"
 # Audio & Speaker props (100% real user-space; zero hardware-locked gimmicks)
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.spk.clean=true" "Flagship Audio sets ro.vendor.audio.spk.clean=true"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.scenario=true" "Flagship Audio sets ro.vendor.audio.sfx.scenario=true"
@@ -1280,10 +1281,10 @@ write_mock_meminfo "7500000"
 write_sample_xml "$SB_XML_DIR1/kunzite.xml"
 printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
 run_post_fs_data
-assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=0" "Mid-range GPU disables Frame-0 app-launch blur stall (ro.launcher.blur.appLaunch=0)"
+assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=1" "Max Flagship enables full app-launch parallel blur curve (ro.launcher.blur.appLaunch=1)"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.launch_response_optimization.enable=true" "Launch response optimization enabled on Flagship tier"
 
-# Lite tier also gets launch_response_optimization & appLaunch=0
+# Lite tier also gets launch_response_optimization & appLaunch=0 + trims HyperIsland shader
 setup_sandbox "t22b_lite_launch_opt"
 write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
 write_mock_meminfo "5500000"
@@ -1291,6 +1292,7 @@ write_sample_xml "$SB_XML_DIR1/kunzite.xml"
 printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=0" "Lite tier keeps ro.launcher.blur.appLaunch=0"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.feature.island.shader=false" "Lite tier trims heavy HyperIsland shader for ultra-light 60Hz priority"
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.launch_response_optimization.enable=true" "Lite tier also receives zero-cost launch response optimization"
 assert_file_contains "$SB_PROPS_LOG" "ro.miui.shell_anim_enable_fcb=true" "Lite tier receives zero-GPU-cost Frame Callback Booster (FCB)"
 
@@ -1306,16 +1308,16 @@ assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=1" "Native flag
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=true" "Native flagship GPU retains Recents mask blur"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 23: v1.4.0 Release Metadata, English UI Localization, Zero Scale Hacks & Binder Circuit-Breaker ===\n'
+printf '=== Test 23: v1.4.1 Release Metadata, English UI Localization, Zero Scale Hacks & Binder Circuit-Breaker ===\n'
 setup_sandbox "t23_v140_english_and_binder_cb"
 write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
 write_mock_meminfo "7500000"
 write_sample_xml "$SB_XML_DIR1/kunzite.xml"
 
-assert_file_contains "$REPO_ROOT/module.prop" "version=v1.4.0" "module.prop is at v1.4.0"
-assert_file_contains "$REPO_ROOT/module.prop" "versionCode=140" "module.prop is at versionCode=140"
+assert_file_contains "$REPO_ROOT/module.prop" "version=v1.4.1" "module.prop is at v1.4.1"
+assert_file_contains "$REPO_ROOT/module.prop" "versionCode=141" "module.prop is at versionCode=141"
 assert_file_contains "$REPO_ROOT/webroot/index.html" '<html lang="en">' "WebUI declares English locale (lang=en)"
-assert_file_contains "$REPO_ROOT/webroot/index.html" 'v1.4.0' "WebUI displays v1.4.0 badge"
+assert_file_contains "$REPO_ROOT/webroot/index.html" 'v1.4.1' "WebUI displays v1.4.1 badge"
 assert_file_contains "$REPO_ROOT/customize.sh" 'SELECT CORESURFACE TIER MODE' "Volume-key installer prompts are in English"
 assert_file_not_contains "$REPO_ROOT/lib/settings_tx.sh" 'window_animation_scale' "CoreSurface never touches Developer Options window_animation_scale"
 assert_file_not_contains "$REPO_ROOT/lib/settings_tx.sh" 'transition_animation_scale' "CoreSurface never touches Developer Options transition_animation_scale"
@@ -1361,7 +1363,7 @@ printf 'ro.vendor.audio.soundfx.type=dolby\n' > "$SB_PROPS_DB"
 printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
 run_post_fs_data
 
-assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=true" "Mid-range GPU omits heavy Recents mask blur even on Flagship tier"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=true" "Max Flagship keeps Recents mask blur enabled to prevent black Recents under Advanced Textures"
 assert_file_not_contains "$SB_PROPS_LOG" "ro.vendor.audio.soundfx.type=mi" "Audio Never-Downgrade preserves factory stock ro.vendor.audio.soundfx.type=dolby"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.independentequalizer=true" "Flagship Audio unlocks zero-overhead 10-band Graphic EQ"
 assert_file_contains "$SB_PROPS_LOG" "ro.vendor.audio.sfx.earadj=true" "Flagship Audio unlocks earphone acoustic calibration"
@@ -1493,7 +1495,7 @@ _t26_diag_out="$SB/exports/coresurface-diag.txt"
 _t26_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" export-diag "$_t26_diag_out")
 assert_eq "$_t26_out" "Diagnostic exported to $_t26_diag_out" "webui_ctl export-diag reports exported file path"
-assert_file_contains "$_t26_diag_out" "=== CoreSurface v1.4.0 Standalone Diagnostic Report ===" "Exported diagnostic file contains v1.4.0 report header"
+assert_file_contains "$_t26_diag_out" "=== CoreSurface v1.4.1 Standalone Diagnostic Report ===" "Exported diagnostic file contains v1.4.1 report header"
 assert_file_contains "$_t26_diag_out" "Camera Engine:" "Exported diagnostic file includes Camera Engine telemetry"
 assert_file_contains "$REPO_ROOT/webroot/index.html" "Camera Pro Engine" "WebUI displays Camera Pro Engine toggle card"
 assert_file_contains "$REPO_ROOT/webroot/index.html" "Leica Camera Bridge" "WebUI displays Leica Camera Bridge card"

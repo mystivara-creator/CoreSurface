@@ -174,7 +174,7 @@ _cs_modpath=${MODPATH:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 _cs_state_dir=${CORESURFACE_STATE_DIR:-/data/adb/coresurface}
 _cs_rom_supported="0"
 
-_cs_ui_print "- Installing CoreSurface v1.4.0 (100% Standalone Flagship Experience)"
+_cs_ui_print "- Installing CoreSurface v1.4.1 (100% Standalone Flagship Experience)"
 
 mkdir -p "$_cs_state_dir" 2>/dev/null || true
 
