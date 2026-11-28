@@ -292,8 +292,10 @@ async function refreshStatus() {
         makeKvRow('RAW / DNG Hardware', formatBoolCap(kv.cam_has_raw)),
         makeKvRow('Manual Sensor / Pro Aids', formatBoolCap(kv.cam_has_manual)),
         makeKvRow('Video 4K@60 / 10-bit', (kv.cam_has_4k60 === '1' ? '4K60 Yes' : '4K60 No') + ' · ' + (kv.cam_has_10bit === '1' ? '10-bit Yes' : '10-bit No')),
+        makeKvRow('Active Pro Unlocks', kv.cam_active_unlocks || 'Pro Utilities'),
         makeKvRow('Stock Camera APK', kv.cam_apk_version || 'unknown'),
         makeKvRow('Leica Status', leicaSourceLabel),
+        makeKvRow('Companion Match Profile', kv.cam_readiness_profile || '-'),
         makeKvRow('Camera Watchdog', wdLabel)
       );
     }

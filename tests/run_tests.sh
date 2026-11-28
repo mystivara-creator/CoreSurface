@@ -1809,5 +1809,50 @@ assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAL_LEVEL=LEVEL_3" "Andro
 assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LENS_COUNT=2" "Duplicate static/dynamic/status entries for camera 0 & 1 deduplicate to 2 sensors"
 
 # ---------------------------------------------------------------------------
+printf '=== Test 30: Camera Pro Engine V2 Unlocks, Companion Readiness Profile & Mutable HOS3 RROs ===\n'
+setup_sandbox "t30_cam_v2_and_rro"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+printf 'ro.board.platform=garnet\nro.hardware=qcom\n' >> "$SB_PROPS_DB"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+cat > "$SB/cam_v2.txt" <<'EOF'
+== Camera device 0 static info: ==
+  android.info.supportedHardwareLevel (b0000): byte[1]
+    [1 ]
+  android.request.availableCapabilities:
+    [BACKWARD_COMPATIBLE MANUAL_SENSOR RAW LOGICAL_MULTI_CAMERA]
+  Stream 3840x2160 60fps minDuration=16666666
+== Camera device 1 static info: ==
+EOF
+cat > "$SB/cam_v2_pkg.txt" <<'EOF'
+  Package [com.android.camera]:
+    versionName=6.4.000430.0
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_CAMERA="$SB/cam_v2.txt" \
+  CORESURFACE_DUMPSYS_CAMERA_PKG="$SB/cam_v2_pkg.txt" \
+  CORESURFACE_MODULES_DIR="$SB/empty_mods" \
+  run_service
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_movie_solid">true</bool>' "Camera Pro V2 unlocks Video EIS (support_camera_movie_solid)"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_gallery_raw_edit">true</bool>' "Camera Pro V2 unlocks Gallery RAW Edit when RAW+FULL"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_video_bokeh">true</bool>' "Camera Pro V2 unlocks Multi-Lens Video Bokeh when >= 2 sensors"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_quick_snap">true</bool>' "Camera Pro V2 unlocks Quick Snap utility"
+_t30_st=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" status)
+printf '%s\n' "$_t30_st" > "$SB/t30_status.txt"
+assert_file_contains "$SB/t30_status.txt" "cam_active_unlocks=Pro Utilities, Pro Aids + EIS, True RAW/DNG, Multi-Lens Bokeh, 4K@60, Parallel Process" "Status emits accurate Active Camera Unlocks CSV"
+assert_file_contains "$SB/t30_status.txt" "cam_readiness_profile=HOS3-SDK36-SNAPDRAGON-HAL_FULL-CAM_6.4.000430.0" "Status emits deterministic Leica Companion Readiness Profile"
+assert_file_contains "$REPO_ROOT/overlays-src/thememanager/AndroidManifest.xml" 'android:isStatic="false"' "ThemeManager RRO is mutable for GetApps-updated HyperOS 3 activation"
+assert_file_contains "$REPO_ROOT/overlays-src/miuiaod/AndroidManifest.xml" 'android:isStatic="false"' "MiuiAod RRO is mutable for GetApps-updated HyperOS 3 activation"
+assert_file_contains "$REPO_ROOT/lib/settings_tx.sh" "runcon_shell" "settings_tx.sh supports Android 16 runcon u:r:shell:s0 Binder transport"
+
+# ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

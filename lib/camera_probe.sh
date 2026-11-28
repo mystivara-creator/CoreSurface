@@ -450,11 +450,14 @@ cs_camera_allow_parallel() {
 
 # Helper: count how many hardware-verified Camera Pro capabilities are eligible on this device
 cs_camera_pro_cap_count() {
-  _cc_cnt=1 # Universal safe utilities (shutter toggle / document mode / outdoor viewfinder boost)
+  _cc_cnt=1 # Universal safe utilities (shutter toggle / document mode / quick snap / AI watermark)
   if [ "${CS_CAM_HAS_MANUAL:-0}" = "1" ] || cs_camera_hal_is_full; then
     _cc_cnt=$((_cc_cnt + 1))
   fi
   if [ "${CS_CAM_HAS_RAW:-0}" = "1" ] && cs_camera_hal_is_full; then
+    _cc_cnt=$((_cc_cnt + 1))
+  fi
+  if [ "${CS_CAM_LENS_COUNT:-0}" -ge 2 ] || [ "${CS_CAM_HAS_LOGICAL_MULTI:-0}" = "1" ]; then
     _cc_cnt=$((_cc_cnt + 1))
   fi
   if [ "${CS_CAM_HAS_4K60:-0}" = "1" ]; then
@@ -467,6 +470,47 @@ cs_camera_pro_cap_count() {
     _cc_cnt=$((_cc_cnt + 1))
   fi
   printf '%s\n' "$_cc_cnt"
+}
+
+# Helper: human-readable list of genuinely unlocked Camera Pro Engine capabilities
+cs_camera_active_unlocks_csv() {
+  if [ "${CFG_FEAT_CAMERA_PRO:-auto}" = "0" ]; then
+    printf 'Disabled\n'
+    return 0
+  fi
+  if [ "${CS_CAM_LEICA_SOURCE:-none}" = "native" ] || [ "${CS_EFF_TIER:-low}" = "motion_only" ]; then
+    printf 'Native Flagship Passthrough\n'
+    return 0
+  fi
+  _cau_list="Pro Utilities"
+  if [ "${CS_CAM_HAS_MANUAL:-0}" = "1" ] || cs_camera_hal_is_full; then
+    _cau_list="${_cau_list}, Pro Aids + EIS"
+  fi
+  if [ "${CS_CAM_HAS_RAW:-0}" = "1" ] && cs_camera_hal_is_full; then
+    _cau_list="${_cau_list}, True RAW/DNG"
+  fi
+  if [ "${CS_CAM_LENS_COUNT:-0}" -ge 2 ] || [ "${CS_CAM_HAS_LOGICAL_MULTI:-0}" = "1" ]; then
+    _cau_list="${_cau_list}, Multi-Lens Bokeh"
+  fi
+  if [ "${CS_CAM_HAS_4K60:-0}" = "1" ]; then
+    _cau_list="${_cau_list}, 4K@60"
+  fi
+  if [ "${CS_CAM_HAS_10BIT:-0}" = "1" ]; then
+    _cau_list="${_cau_list}, 10-bit HDR"
+  fi
+  if cs_camera_allow_parallel; then
+    _cau_list="${_cau_list}, Parallel Process"
+  fi
+  printf '%s\n' "$_cau_list"
+}
+
+# Helper: deterministic Leica Companion Readiness signature (for Track 2 compatibility matching)
+cs_camera_readiness_profile() {
+  _crp_isp=$(printf '%s' "${CS_CAM_ISP:-generic}" | tr '[:lower:]' '[:upper:]')
+  _crp_apk=${CS_CAM_APK_VERSION:-unknown}
+  printf 'HOS%s-SDK%s-%s-HAL_%s-CAM_%s\n' \
+    "${CS_HYPEROS_MAJOR:-0}" "${CS_ANDROID_SDK:-0}" "$_crp_isp" \
+    "${CS_CAM_HAL_LEVEL:-UNKNOWN}" "$_crp_apk"
 }
 
 # Helper: atomically update a key in config.prop (self-contained for service.sh & webui_ctl.sh)

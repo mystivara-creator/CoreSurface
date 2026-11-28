@@ -106,6 +106,15 @@ cs_settings_exec_transport() {
         CS_SETTINGS_EXEC_OUT=$(su --context u:r:shell:s0 2000 -c "settings --user 0 ${_cs_et_op} ${_cs_q_ns} ${_cs_q_key}" 2>&1)
       fi
       ;;
+    runcon_shell)
+      command -v runcon >/dev/null 2>&1 || return 127
+      _cs_et_bb=$(cs_settings_find_busybox) || return 127
+      if [ "$_cs_et_op" = "put" ]; then
+        CS_SETTINGS_EXEC_OUT=$(runcon u:r:shell:s0 "$_cs_et_bb" setuidgid 2000 settings --user 0 put "$_cs_et_ns" "$_cs_et_key" "$_cs_et_val" 2>&1)
+      else
+        CS_SETTINGS_EXEC_OUT=$(runcon u:r:shell:s0 "$_cs_et_bb" setuidgid 2000 settings --user 0 "$_cs_et_op" "$_cs_et_ns" "$_cs_et_key" 2>&1)
+      fi
+      ;;
     setuidgid)
       _cs_et_bb=$(cs_settings_find_busybox) || return 127
       if [ "$_cs_et_op" = "put" ]; then
@@ -147,7 +156,7 @@ cs_settings_get() {
     CS_SETTINGS_TRANSPORT=""
   fi
 
-  for _cs_tr in direct cmd su2000 su_shell setuidgid legacy; do
+  for _cs_tr in direct cmd runcon_shell su2000 su_shell setuidgid legacy; do
     cs_settings_exec_transport "$_cs_tr" "get" "$_cs_sg_ns" "$_cs_sg_key"
     _cs_sg_rc=$?
     [ "$_cs_sg_rc" -eq 127 ] && continue

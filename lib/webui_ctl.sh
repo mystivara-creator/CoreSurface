@@ -250,6 +250,8 @@ cs_cmd_status() {
   printf 'cam_companion_id=%s\n' "$CS_CAM_COMPANION_ID"
   printf 'cam_companion_name=%s\n' "$CS_CAM_COMPANION_NAME"
   printf 'cam_pro_cap_count=%s\n' "$(cs_camera_pro_cap_count)"
+  printf 'cam_active_unlocks=%s\n' "$(cs_camera_active_unlocks_csv)"
+  printf 'cam_readiness_profile=%s\n' "$(cs_camera_readiness_profile)"
   printf 'cam_crash_count=%s\n' "$CS_CAM_CRASH_COUNT"
   printf 'cam_watchdog_status=%s\n' "$CS_CAM_WATCHDOG_STATUS"
   printf 'cam_watchdog_reason=%s\n' "$CS_CAM_WATCHDOG_REASON"
@@ -455,6 +457,8 @@ cs_cmd_diag_report() {
     "$CS_CAM_LEICA_SOURCE" "${CS_CAM_COMPANION_ID:-none}" \
     "$CS_CAM_HAL_LEVEL" "$CS_CAM_ISP" "$CS_CAM_HAS_RAW" "$CS_CAM_HAS_MANUAL" "$CS_CAM_HAS_4K60" "$CS_CAM_HAS_10BIT" \
     "$CS_CAM_WATCHDOG_STATUS" "$CS_CAM_CRASH_COUNT"
+  printf 'Camera Unlocks: [%s] | Companion Profile: %s\n' \
+    "$(cs_camera_active_unlocks_csv)" "$(cs_camera_readiness_profile)"
   if [ -r "$CS_LOG_FILE" ]; then
     printf '\n--- Recent Logs ---\n'
     tail -n 15 "$CS_LOG_FILE" 2>/dev/null || true
