@@ -1485,5 +1485,21 @@ run_post_fs_data
 assert_file_not_contains "$SB_STATE/work/device_features.xml" '<item>90</item>' "XML patcher refuses to inject 90Hz on panels without hardware 90Hz support"
 
 # ---------------------------------------------------------------------------
+printf '=== Test 26: One-Tap Diagnostic Export, Leica Roadmap Notice & Clean Copy ===\n'
+setup_sandbox "t26_export_diag"
+write_mock_getprop "OS3.0" "" "36" "1" "emerald" "Redmi Note 15 Pro"
+write_mock_meminfo "7500000"
+_t26_diag_out="$SB/exports/coresurface-diag.txt"
+_t26_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" export-diag "$_t26_diag_out")
+assert_eq "$_t26_out" "Diagnostic exported to $_t26_diag_out" "webui_ctl export-diag reports exported file path"
+assert_file_contains "$_t26_diag_out" "=== CoreSurface v1.3.0 Standalone Diagnostic Report ===" "Exported diagnostic file contains v1.3.0 report header"
+assert_file_contains "$REPO_ROOT/webroot/index.html" "Leica Camera" "WebUI displays Leica Camera roadmap card"
+assert_file_contains "$REPO_ROOT/webroot/index.html" "In Development" "WebUI marks Leica Camera as In Development"
+assert_file_contains "$REPO_ROOT/webroot/index.html" 'id="btn-save-diag"' "WebUI exposes one-tap Export File button"
+assert_file_not_contains "$REPO_ROOT/webroot/index.html" "LSPosed" "WebUI has zero legacy LSPosed mentions"
+assert_file_not_contains "$REPO_ROOT/module.prop" "LSPosed" "module.prop has zero legacy LSPosed mentions"
+
+# ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

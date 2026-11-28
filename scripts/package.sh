@@ -22,7 +22,7 @@ CORESURFACE_OVERLAY_OUT="$OVERLAY_BUILD_DIR" sh "$REPO_ROOT/scripts/build_overla
 mkdir -p "$DIST_DIR"
 rm -f "$ZIP_PATH" "$SHA_PATH" "$DIST_DIR/CoreSurfaceEngine.apk"
 
-# Strict whitelist of production module files (100% standalone, zero LSPosed)
+# Strict whitelist of production module files (100% standalone pure user-space)
 for item in \
   META-INF \
   module.prop \

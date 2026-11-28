@@ -16,5 +16,5 @@ fi
 sh "$MODDIR/lib/webui_ctl.sh" hot-sync || true
 printf '\n'
 sh "$MODDIR/lib/webui_ctl.sh" diag-report || true
-printf '\nTip: Open CoreSurface WebUI in KernelSU-Next / MMRL for 4-Tier & Motion controls.\n'
+printf '\nTip: Open CoreSurface WebUI in KernelSU-Next / MMRL for 4-Tier & Flagship controls.\n'
 exit 0

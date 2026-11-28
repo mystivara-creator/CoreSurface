@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
   <title>CoreSurface v1.3.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -11,10 +12,11 @@
     <header class="hero">
       <div class="hero-top">
         <div>
+          <span class="eyebrow">MYSTIVARA ECOSYSTEM</span>
           <h1>CoreSurface</h1>
-          <p class="subtitle">v1.3.0 · 100% Standalone Flagship Experience (Zero LSPosed)</p>
+          <p class="subtitle">v1.3.0 · Standalone HyperOS 3/4 Flagship Experience</p>
         </div>
-        <button id="btn-refresh" class="btn-icon" type="button" aria-label="Refresh status">↻</button>
+        <button id="btn-refresh" class="btn-icon" type="button" aria-label="Refresh status" title="Refresh status">↻</button>
       </div>
       <div class="badge-row">
         <span id="watchdog-badge" class="badge badge-neutral">Watchdog…</span>
@@ -44,7 +46,7 @@
         <h2>4-Tier Mode</h2>
         <span id="active-tier-pill" class="pill">-</span>
       </div>
-      <p class="hint">Preserves <strong>100% original HyperOS UI</strong> &amp; native flagship animations — zero LSPosed hooks, zero runtime overhead.</p>
+      <p class="hint">Preserves <strong>100% original HyperOS UI</strong> &amp; native flagship animations — pure user-space, 0 KB background daemon.</p>
       <div class="tier-grid">
         <button class="btn-tier" data-tier="auto" type="button">
           <strong>Auto</strong>
@@ -113,6 +115,16 @@
             <button type="button" data-val="0">OFF</button>
           </div>
         </div>
+
+        <div class="feat-card feat-roadmap" aria-label="Leica Camera Development Notice">
+          <div class="feat-head feat-head-compact">
+            <div class="feat-title-wrap">
+              <h3>Leica Camera</h3>
+              <span class="v-pill v-warn">In Development</span>
+            </div>
+            <p class="feat-desc">* Leica Camera integration is currently in development and planned for a future CoreSurface update.</p>
+          </div>
+        </div>
       </div>
 
       <div class="action-row">
@@ -121,9 +133,12 @@
     </section>
 
     <section class="card">
-      <div class="card-head">
+      <div class="card-head card-head-wrap">
         <h2>System Summary</h2>
-        <button id="btn-export-diag" class="btn btn-ghost" type="button">Copy Report</button>
+        <div class="diag-btn-group">
+          <button id="btn-save-diag" class="btn btn-ghost" type="button">Export File</button>
+          <button id="btn-export-diag" class="btn btn-ghost" type="button">Copy Report</button>
+        </div>
       </div>
       <div id="summary-list" class="kv-list">
         <div class="kv-row"><span>Loading status…</span><strong>…</strong></div>
@@ -138,7 +153,8 @@
     </section>
 
     <footer class="footer">
-      <span id="toast-msg" aria-live="polite"></span>
+      <span id="toast-msg" class="toast-msg" aria-live="polite"></span>
+      <p class="footer-note">CoreSurface v1.3.0 · Mystivara Ecosystem</p>
     </footer>
   </main>
 

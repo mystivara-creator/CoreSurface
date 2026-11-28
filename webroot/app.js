@@ -303,6 +303,17 @@ document.getElementById('btn-hot-sync').addEventListener('click', () => {
   });
 });
 
+document.getElementById('btn-save-diag').addEventListener('click', () => {
+  runAction('Exporting diagnostic file…', async () => {
+    try {
+      const msg = await ksuExec(CTL_SCRIPT + ' export-diag');
+      setToast((msg || 'Diagnostic exported to /sdcard/Download/coresurface-diag.txt').trim());
+    } catch (err) {
+      setToast('Export failed: ' + err.message);
+    }
+  });
+});
+
 document.getElementById('btn-export-diag').addEventListener('click', () => {
   runAction('Generating diagnostic report…', async () => {
     try {

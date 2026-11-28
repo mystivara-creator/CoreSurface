@@ -1,16 +1,18 @@
 # CoreSurface v1.3.0
 
-**CoreSurface** is a clean-room, **100% standalone pure user-space** HyperOS 3 / HyperOS 4 (and MIUI) **4-Tier Flagship Experience** module — preserving **100% original HyperOS UI**, **zero LSPosed dependency**, **0% background runtime overhead**, and strictly zero-gimmick:
+**CoreSurface** is a clean-room, **100% standalone pure user-space** HyperOS 3 / HyperOS 4 (and MIUI) **4-Tier Flagship Experience** module — preserving **100% original HyperOS UI**, **0 KB background daemon overhead**, and strictly zero-gimmick engineering:
 
-- **Zero LSPosed / Zero Xposed Hooks:** Everything runs cleanly through strictly non-persistent `resetprop -n` properties, fail-closed dynamic `device_features` XML bind-mounting, and 5 clean-room RRO overlays.
+- **100% Standalone Pure User-Space:** Runs cleanly through strictly non-persistent `resetprop -n` properties, fail-closed dynamic `device_features` XML bind-mounting, and 5 clean-room RRO overlays.
 - **English Interactive Volume-Key Installer:** Choose your **Tier Mode** during flash with Volume Up/Down (`Auto`, `Lite`, `Balanced Pro`, `Max Flagship`).
 - **Native Flagship Animations & Computility:** Unlocks HyperOS's own flagship `device_level`, `deviceLevelList`, `computility` V1 (`6/6`) & V2 (`4`), `HyperTransition v3`, `parallel_sweep`, Frame Callback Booster (`FCB`), and `launch_response_optimization` — without touching Android's 3 Developer Options window animation scales.
 - **Verified Blur & Material:** Full blur + HyperOS 3 Advanced Textures v4 / HyperOS 4 Bionic Material v5 + G2 SmoothCorner with strict Never-Downgrade protection and GPU-safe gating so mid-range GPUs stay fluid.
 - **FOD-Safe Non-LTPO AOD Unlock:** Unlocks **Always** & **Scheduled** AOD via XML (`is_only_support_keycode_goto=false`) + clean-room `MiuiAod` RRO without optical fingerprint fade-out white flashes.
 - **Flagship Audio & Complete Porting Suite:** Never-Downgrade audio pipeline (Dolby/Mi Sound Scenario EQ, 10-Band Graphic EQ, Earphone Acoustic Tuning, Game Turbo Audio, Stereo & Clear Speaker, Hi-Fi DAC, Spatial Audio, 24-bit Studio Mic) + AI Image Engine, Video Toolbox Cinema, Gallery HDR/Dolby/Local OCR, Privacy Cast, VoIP & Inner Record, Night Charge AI, Wild Boost & Dynamic Font.
-- **Built-in Safety:** 2-Strike Anti-Bootloop Watchdog (auto safe-mode disable), Immutable Factory Stock Snapshot, fast Binder-safe transactional `settings` rollback, and KSU/MMRL English WebUI + `action.sh` diagnostics.
+- **Built-in Safety & One-Tap Diagnostics:** 2-Strike Anti-Bootloop Watchdog (auto safe-mode disable), Immutable Factory Stock Snapshot, fast Binder-safe transactional `settings` rollback, and Auto Light/Dark KSU/MMRL WebUI with one-tap diagnostic export (`/sdcard/Download/coresurface-diag.txt`) + `action.sh`.
 
-Designed as an independent sister module to **CoreFlow-Engine** (**Zero Coupling**, **Zero Kernel/Sysfs Touch**, **Zero LSPosed**, **Zero Gimmick**).
+Part of the **[Mystivara Ecosystem](https://mystivara-creator.github.io)** — designed as an independent sister module to **CoreFlow-Engine** and **CoreType** (**Zero Coupling**, **Zero Kernel/Sysfs Touch**, **Zero Gimmick**).
+
+> **Roadmap Note:** \* Leica Camera integration is currently in development and planned for a future CoreSurface update.
 
 ---
 
@@ -31,7 +33,7 @@ During installation, use **`[Vol+]` = Next Option** and **`[Vol-]` = Confirm** (
 
 1. Flash `CoreSurface-v1.3.0.zip` in **KernelSU-Next** (ensure `meta-overlayfs` is installed for RRO overlays), **Magisk**, or **APatch**.
 2. Choose your **Tier Mode** using **Volume Up / Volume Down** → reboot once.
-3. Open **KernelSU-Next → Modules → CoreSurface → Open WebUI** (or tap **Action**) to switch Tier Modes, toggle AOD/Audio/Porting Suite, or run Hot-Sync & Diagnostics.
+3. Open **KernelSU-Next → Modules → CoreSurface → Open WebUI** (or tap **Action**) to switch Tier Modes, toggle AOD/Audio/Porting Suite, run Hot-Sync & Verify, or export diagnostics to `/sdcard/Download/coresurface-diag.txt`.
 *(Upgrading from v1.0–v1.2 automatically removes the legacy `CoreSurfaceEngine.apk` on first boot — no manual cleanup needed.)*
 
 ---

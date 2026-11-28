@@ -75,10 +75,40 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           ZIP="dist/CoreSurface-${CS_VERSION}.zip"
           SHA="${ZIP}.sha256"
+          ZIP_NAME=$(basename "$ZIP")
+          ZIP_HASH=$(awk '{print $1}' "$SHA")
+          ZIP_SIZE=$(du -h "$ZIP" | awk '{print $1}')
+
+          cat > /tmp/release_notes.md <<EOF
+          ## CoreSurface ${TAG} — Standalone HyperOS 3/4 Flagship Experience
+
+          Clean-room, **100% standalone pure user-space** HyperOS 3 / HyperOS 4 (and MIUI) 4-Tier Flagship Experience module — preserving **100% original HyperOS UI** with **0 KB background daemon overhead**.
+
+          ### Highlights
+          - **High-Priority Clean-Room RROs (\`9999\`):** Overrides vendor Super Wallpaper, ThemeManager, MiuiAod, and SystemUI gates reliably without modifying \`/system\`.
+          - **Hardware-Verified 90 Hz Unlock:** Probes real display modes from \`dumpsys display\` and fail-closed injects \`90 Hz\` into \`fpsList\` + \`support_smart_fps=true\` only when hardware-supported.
+          - **HyperOS 4 Bionic Material & Computility V1/V2:** Re-asserts \`advanced_visual_release=5\` and \`computility\` V1/V2 post-boot with Audio HAL Never-Fight protection, 10× batch \`getprop\` verification, and Binder circuit-breaker.
+          - **Upgraded Auto Light & Dark WebUI:** Clean Mystivara Precision styling, one-tap diagnostic export (\`/sdcard/Download/coresurface-diag.txt\`), and **Leica Camera** development status notice (\* currently in development for a future update).
+
+          ### Download & Checksum
+          | Asset | Size | SHA-256 |
+          | :--- | :---: | :--- |
+          | \`${ZIP_NAME}\` | ${ZIP_SIZE} | \`${ZIP_HASH}\` |
+
+          ### Quick Install
+          1. Flash \`${ZIP_NAME}\` in **KernelSU-Next** *(with \`meta-overlayfs\` installed for RRO overlays)*, **Magisk**, or **APatch**.
+          2. Pick your **Tier Mode** with Volume Up/Down (\`Auto\`, \`Lite\`, \`Balanced Pro\`, \`Max Flagship\`) and reboot once.
+          3. Open **WebUI** or tap **Action** to switch tiers, toggle AOD/Audio/Porting Suite, or run Hot-Sync & Diagnostics.
+
+          ---
+          Part of the **[Mystivara Ecosystem](https://mystivara-creator.github.io)** · \`CoreFlow-Engine\` · \`CoreSurface\` · \`CoreType\`
+          EOF
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" "$SHA" --clobber
+            gh release edit "$TAG" --title "CoreSurface ${TAG}" --notes-file /tmp/release_notes.md
           else
             gh release create "$TAG" "$ZIP" "$SHA" \
               --title "CoreSurface ${TAG}" \
-              --generate-notes
+              --notes-file /tmp/release_notes.md
           fi

@@ -1,8 +1,8 @@
 #!/system/bin/sh
-# CoreSurface - Lightweight Standalone WebUI Control Bridge (100% Zero LSPosed)
+# CoreSurface - Lightweight Standalone WebUI Control Bridge
 # Supports: status | tier <auto|low|balanced_pro|flagship> | set <KEY> <VAL>
 #           | preset <stock-safe|balanced|flagship-max> | hot-sync
-#           | diag-report | reset-safemode
+#           | diag-report | export-diag [path] | reset-safemode
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 MODDIR=${CORESURFACE_MODDIR:-$(dirname -- "$SCRIPT_DIR")}
@@ -398,6 +398,25 @@ cs_cmd_diag_report() {
   fi
 }
 
+cs_cmd_export_diag() {
+  _ed_out=${1:-${CORESURFACE_DIAG_EXPORT_PATH:-/sdcard/Download/coresurface-diag.txt}}
+  _ed_dir=$(dirname -- "$_ed_out")
+  mkdir -p "$_ed_dir" 2>/dev/null || {
+    printf 'Failed to create export directory: %s\n' "$_ed_dir" >&2
+    return 1
+  }
+  _ed_tmp="${_ed_out}.tmp.$$"
+  if ! cs_cmd_diag_report > "$_ed_tmp"; then
+    rm -f "$_ed_tmp"
+    printf 'Failed to write diagnostic report to %s\n' "$_ed_out" >&2
+    return 1
+  fi
+  mv -f "$_ed_tmp" "$_ed_out"
+  chmod 0644 "$_ed_out" 2>/dev/null || true
+  cs_log "WebUI exported diagnostic report to ${_ed_out}."
+  printf 'Diagnostic exported to %s\n' "$_ed_out"
+}
+
 cs_cmd_reset_safemode() {
   cs_watchdog_init_dir || return 1
   rm -f "$MODDIR/disable"
@@ -416,9 +435,10 @@ case "${1:-}" in
   preset)         cs_ctl_lock && cs_cmd_preset "${2:-}" ;;
   hot-sync)       cs_ctl_lock && cs_cmd_hot_sync ;;
   diag-report)    cs_cmd_diag_report ;;
+  export-diag)    cs_cmd_export_diag "${2:-}" ;;
   reset-safemode) cs_ctl_lock && cs_cmd_reset_safemode ;;
   *)
-    printf 'Usage: %s {status|tier <auto|low|balanced_pro|flagship>|set <KEY> <VALUE>|preset <...>|hot-sync|diag-report|reset-safemode}\n' "$0" >&2
+    printf 'Usage: %s {status|tier <auto|low|balanced_pro|flagship>|set <KEY> <VALUE>|preset <...>|hot-sync|diag-report|export-diag [path]|reset-safemode}\n' "$0" >&2
     exit 1
     ;;
 esac

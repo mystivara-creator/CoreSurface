@@ -250,7 +250,7 @@ if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ] && 
   fi
 fi
 
-# Remove any staged legacy LSPosed Engine APK left over from earlier builds
+# Remove any staged legacy Engine APK left over from earlier builds
 rm -f "$_cs_state_dir/CoreSurfaceEngine.apk" "$_cs_state_dir/.engine_installed.sig" 2>/dev/null || true
 
 # Reset boot strikes & clear stale Safe-Mode cleanly on fresh install or upgrade
@@ -279,4 +279,4 @@ _cs_set_exec "$_cs_modpath/lib/os_bug_logic.sh"
 _cs_set_exec "$_cs_modpath/lib/webui_ctl.sh"
 
 _cs_ui_print "- Watchdog armed (auto safe-mode disable after 2 consecutive failed boots)"
-_cs_ui_print "- 100% Standalone Pure User-Space | Zero LSPosed Required | Zero Gimmick"
+_cs_ui_print "- 100% Standalone Pure User-Space | 0 KB Background Daemon | Zero Gimmick"

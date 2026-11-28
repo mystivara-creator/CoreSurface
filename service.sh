@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# CoreSurface - Late Start Service (100% Standalone, Zero LSPosed)
+# CoreSurface - Late Start Service (100% Standalone Pure User-Space)
 # 1. Monitors sys.boot_completed=1 + SystemUI PID grace window + 30s stability.
 # 2. Removes any legacy org.mystivara.coresurface.engine APK left over from older versions.
 # 3. Re-asserts flagship computility props, activates staged RROs, and syncs transactional settings.
