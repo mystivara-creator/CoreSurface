@@ -228,6 +228,8 @@ cs_camera_load_caps() {
 }
 
 # Streaming AWK parser for dumpsys media.camera (0 shell-variable megabyte buffering)
+# Handles both symbolic ([FULL], [LEVEL_3]) and Android 14-16 numeric byte ([0]=LIMITED,
+# [1]=FULL, [2]=LEGACY, [3]=LEVEL_3) dumpsys formats, and deduplicates camera IDs.
 _cs_cam_parse_media_stream() {
   awk '
     function rank(lvl) {
@@ -235,6 +237,25 @@ _cs_cam_parse_media_stream() {
       if (lvl == "FULL") return 3
       if (lvl == "LIMITED") return 2
       if (lvl == "LEGACY") return 1
+      return 0
+    }
+    function apply_lvl(lvl) {
+      if (rank(lvl) > best_rank) {
+        best_lvl = lvl
+        best_rank = rank(lvl)
+      }
+    }
+    function parse_lvl_line(s) {
+      if (index(s, "LEVEL_3") > 0) { apply_lvl("LEVEL_3"); return 1 }
+      if (index(s, "FULL") > 0)    { apply_lvl("FULL"); return 1 }
+      if (index(s, "LIMITED") > 0) { apply_lvl("LIMITED"); return 1 }
+      if (index(s, "LEGACY") > 0)  { apply_lvl("LEGACY"); return 1 }
+      # Android Camera2 metadata enum on value line (anchored so "byte[1]" header is never matched):
+      # 0=LIMITED, 1=FULL, 2=LEGACY, 3=LEVEL_3
+      if (s ~ /^[[:space:]]*\[[[:space:]]*3[[:space:]]*\]/) { apply_lvl("LEVEL_3"); return 1 }
+      if (s ~ /^[[:space:]]*\[[[:space:]]*1[[:space:]]*\]/) { apply_lvl("FULL"); return 1 }
+      if (s ~ /^[[:space:]]*\[[[:space:]]*0[[:space:]]*\]/) { apply_lvl("LIMITED"); return 1 }
+      if (s ~ /^[[:space:]]*\[[[:space:]]*2[[:space:]]*\]/) { apply_lvl("LEGACY"); return 1 }
       return 0
     }
     BEGIN {
@@ -245,28 +266,32 @@ _cs_cam_parse_media_stream() {
       tenbit = 0
       has4k60 = 0
       multi = 0
-      lenses = 0
       in_caps = 0
+      next_lvl = 0
       lines = 0
     }
     { lines++ }
-    /^== Camera device [0-9]+/ || /^[[:space:]]*Device [0-9]+ is / || /^[[:space:]]*Camera [0-9]+ / {
-      lenses++
+    /^== Camera device [0-9]+/ || /^[[:space:]]*Device [0-9]+ is / {
+      s = $0
+      if (match(s, /[0-9]+/)) {
+        cid = substr(s, RSTART, RLENGTH)
+        seen_cam[cid] = 1
+      }
     }
     /android\.info\.supportedHardwareLevel/ || /INFO_SUPPORTED_HARDWARE_LEVEL/ {
-      if (index($0, "LEVEL_3") > 0 && rank("LEVEL_3") > best_rank) { best_lvl = "LEVEL_3"; best_rank = 4 }
-      else if (index($0, "FULL") > 0 && rank("FULL") > best_rank) { best_lvl = "FULL"; best_rank = 3 }
-      else if (index($0, "LIMITED") > 0 && rank("LIMITED") > best_rank) { best_lvl = "LIMITED"; best_rank = 2 }
-      else if (index($0, "LEGACY") > 0 && rank("LEGACY") > best_rank) { best_lvl = "LEGACY"; best_rank = 1 }
-      next_lvl = 1
+      if (parse_lvl_line($0)) {
+        next_lvl = 0
+      } else {
+        next_lvl = 2
+      }
       next
     }
-    next_lvl == 1 {
-      if (index($0, "LEVEL_3") > 0 && rank("LEVEL_3") > best_rank) { best_lvl = "LEVEL_3"; best_rank = 4 }
-      else if (index($0, "FULL") > 0 && rank("FULL") > best_rank) { best_lvl = "FULL"; best_rank = 3 }
-      else if (index($0, "LIMITED") > 0 && rank("LIMITED") > best_rank) { best_lvl = "LIMITED"; best_rank = 2 }
-      else if (index($0, "LEGACY") > 0 && rank("LEGACY") > best_rank) { best_lvl = "LEGACY"; best_rank = 1 }
-      next_lvl = 0
+    next_lvl > 0 {
+      if (parse_lvl_line($0)) {
+        next_lvl = 0
+      } else {
+        next_lvl--
+      }
     }
     /android\.request\.availableCapabilities/ || /REQUEST_AVAILABLE_CAPABILITIES/ {
       in_caps = 1
@@ -289,6 +314,12 @@ _cs_cam_parse_media_stream() {
     /4K_60FPS|3840x2160@60/ { has4k60 = 1 }
     END {
       if (lines > 0) {
+        # Android Camera2 CDD: RAW + MANUAL_SENSOR requires at least FULL hardware level
+        if (best_lvl == "UNKNOWN" && raw == 1 && manual == 1) {
+          best_lvl = "FULL"
+        }
+        lenses = 0
+        for (k in seen_cam) lenses++
         printf "%s|%d|%d|%d|%d|%d|%d\n", best_lvl, raw, manual, tenbit, has4k60, multi, lenses
       }
     }
@@ -315,7 +346,7 @@ cs_camera_probe_hardware() {
   if [ "$_cs_cp_force" != "1" ] && [ -r "$CS_CAM_CAPS_FILE" ]; then
     _cs_saved_cp_id=$(awk -F '=' '$1 == "CAM_SNAP_ID" { sub(/^[^=]*=/, ""); print; exit }' "$CS_CAM_CAPS_FILE" 2>/dev/null | tr -d '\r')
     _cs_saved_comp=$(awk -F '=' '$1 == "CAM_COMPANION_ID" { sub(/^[^=]*=/, ""); print; exit }' "$CS_CAM_CAPS_FILE" 2>/dev/null | tr -d '\r')
-    if [ "$_cs_saved_cp_id" = "$_cs_cp_id" ] && [ "$_cs_saved_comp" = "$_cs_cp_comp_id" ] && [ "$CS_CAM_PROBED" = "1" ]; then
+    if [ "$_cs_saved_cp_id" = "$_cs_cp_id" ] && [ "$_cs_saved_comp" = "$_cs_cp_comp_id" ] && [ "$CS_CAM_PROBED" = "1" ] && [ "$CS_CAM_HAL_LEVEL" != "UNKNOWN" ]; then
       return 0
     fi
   fi

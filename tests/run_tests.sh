@@ -1781,6 +1781,33 @@ assert_file_contains "$SB_STATE/camera_watchdog.state" "CAM_WATCHDOG_STATUS=auto
 assert_file_contains "$REPO_ROOT/scripts/package.sh" '"$STAGE_DIR/lib/camera_probe.sh"' "package.sh marks lib/camera_probe.sh executable"
 assert_file_contains "$REPO_ROOT/scripts/package.sh" '"lib/camera_probe.sh"' "package.sh verifies lib/camera_probe.sh inside release ZIP"
 
+# 29f: Android 16 (SDK 36) numeric HAL enum ([3 ]=LEVEL_3), camera ID dedup & UNKNOWN cache auto-refresh
+cat > "$SB/cam_sdk36_num.txt" <<'EOF'
+== Camera device 0 static info: ==
+  android.info.supportedHardwareLevel (b0000): byte[1]
+    [3 ]
+  android.request.availableCapabilities:
+    [BACKWARD_COMPATIBLE MANUAL_SENSOR RAW]
+== Camera device 0 dynamic info: ==
+  Device 0 is closed, no client instance
+== Camera device 1 static info: ==
+  android.info.supportedHardwareLevel (b0000): byte[1]
+    [1 ]
+== Camera device 1 dynamic info: ==
+  Device 1 is closed, no client instance
+EOF
+cat > "$SB_STATE/camera_caps.prop" <<EOF
+CAM_SNAP_ID=|garnet|OS3.0
+CAM_PROBED=1
+CAM_HAL_LEVEL=UNKNOWN
+CAM_COMPANION_ID=
+EOF
+CORESURFACE_DUMPSYS_CAMERA="$SB/cam_sdk36_num.txt" \
+  CORESURFACE_MODULES_DIR="$SB/empty_mods" \
+  run_service
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAL_LEVEL=LEVEL_3" "Android 16 numeric [3 ] hardware level parsed as LEVEL_3 & refreshes stale UNKNOWN cache"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LENS_COUNT=2" "Duplicate static/dynamic/status entries for camera 0 & 1 deduplicate to 2 sensors"
+
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]
