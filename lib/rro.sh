@@ -157,8 +157,76 @@ cs_rro_stage() {
   return 0
 }
 
+# Helper: run `cmd overlay ...` across Android 15/16 KernelSU Binder contexts (direct -> su 2000 -> runcon u:r:shell:s0 -> setuidgid)
+_cs_rro_cmd_overlay() {
+  _cs_rc_out=$(cmd overlay "$@" 2>&1)
+  _cs_rc_st=$?
+  case "$_cs_rc_out" in
+    *Failure*|*Exception*|*Error*|*Binder*|*Permission*) _cs_rc_st=1 ;;
+  esac
+  if [ "$_cs_rc_st" -eq 0 ] && { [ -n "$_cs_rc_out" ] || [ "$1" != "list" ]; }; then
+    printf '%s' "$_cs_rc_out"
+    return 0
+  fi
+
+  if command -v runcon >/dev/null 2>&1; then
+    for _cs_rbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+      if [ -x "$_cs_rbb" ]; then
+        _cs_rc_out=$(runcon u:r:shell:s0 "$_cs_rbb" setuidgid 2000 cmd overlay "$@" 2>&1)
+        _cs_rc_st=$?
+        case "$_cs_rc_out" in
+          *Failure*|*Exception*|*Error*|*Binder*|*Permission*) _cs_rc_st=1 ;;
+        esac
+        if [ "$_cs_rc_st" -eq 0 ] && { [ -n "$_cs_rc_out" ] || [ "$1" != "list" ]; }; then
+          printf '%s' "$_cs_rc_out"
+          return 0
+        fi
+        break
+      fi
+    done
+  fi
+
+  if command -v su >/dev/null 2>&1; then
+    _cs_rc_out=$(su 2000 -c "cmd overlay $*" 2>&1)
+    _cs_rc_st=$?
+    case "$_cs_rc_out" in
+      *Failure*|*Exception*|*Error*|*Binder*|*Permission*) _cs_rc_st=1 ;;
+    esac
+    if [ "$_cs_rc_st" -eq 0 ] && { [ -n "$_cs_rc_out" ] || [ "$1" != "list" ]; }; then
+      printf '%s' "$_cs_rc_out"
+      return 0
+    fi
+
+    _cs_rc_out=$(su --context u:r:shell:s0 2000 -c "cmd overlay $*" 2>&1)
+    _cs_rc_st=$?
+    case "$_cs_rc_out" in
+      *Failure*|*Exception*|*Error*|*Binder*|*Permission*) _cs_rc_st=1 ;;
+    esac
+    if [ "$_cs_rc_st" -eq 0 ] && { [ -n "$_cs_rc_out" ] || [ "$1" != "list" ]; }; then
+      printf '%s' "$_cs_rc_out"
+      return 0
+    fi
+  fi
+
+  for _cs_rbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+    if [ -x "$_cs_rbb" ]; then
+      _cs_rc_out=$("$_cs_rbb" setuidgid 2000 cmd overlay "$@" 2>&1)
+      _cs_rc_st=$?
+      case "$_cs_rc_out" in
+        *Failure*|*Exception*|*Error*|*Binder*|*Permission*) _cs_rc_st=1 ;;
+      esac
+      if [ "$_cs_rc_st" -eq 0 ] && { [ -n "$_cs_rc_out" ] || [ "$1" != "list" ]; }; then
+        printf '%s' "$_cs_rc_out"
+        return 0
+      fi
+      break
+    fi
+  done
+  return 1
+}
+
 # Post-boot RRO activator: enables any staged CoreSurface overlay that OverlayManagerService
-# registered as disabled (`[ ] <pkg>`) so all mounted overlays become active (`[x]`).
+# registered as disabled (`[ ] <pkg>`) and elevates mutable overlays to highest priority.
 cs_rro_enable_staged() {
   CS_RRO_OV_LIST_CACHE=""
   export CS_RRO_OV_LIST_CACHE
@@ -166,50 +234,16 @@ cs_rro_enable_staged() {
   [ -s "$CS_RRO_STAGED_LIST" ] || return 0
   command -v cmd >/dev/null 2>&1 || return 0
 
-  _cs_ov_list=$(cmd overlay list --user 0 2>&1 || true)
-  case "$_cs_ov_list" in
-    ""|*Failure*|*Exception*|*Error*|*Binder*)
-      if command -v su >/dev/null 2>&1; then
-        _cs_ov_list=$(su 2000 -c "cmd overlay list --user 0" 2>&1 || true)
-      fi
-      ;;
-  esac
-  case "$_cs_ov_list" in
-    ""|*Failure*|*Exception*|*Error*|*Binder*)
-      if command -v su >/dev/null 2>&1; then
-        _cs_ov_list=$(su --context u:r:shell:s0 2000 -c "cmd overlay list --user 0" 2>&1 || true)
-      fi
-      ;;
-  esac
-  case "$_cs_ov_list" in
-    ""|*Failure*|*Exception*|*Error*|*Binder*)
-      for _cs_rbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
-        if [ -x "$_cs_rbb" ]; then
-          _cs_ov_list=$("$_cs_rbb" setuidgid 2000 cmd overlay list --user 0 2>&1 || true)
-          break
-        fi
-      done
-      ;;
-  esac
+  _cs_ov_list=$(_cs_rro_cmd_overlay list --user 0 || true)
   [ -n "$_cs_ov_list" ] || return 0
 
   _cs_en_count=0
   while IFS='|' read -r _cs_eapk _cs_epkg || [ -n "$_cs_eapk" ]; do
     [ -n "$_cs_epkg" ] || continue
     if printf '%s\n' "$_cs_ov_list" | grep -F -q "[ ] $_cs_epkg"; then
-      if cmd overlay enable --user 0 "$_cs_epkg" >/dev/null 2>&1; then
+      if _cs_rro_cmd_overlay enable --user 0 "$_cs_epkg" >/dev/null 2>&1; then
+        _cs_rro_cmd_overlay set-priority --user 0 "$_cs_epkg" highest >/dev/null 2>&1 || true
         _cs_en_count=$((_cs_en_count + 1))
-      elif command -v su >/dev/null 2>&1 && su 2000 -c "cmd overlay enable --user 0 '${_cs_epkg}'" >/dev/null 2>&1; then
-        _cs_en_count=$((_cs_en_count + 1))
-      elif command -v su >/dev/null 2>&1 && su --context u:r:shell:s0 2000 -c "cmd overlay enable --user 0 '${_cs_epkg}'" >/dev/null 2>&1; then
-        _cs_en_count=$((_cs_en_count + 1))
-      else
-        for _cs_rbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
-          if [ -x "$_cs_rbb" ] && "$_cs_rbb" setuidgid 2000 cmd overlay enable --user 0 "$_cs_epkg" >/dev/null 2>&1; then
-            _cs_en_count=$((_cs_en_count + 1))
-            break
-          fi
-        done
       fi
     fi
   done < "$CS_RRO_STAGED_LIST"

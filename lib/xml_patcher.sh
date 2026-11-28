@@ -170,6 +170,56 @@ cs_xml_build_patch_spec() {
       # Unlocks HyperOS Smart FPS & "Apps using high refresh rate" (Per-App Refresh Rate under Custom)
       printf 'bool|support_smart_fps|true\n'
     fi
+
+    if [ "${EFF_FEAT_CAMERA_PRO:-0}" = "1" ] && [ "${CS_CAM_LEICA_SOURCE:-none}" != "native" ]; then
+      # Hardware-Verified Fail-Closed Camera Pro Engine V2 (0% placebo, 0% /vendor/etc/camera writes)
+      # 1. Universal safe camera utilities
+      printf 'bool|support_camera_shutter_sound_control|true\n'
+      printf 'bool|is_support_document_mode|true\n'
+      printf 'bool|support_camera_boost_brightness|true\n'
+      printf 'bool|support_camera_quick_snap|true\n'
+      printf 'bool|support_camera_ai_watermark|true\n'
+      printf 'bool|support_camera_long_press_viewfinder|true\n'
+
+      # 2. Pro Photography Aids + Video EIS (ONLY if Camera2 HAL advertises MANUAL_SENSOR or FULL/LEVEL_3)
+      _cs_cam_full=0
+      case "${CS_CAM_HAL_LEVEL:-UNKNOWN}" in
+        FULL|LEVEL_3) _cs_cam_full=1 ;;
+      esac
+      if [ "${CS_CAM_HAS_MANUAL:-0}" = "1" ] || [ "$_cs_cam_full" = "1" ]; then
+        printf 'bool|support_camera_peaking_mf|true\n'
+        printf 'bool|support_camera_gradienter|true\n'
+        printf 'bool|support_camera_exposure_feedback|true\n'
+        printf 'bool|support_camera_histogram|true\n'
+        printf 'bool|support_camera_pro_video|true\n'
+        printf 'bool|support_camera_movie_solid|true\n'
+      fi
+
+      # 3. True RAW / DNG Capture & Gallery RAW Edit (ONLY if Camera2 HAL advertises RAW AND FULL/LEVEL_3)
+      if [ "${CS_CAM_HAS_RAW:-0}" = "1" ] && [ "$_cs_cam_full" = "1" ]; then
+        printf 'bool|support_camera_raw|true\n'
+        printf 'bool|support_gallery_raw_edit|true\n'
+      fi
+
+      # 4. Multi-Lens Video Bokeh & Dual Video (ONLY if multi-camera hardware is genuinely detected)
+      if [ "${CS_CAM_LENS_COUNT:-0}" -ge 2 ] || [ "${CS_CAM_HAS_LOGICAL_MULTI:-0}" = "1" ]; then
+        printf 'bool|support_camera_video_bokeh|true\n'
+        printf 'bool|support_camera_dual_video|true\n'
+      fi
+
+      # 5. Hardware-verified 10-bit HDR Video & 4K@60fps
+      if [ "${CS_CAM_HAS_10BIT:-0}" = "1" ]; then
+        printf 'bool|support_camera_hdr10|true\n'
+      fi
+      if [ "${CS_CAM_HAS_4K60:-0}" = "1" ]; then
+        printf 'bool|support_camera_4k_60fps|true\n'
+      fi
+
+      # 6. RAM-gated Parallel Multi-Frame Processing (NEVER forced on Lite / <= 4GB devices)
+      if [ "${CS_EFF_TIER:-low}" != "low" ] && [ "${CS_RAM_MB:-0}" -ge 5500 ]; then
+        printf 'bool|support_parallel_process|true\n'
+      fi
+    fi
   } > "$_cs_spec_file"
 }
 
@@ -247,16 +297,23 @@ cs_xml_patch_file() {
   _cs_dst=$3
   _cs_add_90hz=0
   _cs_allow_smart_fps=0
+  _cs_allow_cam_4k60=0
   if [ "${EFF_FEAT_DISPLAY_HZ:-0}" = "1" ]; then
     _cs_allow_smart_fps=1
     if cs_hw_supports_90hz; then
       _cs_add_90hz=1
     fi
   fi
+  if [ "${EFF_FEAT_CAMERA_PRO:-0}" = "1" ] && [ "${CS_CAM_HAS_4K60:-0}" = "1" ]; then
+    _cs_allow_cam_4k60=1
+  fi
 
-  awk -F '|' -v add_90hz="$_cs_add_90hz" -v allow_smart_fps="$_cs_allow_smart_fps" '
+  awk -F '|' -v add_90hz="$_cs_add_90hz" -v allow_smart_fps="$_cs_allow_smart_fps" -v allow_cam_4k60="$_cs_allow_cam_4k60" '
     function is_protected(name) {
       if (allow_smart_fps == 1 && name == "support_smart_fps") {
+        return 0
+      }
+      if (allow_cam_4k60 == 1 && name == "support_camera_4k_60fps") {
         return 0
       }
       if (name ~ /(fps|refresh|double_tap|screen_effect|color_mode|color_gamut|vivid|saturat|paper_mode|eyecare|sunlight)/) {

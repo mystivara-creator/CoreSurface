@@ -16,6 +16,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 . "$MODDIR/lib/rro.sh"
 # shellcheck source=lib/os_bug_logic.sh
 . "$MODDIR/lib/os_bug_logic.sh"
+# shellcheck source=lib/camera_probe.sh
+. "$MODDIR/lib/camera_probe.sh"
 
 CS_CONFIG_FILE="$CS_STATE_DIR/config.prop"
 
@@ -74,6 +76,7 @@ fi
 
 cs_load_config "$CS_CONFIG_FILE"
 cs_resolve_features
+cs_camera_load_caps
 
 cs_state_set_batch \
   "ROM_FAMILY=$CS_ROM_FAMILY" \

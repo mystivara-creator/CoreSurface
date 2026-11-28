@@ -8,7 +8,11 @@ CS_TIER_MODE=auto
 #   FEAT_COLOR_EXPERT:   1 (Unlock Custom Color Expert Menu) | 0 (OFF)
 #   FEAT_FLAGSHIP_AUDIO: auto (ON on all non-passthrough tiers) | 1 (Force ON) | 0 (OFF)
 #   FEAT_FLAGSHIP_SUITE: auto (ON on Balanced Pro & Max Flagship) | 1 (Force ON) | 0 (OFF)
+#   FEAT_CAMERA_PRO:     auto (Hardware-Verified Camera Pro Engine on all tiers; Parallel Process RAM-gated) | 1 | 0
+#   FEAT_LEICA_BRIDGE:   auto (Dual-Support Leica Companion Bridge & 0 KB Crash Inspector) | 1 | 0
 FEAT_AOD_UNLOCK=1
 FEAT_COLOR_EXPERT=1
 FEAT_FLAGSHIP_AUDIO=auto
 FEAT_FLAGSHIP_SUITE=auto
+FEAT_CAMERA_PRO=auto
+FEAT_LEICA_BRIDGE=auto

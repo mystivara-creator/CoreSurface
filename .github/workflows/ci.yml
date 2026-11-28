@@ -85,10 +85,10 @@ jobs:
           Clean-room, **100% standalone pure user-space** HyperOS 3 / HyperOS 4 (and MIUI) 4-Tier Flagship Experience module — preserving **100% original HyperOS UI** with **0 KB background daemon overhead**.
 
           ### Highlights
-          - **High-Priority Clean-Room RROs (\`9999\`):** Overrides vendor Super Wallpaper, ThemeManager, MiuiAod, and SystemUI gates reliably without modifying \`/system\`.
-          - **Hardware-Verified 90 Hz Unlock:** Probes real display modes from \`dumpsys display\` and fail-closed injects \`90 Hz\` into \`fpsList\` + \`support_smart_fps=true\` only when hardware-supported.
-          - **HyperOS 4 Bionic Material & Computility V1/V2:** Re-asserts \`advanced_visual_release=5\` and \`computility\` V1/V2 post-boot with Audio HAL Never-Fight protection, 10× batch \`getprop\` verification, and Binder circuit-breaker.
-          - **Upgraded Auto Light & Dark WebUI:** Clean Mystivara Precision styling, one-tap diagnostic export (\`/sdcard/Download/coresurface-diag.txt\`), and **Leica Camera** development status notice (\* currently in development for a future update).
+          - **Hardware-Verified Camera Pro Engine:** Probes real Camera2 HAL capabilities (\`dumpsys media.camera\`) and SoC ISP (\`Snapdragon\` / \`MediaTek\` / \`XRING\`) to fail-closed unlock only genuinely supported features — Pro Photography Aids (Histogram, Focus Peaking, Zebra, Pro Video), true RAW/DNG, 4K@60 / 10-bit HDR, and RAM-gated Parallel Processing (never forced on 4 GB / Lite devices; zero \`ro.product.mod_device\` spoofing).
+          - **Dual-Support Leica Camera Bridge & 0 KB Crash Inspector:** Automatically detects Native Leica flagships (Never-Downgrade Passthrough) and optional Leica Companion modules, guarded by an On-Boot & On-Demand Crash Inspector that auto-reverts on repeated \`com.android.camera\` crashes + 1-tap Safe Rollback.
+          - **Upgraded Auto Light & Dark WebUI:** Collapsible **Camera Hardware Inspector**, **Camera Health Check**, **Safe Rollback**, and one-tap diagnostic export (\`/sdcard/Download/coresurface-diag.txt\`).
+          - **High-Priority Clean-Room RROs (\`9999\`) & Hardware-Verified 90 Hz:** Reliable Super Wallpaper / ThemeManager / MiuiAod / SystemUI overrides + HyperOS 4 Bionic Material & Computility V1/V2.
 
           ### Download & Checksum
           | Asset | Size | SHA-256 |

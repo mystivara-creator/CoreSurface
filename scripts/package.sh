@@ -65,6 +65,7 @@ chmod 0755 \
   "$STAGE_DIR/lib/settings_tx.sh" \
   "$STAGE_DIR/lib/verifier.sh" \
   "$STAGE_DIR/lib/os_bug_logic.sh" \
+  "$STAGE_DIR/lib/camera_probe.sh" \
   "$STAGE_DIR/lib/webui_ctl.sh"
 
 (
@@ -88,6 +89,7 @@ for req in \
   "service.sh" \
   "action.sh" \
   "uninstall.sh" \
+  "lib/camera_probe.sh" \
   "overlays/CoreSurfaceSystemUI.apk" \
   "overlays/CoreSurfaceSystemUILiteBlur.apk" \
   "overlays/CoreSurfaceThemeManager.apk" \

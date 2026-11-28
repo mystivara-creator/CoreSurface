@@ -377,6 +377,9 @@ cs_score_tally() {
 
 cs_verifier_run() {
   cs_watchdog_init_dir || return 1
+  if [ -z "${CS_CAM_PROBED:-}" ] && command -v cs_camera_load_caps >/dev/null 2>&1; then
+    cs_camera_load_caps
+  fi
 
   CS_V_PROPS_TOTAL=0
   CS_V_PROPS_MATCHED=0
@@ -426,12 +429,46 @@ cs_verifier_run() {
   cs_verify_feature "FEAT_FLAGSHIP_SUITE" "$CFG_FEAT_FLAGSHIP_SUITE" "$EFF_FEAT_FLAGSHIP_SUITE"
   _cs_v_suite=$CS_VF_RESULT
 
+  # Honest Camera Pro Engine & Leica Bridge verification
+  _cs_v_cam_pro="skipped"
+  if [ "${CFG_FEAT_CAMERA_PRO:-auto}" = "0" ]; then
+    _cs_v_cam_pro="disabled"
+  elif [ "${CS_CAM_LEICA_SOURCE:-none}" = "native" ] || [ "${CS_EFF_TIER:-low}" = "motion_only" ]; then
+    _cs_v_cam_pro="native_passthrough"
+  elif [ "${EFF_FEAT_CAMERA_PRO:-0}" = "1" ]; then
+    cs_verify_xml_tag_feature "${CFG_FEAT_CAMERA_PRO:-auto}" "${EFF_FEAT_CAMERA_PRO:-0}" '<bool name="support_camera_shutter_sound_control">true</bool>'
+    _cs_v_cam_xml=$CS_XT_RESULT
+    cs_verify_feature "FEAT_CAMERA_PRO" "${CFG_FEAT_CAMERA_PRO:-auto}" "${EFF_FEAT_CAMERA_PRO:-0}"
+    _cs_v_cam_prop=$CS_VF_RESULT
+    if [ "$_cs_v_cam_xml" = "ignored_by_rom" ] || [ "$_cs_v_cam_prop" = "ignored_by_rom" ]; then
+      _cs_v_cam_pro="ignored_by_rom"
+    elif [ "$_cs_v_cam_xml" = "verified_active" ] || [ "$_cs_v_cam_prop" = "verified_active" ]; then
+      _cs_v_cam_pro="verified_active"
+    else
+      _cs_v_cam_pro="skipped"
+    fi
+  fi
+
+  _cs_v_leica="companion_missing"
+  if [ "${CS_CAM_WATCHDOG_STATUS:-healthy}" = "auto_reverted" ]; then
+    _cs_v_leica="auto_reverted"
+  elif [ "${CFG_FEAT_LEICA_BRIDGE:-auto}" = "0" ]; then
+    _cs_v_leica="disabled"
+  elif [ "${CS_CAM_LEICA_SOURCE:-none}" = "native" ]; then
+    _cs_v_leica="native_passthrough"
+  elif [ "${CS_CAM_LEICA_SOURCE:-none}" = "companion" ]; then
+    _cs_v_leica="companion_active"
+  else
+    _cs_v_leica="companion_missing"
+  fi
+
   rm -f "${CS_V_SNAP_FILE:-}" 2>/dev/null || true
 
   for _cs_s in \
     "$_cs_v_blur" "$_cs_v_anim" "$CS_V_XML_FEAT" "$CS_V_RRO_FEAT" \
     "$CS_V_VIDEO_DEPTH" "$_cs_v_multi" "$_cs_v_hz" \
-    "$_cs_v_color" "$_cs_v_aod" "$_cs_v_audio" "$_cs_v_suite"
+    "$_cs_v_color" "$_cs_v_aod" "$_cs_v_audio" "$_cs_v_suite" \
+    "$_cs_v_cam_pro"
   do
     cs_score_tally "$_cs_s"
   done
@@ -453,6 +490,8 @@ cs_verifier_run() {
   cs_verify_set "VERIFY_FEAT_AOD_UNLOCK" "$_cs_v_aod"
   cs_verify_set "VERIFY_FEAT_FLAGSHIP_AUDIO" "$_cs_v_audio"
   cs_verify_set "VERIFY_FEAT_FLAGSHIP_SUITE" "$_cs_v_suite"
+  cs_verify_set "VERIFY_FEAT_CAMERA_PRO" "$_cs_v_cam_pro"
+  cs_verify_set "VERIFY_FEAT_LEICA_BRIDGE" "$_cs_v_leica"
 
   cs_verify_set "VERIFY_XML_MOUNT" "$CS_V_XML_MOUNT"
   cs_verify_set "VERIFY_RRO_ACTIVE" "$CS_V_RRO_ACTIVE"

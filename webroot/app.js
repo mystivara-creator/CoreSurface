@@ -87,7 +87,7 @@ function makeKvRow(label, value) {
   return row;
 }
 
-function renderVerifyPill(featKey, status, isPending) {
+function renderVerifyPill(featKey, status, isPending, extraLabel) {
   const el = document.getElementById('verify-' + featKey);
   if (!el) return;
   el.className = 'v-pill';
@@ -101,7 +101,23 @@ function renderVerifyPill(featKey, status, isPending) {
   switch (status) {
     case 'verified_active':
       el.classList.add('v-ok');
-      el.textContent = 'Active';
+      el.textContent = extraLabel || 'Active';
+      break;
+    case 'native_passthrough':
+      el.classList.add('v-ok');
+      el.textContent = featKey === 'FEAT_LEICA_BRIDGE' ? 'Native Leica' : 'Native Passthrough';
+      break;
+    case 'companion_active':
+      el.classList.add('v-ok');
+      el.textContent = 'Companion Active';
+      break;
+    case 'companion_missing':
+      el.classList.add('v-warn');
+      el.textContent = 'Companion Not Installed';
+      break;
+    case 'auto_reverted':
+      el.classList.add('v-danger');
+      el.textContent = 'Auto-Reverted';
       break;
     case 'ignored_by_rom':
       el.classList.add('v-danger');
@@ -129,6 +145,19 @@ function setSegmentValue(key, val) {
 
 function setToast(msg) {
   document.getElementById('toast-msg').textContent = msg || '';
+}
+
+function formatBoolCap(val) {
+  return val === '1' ? 'Supported' : 'Not Advertised';
+}
+
+function formatIsp(isp) {
+  switch (isp) {
+    case 'snapdragon': return 'Qualcomm Snapdragon ISP';
+    case 'mediatek': return 'MediaTek Imagiq ISP';
+    case 'xring': return 'Xiaomi XRING ISP';
+    default: return 'Generic Android Camera2';
+  }
 }
 
 async function refreshStatus() {
@@ -160,6 +189,19 @@ async function refreshStatus() {
     } else {
       wdBadge.classList.add('badge-warn');
       wdBadge.textContent = 'Watchdog: ' + (kv.watchdog_status || 'unknown');
+    }
+
+    // Camera Watchdog auto-revert banner
+    const camWdBanner = document.getElementById('cam-watchdog-banner');
+    const camWdReason = document.getElementById('cam-watchdog-reason');
+    if (camWdBanner) {
+      const isCamReverted = kv.cam_watchdog_status === 'auto_reverted';
+      camWdBanner.classList.toggle('hidden', !isCamReverted);
+      if (isCamReverted && camWdReason) {
+        camWdReason.textContent = 'Detected ' + (kv.cam_crash_count || '2+')
+          + ' crashes in com.android.camera (' + (kv.cam_watchdog_reason || 'crash_loop')
+          + '). Disabled Leica Bridge & reverted safely to Stock Camera + Pro Engine.';
+      }
     }
 
     // Metamodule RRO warning banner
@@ -202,10 +244,61 @@ async function refreshStatus() {
     setSegmentValue('FEAT_AOD_UNLOCK', kv.cfg_feat_aod_unlock || '1');
     setSegmentValue('FEAT_FLAGSHIP_AUDIO', kv.eff_feat_flagship_audio === '1' ? '1' : '0');
     setSegmentValue('FEAT_FLAGSHIP_SUITE', kv.eff_feat_flagship_suite === '1' ? '1' : '0');
+    setSegmentValue('FEAT_CAMERA_PRO', kv.cfg_feat_camera_pro === '0' ? '0' : '1');
+    setSegmentValue('FEAT_LEICA_BRIDGE', kv.cfg_feat_leica_bridge === '0' ? '0' : '1');
 
+    const camCapsCount = kv.cam_pro_cap_count || '1';
     renderVerifyPill('FEAT_AOD_UNLOCK', kv.verify_feat_aod_unlock, pendingSet.has('FEAT_AOD_UNLOCK'));
     renderVerifyPill('FEAT_FLAGSHIP_AUDIO', kv.verify_feat_flagship_audio, pendingSet.has('FEAT_FLAGSHIP_AUDIO'));
     renderVerifyPill('FEAT_FLAGSHIP_SUITE', kv.verify_feat_flagship_suite, pendingSet.has('FEAT_FLAGSHIP_SUITE'));
+    renderVerifyPill(
+      'FEAT_CAMERA_PRO',
+      kv.verify_feat_camera_pro,
+      pendingSet.has('FEAT_CAMERA_PRO'),
+      'Active · ' + camCapsCount + ' caps'
+    );
+    renderVerifyPill(
+      'FEAT_LEICA_BRIDGE',
+      kv.verify_feat_leica_bridge || (kv.cam_leica_source === 'native' ? 'native_passthrough' : (kv.cam_leica_source === 'companion' ? 'companion_active' : 'companion_missing')),
+      pendingSet.has('FEAT_LEICA_BRIDGE')
+    );
+
+    // Honest Leica Bridge dynamic description
+    const leicaDesc = document.getElementById('leica-bridge-desc');
+    if (leicaDesc) {
+      if (kv.cam_leica_source === 'native') {
+        leicaDesc.textContent = 'Factory Native Leica camera detected — protected in Never-Downgrade Passthrough with 0 KB Crash Inspector.';
+      } else if (kv.cam_leica_source === 'companion') {
+        leicaDesc.textContent = 'Active Leica Companion detected (' + (kv.cam_companion_name || kv.cam_companion_id)
+          + ') — guarded by CoreSurface 0 KB Camera Crash Inspector & 1-tap Safe Rollback.';
+      } else {
+        leicaDesc.textContent = 'Pro Engine active on stock MiuiCamera. Authentic/Vibrant Leica LUTs require an optional SDK/SoC-matched Leica Companion Pack (* currently in development).';
+      }
+    }
+
+    // Collapsible Camera Hardware Inspector
+    const camList = document.getElementById('cam-inspector-list');
+    if (camList) {
+      const leicaSourceLabel = kv.cam_leica_source === 'native'
+        ? 'Native Leica Flagship'
+        : (kv.cam_leica_source === 'companion'
+          ? ('Companion (' + (kv.cam_companion_name || kv.cam_companion_id) + ')')
+          : 'Stock Non-Leica APK');
+      const wdLabel = (kv.cam_watchdog_status || 'healthy') + ' (crashes: ' + (kv.cam_crash_count || '0') + ')';
+      camList.replaceChildren(
+        makeKvRow('Camera2 HAL Level', kv.cam_hal_level || 'UNKNOWN'),
+        makeKvRow('SoC ISP', formatIsp(kv.cam_isp)),
+        makeKvRow('Detected Camera IDs', (kv.cam_lens_count || '0') + ' sensor(s)'),
+        makeKvRow('RAW / DNG Hardware', formatBoolCap(kv.cam_has_raw)),
+        makeKvRow('Manual Sensor / Pro Aids', formatBoolCap(kv.cam_has_manual)),
+        makeKvRow('Video 4K@60 / 10-bit', (kv.cam_has_4k60 === '1' ? '4K60 Yes' : '4K60 No') + ' · ' + (kv.cam_has_10bit === '1' ? '10-bit Yes' : '10-bit No')),
+        makeKvRow('Active Pro Unlocks', kv.cam_active_unlocks || 'Pro Utilities'),
+        makeKvRow('Stock Camera APK', kv.cam_apk_version || 'unknown'),
+        makeKvRow('Leica Status', leicaSourceLabel),
+        makeKvRow('Companion Match Profile', kv.cam_readiness_profile || '-'),
+        makeKvRow('Camera Watchdog', wdLabel)
+      );
+    }
 
     // Compact Summary
     const romStr = (kv.rom_family || '').toUpperCase() + ' ' + (kv.rom_version || '') + ' · SDK ' + (kv.android_sdk || '-');
@@ -217,6 +310,9 @@ async function refreshStatus() {
       : 'Stock Color';
     const audioSuiteStr = 'Audio ' + (kv.eff_feat_flagship_audio === '1' ? 'Flagship ON' : 'Stock')
       + ' · Porting Suite ' + (kv.eff_feat_flagship_suite === '1' ? 'ON' : 'OFF');
+    const camSummaryStr = 'HAL ' + (kv.cam_hal_level || 'UNKNOWN')
+      + ' · ' + (kv.cam_isp || 'generic').toUpperCase()
+      + ' · Leica ' + (kv.cam_leica_source || 'none');
     const bugSummary = (kv.os_bugs_mitigated || '0') + '/' + (kv.os_bugs_detected || '0') + ' mitigated'
       + (kv.os_bugs_csv ? (' (' + kv.os_bugs_csv.split(',').slice(0, 3).join(', ') + ')') : '');
 
@@ -224,6 +320,7 @@ async function refreshStatus() {
       makeKvRow('ROM & RAM', romStr + ' · ' + (kv.ram_mb || '0') + ' MB'),
       makeKvRow('Blur & Color', blurMode + ' · ' + colorMode),
       makeKvRow('Audio & Suite', audioSuiteStr),
+      makeKvRow('Camera Engine', camSummaryStr),
       makeKvRow('OS Bug Logic', bugSummary),
       makeKvRow('Standalone Layer 1', 'Props ' + (kv.verify_props_matched || '0') + '/' + (kv.verify_props_total || '0')
         + ' · XML ' + (kv.verify_xml_mount || kv.xml_status || '-')
@@ -299,6 +396,29 @@ document.getElementById('btn-hot-sync').addEventListener('click', () => {
       await refreshStatus();
     } catch (err) {
       setToast('Verification failed: ' + err.message);
+    }
+  });
+});
+
+document.getElementById('btn-cam-health').addEventListener('click', () => {
+  runAction('Running Camera2 Hardware & Crash Check…', async () => {
+    try {
+      setToast(await ksuExec(CTL_SCRIPT + ' camera-health'));
+      await refreshStatus();
+    } catch (err) {
+      setToast('Camera Health Check failed: ' + err.message);
+    }
+  });
+});
+
+document.getElementById('btn-cam-rollback').addEventListener('click', () => {
+  runAction('Applying Camera Safe Rollback…', async () => {
+    try {
+      setToast(await ksuExec(CTL_SCRIPT + ' camera-rollback'));
+      document.getElementById('reboot-banner').classList.remove('hidden');
+      await refreshStatus();
+    } catch (err) {
+      setToast('Camera Safe Rollback failed: ' + err.message);
     }
   });
 });

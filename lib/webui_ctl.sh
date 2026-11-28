@@ -2,6 +2,7 @@
 # CoreSurface - Lightweight Standalone WebUI Control Bridge
 # Supports: status | tier <auto|low|balanced_pro|flagship> | set <KEY> <VAL>
 #           | preset <stock-safe|balanced|flagship-max> | hot-sync
+#           | camera-health | camera-rollback
 #           | diag-report | export-diag [path] | reset-safemode
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
@@ -21,6 +22,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(dirname -- "$SCRIPT_DIR")}
 . "$MODDIR/lib/verifier.sh"
 # shellcheck source=lib/os_bug_logic.sh
 . "$MODDIR/lib/os_bug_logic.sh"
+# shellcheck source=lib/camera_probe.sh
+. "$MODDIR/lib/camera_probe.sh"
 
 CS_CONFIG_FILE="$CS_STATE_DIR/config.prop"
 CS_COREFLOW_DIR=${CORESURFACE_COREFLOW_DIR:-/data/adb/modules/cfae_framework}
@@ -130,6 +133,7 @@ cs_cmd_status() {
   cs_detect_ram_tier
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
+  cs_camera_load_caps
 
   # Single-pass pure-POSIX read of state.prop (0 awk forks)
   _cs_wd_status="" _cs_wd_reason="" _cs_pending_keys=""
@@ -161,7 +165,7 @@ cs_cmd_status() {
   fi
 
   # Single-pass pure-POSIX read of verify.state (0 awk forks)
-  _v_faod="" _v_faud="" _v_fsu="" _v_fbl="" _v_fce="" _v_fan=""
+  _v_faod="" _v_faud="" _v_fsu="" _v_fbl="" _v_fce="" _v_fan="" _v_fcam="" _v_fleica=""
   _v_xmlm="" _v_rroa="" _v_rrot="" _v_ptot="" _v_pmat="" _v_fver="" _v_fev="" _v_pct=""
   if [ -r "$CS_VERIFY_FILE" ]; then
     while IFS='=' read -r _cs_vk _cs_vv || [ -n "$_cs_vk" ]; do
@@ -169,6 +173,8 @@ cs_cmd_status() {
         VERIFY_FEAT_AOD_UNLOCK)     _v_faod="$_cs_vv" ;;
         VERIFY_FEAT_FLAGSHIP_AUDIO) _v_faud="$_cs_vv" ;;
         VERIFY_FEAT_FLAGSHIP_SUITE) _v_fsu="$_cs_vv" ;;
+        VERIFY_FEAT_CAMERA_PRO)     _v_fcam="$_cs_vv" ;;
+        VERIFY_FEAT_LEICA_BRIDGE)   _v_fleica="$_cs_vv" ;;
         VERIFY_FEAT_BLUR)           _v_fbl="$_cs_vv" ;;
         VERIFY_FEAT_ANIMATIONS)     _v_fan="$_cs_vv" ;;
         VERIFY_FEAT_COLOR_EXPERT)   _v_fce="$_cs_vv" ;;
@@ -196,7 +202,7 @@ cs_cmd_status() {
     done < "$CS_OS_BUGS_FILE"
   fi
 
-  printf 'module_version=%s\n' "v1.3.0"
+  printf 'module_version=%s\n' "v1.4.0"
   printf 'watchdog_status=%s\n' "${_cs_wd_status:-unknown}"
   printf 'watchdog_reason=%s\n' "${_cs_wd_reason:-none}"
   printf 'boot_strikes=%s\n' "${_cs_strikes:-0}"
@@ -219,6 +225,8 @@ cs_cmd_status() {
   printf 'cfg_feat_aod_unlock=%s\n' "$CFG_FEAT_AOD_UNLOCK"
   printf 'cfg_feat_flagship_audio=%s\n' "$CFG_FEAT_FLAGSHIP_AUDIO"
   printf 'cfg_feat_flagship_suite=%s\n' "$CFG_FEAT_FLAGSHIP_SUITE"
+  printf 'cfg_feat_camera_pro=%s\n' "$CFG_FEAT_CAMERA_PRO"
+  printf 'cfg_feat_leica_bridge=%s\n' "$CFG_FEAT_LEICA_BRIDGE"
   printf 'eff_feat_blur=%s\n' "$EFF_FEAT_BLUR"
   printf 'eff_feat_adv_textures=%s\n' "$EFF_FEAT_ADV_TEXTURES"
   printf 'eff_feat_color_expert=%s\n' "$EFF_FEAT_COLOR_EXPERT"
@@ -226,6 +234,27 @@ cs_cmd_status() {
   printf 'eff_feat_aod_unlock=%s\n' "$EFF_FEAT_AOD_UNLOCK"
   printf 'eff_feat_flagship_audio=%s\n' "$EFF_FEAT_FLAGSHIP_AUDIO"
   printf 'eff_feat_flagship_suite=%s\n' "$EFF_FEAT_FLAGSHIP_SUITE"
+  printf 'eff_feat_camera_pro=%s\n' "$EFF_FEAT_CAMERA_PRO"
+  printf 'eff_feat_leica_bridge=%s\n' "$EFF_FEAT_LEICA_BRIDGE"
+
+  printf 'cam_probed=%s\n' "$CS_CAM_PROBED"
+  printf 'cam_isp=%s\n' "$CS_CAM_ISP"
+  printf 'cam_hal_level=%s\n' "$CS_CAM_HAL_LEVEL"
+  printf 'cam_has_raw=%s\n' "$CS_CAM_HAS_RAW"
+  printf 'cam_has_manual=%s\n' "$CS_CAM_HAS_MANUAL"
+  printf 'cam_has_10bit=%s\n' "$CS_CAM_HAS_10BIT"
+  printf 'cam_has_4k60=%s\n' "$CS_CAM_HAS_4K60"
+  printf 'cam_lens_count=%s\n' "$CS_CAM_LENS_COUNT"
+  printf 'cam_apk_version=%s\n' "$CS_CAM_APK_VERSION"
+  printf 'cam_leica_source=%s\n' "$CS_CAM_LEICA_SOURCE"
+  printf 'cam_companion_id=%s\n' "$CS_CAM_COMPANION_ID"
+  printf 'cam_companion_name=%s\n' "$CS_CAM_COMPANION_NAME"
+  printf 'cam_pro_cap_count=%s\n' "$(cs_camera_pro_cap_count)"
+  printf 'cam_active_unlocks=%s\n' "$(cs_camera_active_unlocks_csv)"
+  printf 'cam_readiness_profile=%s\n' "$(cs_camera_readiness_profile)"
+  printf 'cam_crash_count=%s\n' "$CS_CAM_CRASH_COUNT"
+  printf 'cam_watchdog_status=%s\n' "$CS_CAM_WATCHDOG_STATUS"
+  printf 'cam_watchdog_reason=%s\n' "$CS_CAM_WATCHDOG_REASON"
 
   printf 'xml_status=%s\n' "${_cs_xml_status:-skipped}"
   printf 'xml_source=%s\n' "${_cs_xml_source:-none}"
@@ -240,6 +269,8 @@ cs_cmd_status() {
   printf 'verify_feat_aod_unlock=%s\n' "$_v_faod"
   printf 'verify_feat_flagship_audio=%s\n' "$_v_faud"
   printf 'verify_feat_flagship_suite=%s\n' "$_v_fsu"
+  printf 'verify_feat_camera_pro=%s\n' "$_v_fcam"
+  printf 'verify_feat_leica_bridge=%s\n' "$_v_fleica"
   printf 'verify_feat_blur=%s\n' "$_v_fbl"
   printf 'verify_feat_animations=%s\n' "$_v_fan"
   printf 'verify_feat_color_expert=%s\n' "$_v_fce"
@@ -274,6 +305,7 @@ cs_cmd_tier() {
   cs_write_config_key "CS_TIER_MODE" "$_cs_tm"
 
   cs_sync_rro_for_next_boot || true
+  cs_camera_load_caps
   cs_reassert_computility_props || true
   cs_settings_sync_all || true
   cs_verifier_run || true
@@ -291,7 +323,7 @@ cs_cmd_set() {
       cs_cmd_tier "$_cs_set_v"
       return $?
       ;;
-    FEAT_AOD_UNLOCK|FEAT_FLAGSHIP_AUDIO|FEAT_FLAGSHIP_SUITE|FEAT_BLUR|FEAT_ANIMATIONS|FEAT_XML_PATCHER|FEAT_RRO_OVERLAYS|FEAT_VIDEO_DEPTH|FEAT_MULTITASK|FEAT_DISPLAY_HZ|FEAT_COLOR_EXPERT)
+    FEAT_AOD_UNLOCK|FEAT_FLAGSHIP_AUDIO|FEAT_FLAGSHIP_SUITE|FEAT_CAMERA_PRO|FEAT_LEICA_BRIDGE|FEAT_BLUR|FEAT_ANIMATIONS|FEAT_XML_PATCHER|FEAT_RRO_OVERLAYS|FEAT_VIDEO_DEPTH|FEAT_MULTITASK|FEAT_DISPLAY_HZ|FEAT_COLOR_EXPERT)
       case "$_cs_set_v" in
         auto|1|0) ;;
         *)
@@ -337,13 +369,39 @@ cs_cmd_hot_sync() {
   cs_detect_ram_tier
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
+  cs_camera_probe_hardware || true
+  cs_camera_crash_inspect "$CS_CONFIG_FILE" || true
   cs_reassert_computility_props || true
   cs_rro_enable_staged || true
   cs_settings_sync_all || true
   cs_os_bug_scan "late" "$MODDIR" || true
   cs_verifier_run || true
-  cs_log "WebUI triggered Computility + RRO + settings hot-sync & re-verification."
+  cs_log "WebUI triggered Computility + Camera + RRO + settings hot-sync & re-verification."
   printf 'Hot-Sync & re-verification completed without reboot.\n'
+}
+
+cs_cmd_camera_health() {
+  cs_ensure_config || return 1
+  cs_detect_rom || true
+  cs_detect_ram_tier
+  cs_load_config "$CS_CONFIG_FILE"
+  cs_resolve_features
+  cs_camera_probe_hardware 1 || true
+  cs_camera_crash_inspect "$CS_CONFIG_FILE" || true
+  cs_verifier_run || true
+  printf 'Camera Health Check: HAL=%s | ISP=%s | Leica=%s | Watchdog=%s (crashes=%s).\n' \
+    "$CS_CAM_HAL_LEVEL" "$CS_CAM_ISP" "$CS_CAM_LEICA_SOURCE" "$CS_CAM_WATCHDOG_STATUS" "$CS_CAM_CRASH_COUNT"
+}
+
+cs_cmd_camera_rollback() {
+  cs_ensure_config || return 1
+  cs_camera_safe_rollback "$CS_CONFIG_FILE" || return 1
+  cs_add_pending_key "FEAT_LEICA_BRIDGE"
+  cs_detect_rom || true
+  cs_detect_ram_tier
+  cs_load_config "$CS_CONFIG_FILE"
+  cs_resolve_features
+  cs_verifier_run || true
 }
 
 cs_cmd_diag_report() {
@@ -352,6 +410,7 @@ cs_cmd_diag_report() {
   cs_detect_ram_tier
   cs_load_config "$CS_CONFIG_FILE"
   cs_resolve_features
+  cs_camera_load_caps
 
   _dr_bdet="0" _dr_bmit="0" _dr_bcsv="none"
   if [ -r "$CS_OS_BUGS_FILE" ]; then
@@ -368,7 +427,7 @@ cs_cmd_diag_report() {
   _dr_rro_note=""
   [ -n "$_dr_rro_inact" ] && _dr_rro_note=" inactive=[${_dr_rro_inact}]"
 
-  printf '=== CoreSurface v1.3.0 Standalone Diagnostic Report ===\n'
+  printf '=== CoreSurface v1.4.0 Standalone Diagnostic Report ===\n'
   printf 'ROM: %s (%s) | HyperOS Major: %s | Android SDK: %s\n' \
     "$CS_ROM_FAMILY" "${CS_ROM_VERSION:-Unknown}" "$CS_HYPEROS_MAJOR" "$CS_ANDROID_SDK"
   printf 'RAM: %s MB (%s) | Tier: %s (cfg=%s, detected=%s) | CoreFlow Guard: %s\n' \
@@ -392,6 +451,14 @@ cs_cmd_diag_report() {
   printf 'Flagship Porting: Audio & Speaker=%s | Porting Suite=%s\n' \
     "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_AUDIO)" \
     "$(cs_verify_get VERIFY_FEAT_FLAGSHIP_SUITE)"
+  printf 'Camera Engine: Pro=%s | Leica Bridge=%s (source=%s, companion=%s) | HAL=%s ISP=%s RAW=%s Manual=%s 4K60=%s 10bit=%s | Watchdog=%s (crashes=%s)\n' \
+    "$(cs_verify_get VERIFY_FEAT_CAMERA_PRO)" \
+    "$(cs_verify_get VERIFY_FEAT_LEICA_BRIDGE)" \
+    "$CS_CAM_LEICA_SOURCE" "${CS_CAM_COMPANION_ID:-none}" \
+    "$CS_CAM_HAL_LEVEL" "$CS_CAM_ISP" "$CS_CAM_HAS_RAW" "$CS_CAM_HAS_MANUAL" "$CS_CAM_HAS_4K60" "$CS_CAM_HAS_10BIT" \
+    "$CS_CAM_WATCHDOG_STATUS" "$CS_CAM_CRASH_COUNT"
+  printf 'Camera Unlocks: [%s] | Companion Profile: %s\n' \
+    "$(cs_camera_active_unlocks_csv)" "$(cs_camera_readiness_profile)"
   if [ -r "$CS_LOG_FILE" ]; then
     printf '\n--- Recent Logs ---\n'
     tail -n 15 "$CS_LOG_FILE" 2>/dev/null || true
@@ -429,16 +496,18 @@ cs_cmd_reset_safemode() {
 }
 
 case "${1:-}" in
-  status)         cs_cmd_status ;;
-  tier)           cs_ctl_lock && cs_cmd_tier "${2:-}" ;;
-  set)            cs_ctl_lock && cs_cmd_set "${2:-}" "${3:-}" ;;
-  preset)         cs_ctl_lock && cs_cmd_preset "${2:-}" ;;
-  hot-sync)       cs_ctl_lock && cs_cmd_hot_sync ;;
-  diag-report)    cs_cmd_diag_report ;;
-  export-diag)    cs_cmd_export_diag "${2:-}" ;;
-  reset-safemode) cs_ctl_lock && cs_cmd_reset_safemode ;;
+  status)          cs_cmd_status ;;
+  tier)            cs_ctl_lock && cs_cmd_tier "${2:-}" ;;
+  set)             cs_ctl_lock && cs_cmd_set "${2:-}" "${3:-}" ;;
+  preset)          cs_ctl_lock && cs_cmd_preset "${2:-}" ;;
+  hot-sync)        cs_ctl_lock && cs_cmd_hot_sync ;;
+  camera-health)   cs_ctl_lock && cs_cmd_camera_health ;;
+  camera-rollback) cs_ctl_lock && cs_cmd_camera_rollback ;;
+  diag-report)     cs_cmd_diag_report ;;
+  export-diag)     cs_cmd_export_diag "${2:-}" ;;
+  reset-safemode)  cs_ctl_lock && cs_cmd_reset_safemode ;;
   *)
-    printf 'Usage: %s {status|tier <auto|low|balanced_pro|flagship>|set <KEY> <VALUE>|preset <...>|hot-sync|diag-report|export-diag [path]|reset-safemode}\n' "$0" >&2
+    printf 'Usage: %s {status|tier <auto|low|balanced_pro|flagship>|set <KEY> <VALUE>|preset <...>|hot-sync|camera-health|camera-rollback|diag-report|export-diag [path]|reset-safemode}\n' "$0" >&2
     exit 1
     ;;
 esac

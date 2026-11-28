@@ -1,6 +1,6 @@
 id=coresurface
 name=CoreSurface
-version=v1.3.0
-versionCode=130
+version=v1.4.0
+versionCode=140
 author=Mystivara
-description=100% standalone pure user-space HyperOS 3/4 flagship experience: native flagship animations & computility, verified blur & Advanced Textures, FOD-safe Non-LTPO AOD unlock, flagship audio & complete porting suite.
+description=100% standalone pure user-space HyperOS 3/4 flagship experience: native animations & computility, verified blur, FOD-safe AOD, flagship audio, Hardware-Verified Camera Pro Engine & Dual-Support Leica Camera Bridge.

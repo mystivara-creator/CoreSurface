@@ -748,7 +748,7 @@ assert_file_contains "$SB_SETTINGS_DB" "global|disable_window_blurs=0" "hot-sync
 _diag=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" diag-report)
 printf '%s\n' "$_diag" > "$SB/diag.txt"
-assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.3.0 Standalone Diagnostic Report ===" "diag-report outputs structured Standalone v1.3.0 header"
+assert_file_contains "$SB/diag.txt" "=== CoreSurface v1.4.0 Standalone Diagnostic Report ===" "diag-report outputs structured Standalone v1.4.0 header"
 assert_file_contains "$SB/diag.txt" "Custom Color Expert:" "diag-report includes Custom Color Expert status"
 assert_file_contains "$SB/diag.txt" "AOD Unlock:" "diag-report includes AOD Unlock status"
 
@@ -1045,8 +1045,8 @@ run_service
 _act_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
   CORESURFACE_MEMINFO="$SB_MEMINFO" sh "$SB_MOD/action.sh")
 printf '%s\n' "$_act_out" > "$SB/action.out"
-assert_file_contains "$SB/action.out" "CoreSurface v1.3.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
-assert_file_contains "$SB/action.out" "=== CoreSurface v1.3.0 Standalone Diagnostic Report ===" "action.sh runs standalone diagnostic report cleanly"
+assert_file_contains "$SB/action.out" "CoreSurface v1.4.0 - Live Sync & Diagnostics" "action.sh prints live sync banner"
+assert_file_contains "$SB/action.out" "=== CoreSurface v1.4.0 Standalone Diagnostic Report ===" "action.sh runs standalone diagnostic report cleanly"
 
 # Test uninstall.sh cleanly removes state directory
 PATH="$SB_BIN:$PATH" CORESURFACE_MODDIR="$SB_MOD" CORESURFACE_STATE_DIR="$SB_STATE" \
@@ -1306,16 +1306,16 @@ assert_file_contains "$SB_PROPS_LOG" "ro.launcher.blur.appLaunch=1" "Native flag
 assert_file_contains "$SB_PROPS_LOG" "persist.sys.multi_task.mask_blur_enable=true" "Native flagship GPU retains Recents mask blur"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 23: v1.3.0 Release Metadata, English UI Localization, Zero Scale Hacks & Binder Circuit-Breaker ===\n'
-setup_sandbox "t23_v130_english_and_binder_cb"
+printf '=== Test 23: v1.4.0 Release Metadata, English UI Localization, Zero Scale Hacks & Binder Circuit-Breaker ===\n'
+setup_sandbox "t23_v140_english_and_binder_cb"
 write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
 write_mock_meminfo "7500000"
 write_sample_xml "$SB_XML_DIR1/kunzite.xml"
 
-assert_file_contains "$REPO_ROOT/module.prop" "version=v1.3.0" "module.prop stays at v1.3.0"
-assert_file_contains "$REPO_ROOT/module.prop" "versionCode=130" "module.prop stays at versionCode=130"
+assert_file_contains "$REPO_ROOT/module.prop" "version=v1.4.0" "module.prop is at v1.4.0"
+assert_file_contains "$REPO_ROOT/module.prop" "versionCode=140" "module.prop is at versionCode=140"
 assert_file_contains "$REPO_ROOT/webroot/index.html" '<html lang="en">' "WebUI declares English locale (lang=en)"
-assert_file_contains "$REPO_ROOT/webroot/index.html" 'v1.3.0' "WebUI displays v1.3.0 badge"
+assert_file_contains "$REPO_ROOT/webroot/index.html" 'v1.4.0' "WebUI displays v1.4.0 badge"
 assert_file_contains "$REPO_ROOT/customize.sh" 'SELECT CORESURFACE TIER MODE' "Volume-key installer prompts are in English"
 assert_file_not_contains "$REPO_ROOT/lib/settings_tx.sh" 'window_animation_scale' "CoreSurface never touches Developer Options window_animation_scale"
 assert_file_not_contains "$REPO_ROOT/lib/settings_tx.sh" 'transition_animation_scale' "CoreSurface never touches Developer Options transition_animation_scale"
@@ -1485,7 +1485,7 @@ run_post_fs_data
 assert_file_not_contains "$SB_STATE/work/device_features.xml" '<item>90</item>' "XML patcher refuses to inject 90Hz on panels without hardware 90Hz support"
 
 # ---------------------------------------------------------------------------
-printf '=== Test 26: One-Tap Diagnostic Export, Leica Roadmap Notice & Clean Copy ===\n'
+printf '=== Test 26: One-Tap Diagnostic Export, Camera UI Controls & Clean Copy ===\n'
 setup_sandbox "t26_export_diag"
 write_mock_getprop "OS3.0" "" "36" "1" "emerald" "Redmi Note 15 Pro"
 write_mock_meminfo "7500000"
@@ -1493,12 +1493,365 @@ _t26_diag_out="$SB/exports/coresurface-diag.txt"
 _t26_out=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
   sh "$SB_MOD/lib/webui_ctl.sh" export-diag "$_t26_diag_out")
 assert_eq "$_t26_out" "Diagnostic exported to $_t26_diag_out" "webui_ctl export-diag reports exported file path"
-assert_file_contains "$_t26_diag_out" "=== CoreSurface v1.3.0 Standalone Diagnostic Report ===" "Exported diagnostic file contains v1.3.0 report header"
-assert_file_contains "$REPO_ROOT/webroot/index.html" "Leica Camera" "WebUI displays Leica Camera roadmap card"
-assert_file_contains "$REPO_ROOT/webroot/index.html" "In Development" "WebUI marks Leica Camera as In Development"
+assert_file_contains "$_t26_diag_out" "=== CoreSurface v1.4.0 Standalone Diagnostic Report ===" "Exported diagnostic file contains v1.4.0 report header"
+assert_file_contains "$_t26_diag_out" "Camera Engine:" "Exported diagnostic file includes Camera Engine telemetry"
+assert_file_contains "$REPO_ROOT/webroot/index.html" "Camera Pro Engine" "WebUI displays Camera Pro Engine toggle card"
+assert_file_contains "$REPO_ROOT/webroot/index.html" "Leica Camera Bridge" "WebUI displays Leica Camera Bridge card"
+assert_file_contains "$REPO_ROOT/webroot/index.html" "Camera Hardware Inspector" "WebUI includes collapsible Camera Hardware Inspector"
+assert_file_contains "$REPO_ROOT/webroot/index.html" 'id="btn-cam-health"' "WebUI exposes Camera Health Check button"
+assert_file_contains "$REPO_ROOT/webroot/index.html" 'id="btn-cam-rollback"' "WebUI exposes 1-tap Camera Safe Rollback button"
 assert_file_contains "$REPO_ROOT/webroot/index.html" 'id="btn-save-diag"' "WebUI exposes one-tap Export File button"
 assert_file_not_contains "$REPO_ROOT/webroot/index.html" "LSPosed" "WebUI has zero legacy LSPosed mentions"
 assert_file_not_contains "$REPO_ROOT/module.prop" "LSPosed" "module.prop has zero legacy LSPosed mentions"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 27: Hardware-Verified Camera Pro Engine (Snapdragon FULL, MediaTek LIMITED, Native Leica) ===\n'
+
+# 27a: Qualcomm Snapdragon FULL HAL + RAW + Manual + 4K60 + 10-bit (8 GB RAM)
+setup_sandbox "t27a_snapdragon_full_cam"
+write_mock_getprop "OS3.0" "" "36" "1" "garnet" "Redmi Note 13 Pro 5G"
+printf 'ro.board.platform=garnet\nro.hardware=qcom\n' >> "$SB_PROPS_DB"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/garnet.xml"
+cat > "$SB/cam_snapdragon.txt" <<'EOF'
+== Camera device 0 dynamic info: ==
+  android.info.supportedHardwareLevel: [FULL]
+  android.request.availableCapabilities:
+    [BACKWARD_COMPATIBLE MANUAL_SENSOR MANUAL_POST_PROCESSING RAW LOGICAL_MULTI_CAMERA DYNAMIC_RANGE_TEN_BIT]
+  Stream 3840x2160 60fps minDuration=16666666
+== Camera device 1 dynamic info: ==
+== Camera device 2 dynamic info: ==
+EOF
+cat > "$SB/cam_pkg.txt" <<'EOF'
+  Package [com.android.camera] (12345):
+    versionName=6.0.001230.1
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+printf 'CS_TIER_MODE=balanced_pro\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_CAMERA="$SB/cam_snapdragon.txt" \
+  CORESURFACE_DUMPSYS_CAMERA_PKG="$SB/cam_pkg.txt" \
+  CORESURFACE_MODULES_DIR="$SB/empty_mods" \
+  run_service
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_ISP=snapdragon" "Prober identifies Qualcomm Snapdragon ISP"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAL_LEVEL=FULL" "Prober extracts Camera2 HAL level FULL"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAS_RAW=1" "Prober extracts genuine Camera2 RAW support"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAS_MANUAL=1" "Prober extracts genuine MANUAL_SENSOR support"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAS_4K60=1" "Prober extracts genuine 4K@60fps stream support"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAS_10BIT=1" "Prober extracts genuine 10-bit HDR support"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LENS_COUNT=3" "Prober counts 3 camera devices"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_APK_VERSION=6.0.001230.1" "Prober reads stock MiuiCamera version"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LEICA_SOURCE=none" "Stock non-Leica device honestly reports CAM_LEICA_SOURCE=none"
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_histogram">true</bool>' "Snapdragon FULL unlocks live Histogram"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_peaking_mf">true</bool>' "Snapdragon FULL unlocks Focus Peaking"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_raw">true</bool>' "Snapdragon FULL with RAW HAL unlocks true RAW/DNG"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_4k_60fps">true</bool>' "Snapdragon FULL with 4K60 HAL unlocks 4K60"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_hdr10">true</bool>' "Snapdragon FULL with 10-bit HAL unlocks HDR10"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_parallel_process">true</bool>' "8GB Balanced Pro unlocks RAM-gated Parallel Processing"
+assert_file_contains "$SB_PROPS_LOG" "persist.sys.camera.parallel_process=true" "8GB Balanced Pro sets non-persistent parallel_process prop"
+assert_file_not_contains "$SB_PROPS_LOG" "ro.product.mod_device=" "CoreSurface NEVER spoofs global ro.product.mod_device"
+
+# 27b: MediaTek Entry-Level LIMITED HAL (No RAW, No Manual, No 4K60, No 10-bit, 4 GB RAM / Lite)
+setup_sandbox "t27b_mtk_limited_failclosed"
+write_mock_getprop "OS3.0" "" "35" "1" "gale" "Redmi 13C"
+printf 'ro.board.platform=mt6768\nro.hardware=mt6768\n' >> "$SB_PROPS_DB"
+write_mock_meminfo "3800000"
+write_sample_xml "$SB_XML_DIR1/gale.xml"
+cat > "$SB/cam_mtk_limited.txt" <<'EOF'
+== Camera device 0 dynamic info: ==
+  android.info.supportedHardwareLevel: [LIMITED]
+  android.request.availableCapabilities:
+    [BACKWARD_COMPATIBLE]
+== Camera device 1 dynamic info: ==
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+printf 'CS_TIER_MODE=low\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_CAMERA="$SB/cam_mtk_limited.txt" \
+  CORESURFACE_MODULES_DIR="$SB/empty_mods" \
+  run_service
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_ISP=mediatek" "Prober identifies MediaTek ISP"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAL_LEVEL=LIMITED" "Prober extracts LIMITED HAL level"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAS_RAW=0" "LIMITED HAL reports RAW=0"
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_shutter_sound_control">true</bool>' "Entry-level device still gets safe universal camera utilities"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_camera_raw' "Fail-closed XML refuses to inject RAW on LIMITED HAL without RAW"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_camera_peaking_mf' "Fail-closed XML refuses to inject Manual Pro aids without MANUAL_SENSOR"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_camera_4k_60fps' "Fail-closed XML refuses to inject 4K60 without 4K60 stream"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_camera_hdr10' "Fail-closed XML refuses to inject 10-bit HDR without 10-bit HAL"
+assert_file_not_contains "$SB_STATE/work/device_features.xml" 'support_parallel_process' "4GB Lite device refuses RAM-heavy Parallel Processing"
+assert_file_not_contains "$SB_PROPS_LOG" "persist.sys.camera.parallel_process" "4GB Lite device skips parallel_process prop"
+
+# 27c: Native Leica Flagship (Never-Downgrade Passthrough)
+setup_sandbox "t27c_native_leica_passthrough"
+write_mock_getprop "OS3.0" "" "36" "1" "xuanyuan" "Xiaomi 15 Ultra"
+printf 'ro.board.platform=sun\nro.hardware=qcom\nro.miui.device_level=3\n' >> "$SB_PROPS_DB"
+write_mock_meminfo "15500000"
+cat > "$SB_XML_DIR1/xuanyuan.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<features>
+    <bool name="support_background_blur">true</bool>
+    <bool name="support_display_expert_mode">true</bool>
+    <bool name="is_support_leica">true</bool>
+    <integer name="device_level">3</integer>
+</features>
+EOF
+cat > "$SB/cam_leica.txt" <<'EOF'
+== Camera device 0 dynamic info: ==
+  android.info.supportedHardwareLevel: [LEVEL_3]
+  android.request.availableCapabilities:
+    [BACKWARD_COMPATIBLE MANUAL_SENSOR RAW LOGICAL_MULTI_CAMERA DYNAMIC_RANGE_TEN_BIT]
+  Stream 3840x2160 60fps minDuration=16666666
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_DUMPSYS_CAMERA="$SB/cam_leica.txt" \
+  CORESURFACE_MODULES_DIR="$SB/empty_mods" \
+  run_service
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_STOCK_HAS_LEICA=1" "Native Leica flagship detected from stock XML"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LEICA_SOURCE=native" "Native Leica flagship sets CAM_LEICA_SOURCE=native"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LEICA_BRIDGE=native_passthrough" "Verifier marks Native Leica as native_passthrough"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_CAMERA_PRO=native_passthrough" "Verifier marks Native Leica Camera Pro as native_passthrough"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 28: Dual-Support Leica Companion Bridge, 0 KB Crash Auto-Revert & Safe Rollback ===\n'
+setup_sandbox "t28_leica_companion_watchdog"
+write_mock_getprop "OS3.0" "" "36" "1" "emerald" "Redmi Note 15 Pro"
+printf 'ro.board.platform=mt6878\nro.hardware=mt6878\n' >> "$SB_PROPS_DB"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/emerald.xml"
+mkdir -p "$SB/modules/leica_cam_pack/system/priv-app/MiuiCamera"
+cat > "$SB/modules/leica_cam_pack/module.prop" <<'EOF'
+id=leica_cam_pack
+name=HyperOS Leica Camera Companion
+version=v6.0
+EOF
+cat > "$SB/cam_ok.txt" <<'EOF'
+== Camera device 0 dynamic info: ==
+  android.info.supportedHardwareLevel: [FULL]
+  android.request.availableCapabilities: [BACKWARD_COMPATIBLE MANUAL_SENSOR RAW]
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+# 28a: Healthy Companion Module -> companion_active
+printf 'CS_TIER_MODE=balanced_pro\nFEAT_LEICA_BRIDGE=1\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_CAMERA="$SB/cam_ok.txt" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  CORESURFACE_CAMERA_CRASH_LOG="$SB/no_crash.log" \
+  run_service
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LEICA_SOURCE=companion" "Dual-Support Bridge detects external Leica Companion module"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_COMPANION_ID=leica_cam_pack" "Bridge records companion module ID"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LEICA_BRIDGE=companion_active" "Healthy Leica Companion verified as companion_active"
+assert_eq "$( [ -f "$SB/modules/leica_cam_pack/disable" ] && printf 'disabled' || printf 'enabled' )" "enabled" "Healthy companion module remains enabled"
+
+# 28b: Repeated com.android.camera crash loop (>= 2x) -> 0 KB Crash Inspector auto-reverts!
+cat > "$SB/cam_crash.log" <<'EOF'
+11-28 00:10:01.100  5100  5100 E AndroidRuntime: FATAL EXCEPTION: main
+11-28 00:10:01.101  5100  5100 E AndroidRuntime: Process: com.android.camera, PID: 5100
+11-28 00:10:15.200  5400  5400 E AndroidRuntime: FATAL EXCEPTION: main
+11-28 00:10:15.201  5400  5400 E AndroidRuntime: Process: com.android.camera, PID: 5400
+EOF
+_t28_health=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_DUMPSYS_CAMERA="$SB/cam_ok.txt" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  CORESURFACE_CAMERA_CRASH_LOG="$SB/cam_crash.log" \
+  sh "$SB_MOD/lib/webui_ctl.sh" camera-health)
+printf '%s\n' "$_t28_health" > "$SB/health.out"
+assert_file_contains "$SB/health.out" "Watchdog=auto_reverted" "Camera Crash Inspector triggers auto_reverted on 2x camera crashes"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_LEICA_BRIDGE=0" "Auto-revert writes FEAT_LEICA_BRIDGE=0 to config.prop"
+assert_eq "$( [ -f "$SB/modules/leica_cam_pack/disable" ] && printf 'disabled' || printf 'enabled' )" "disabled" "Auto-revert writes disable flag to incompatible Leica Companion module"
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LEICA_BRIDGE=auto_reverted" "Verifier exposes auto_reverted state honestly"
+
+# 28c: Explicit 1-tap camera-rollback command
+rm -f "$SB/modules/leica_cam_pack/disable"
+printf 'CS_TIER_MODE=balanced_pro\nFEAT_LEICA_BRIDGE=1\n' > "$SB_STATE/config.prop"
+_t28_rb=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  sh "$SB_MOD/lib/webui_ctl.sh" camera-rollback)
+printf '%s\n' "$_t28_rb" > "$SB/rollback.out"
+assert_file_contains "$SB/rollback.out" "Camera Safe Rollback applied (companion disabled: leica_cam_pack)" "1-tap camera-rollback disables companion cleanly"
+assert_eq "$( [ -f "$SB/modules/leica_cam_pack/disable" ] && printf 'disabled' || printf 'enabled' )" "disabled" "1-tap rollback creates disable file on companion module"
+assert_file_contains "$SB_STATE/config.prop" "FEAT_LEICA_BRIDGE=0" "1-tap rollback disables FEAT_LEICA_BRIDGE"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 29: Full Audit Regression Guards (Multi-Arg dumpsys, Anti-False-Positive, State Preservation & Packaging) ===\n'
+setup_sandbox "t29_audit_regressions"
+write_mock_getprop "OS3.0" "" "36" "1" "garnet" "Redmi Note 13 Pro 5G"
+printf 'ro.board.platform=garnet\nro.hardware=qcom\n' >> "$SB_PROPS_DB"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/garnet.xml"
+
+# 29a: Mock live `dumpsys` verifying multi-arg `dumpsys package com.android.camera` & `dumpsys media.camera`
+cat > "$SB_BIN/dumpsys" <<'EOF'
+#!/bin/sh
+if [ "$1" = "package" ] && [ "$2" = "com.android.camera" ]; then
+  printf '  Package [com.android.camera] (abc):\n    versionName=6.1.002400.0\n'
+  exit 0
+fi
+if [ "$1" = "media.camera" ] && [ "$#" -eq 1 ]; then
+  printf '== Camera device 0 dynamic info: ==\n'
+  printf '  android.info.supportedHardwareLevel (e0000): byte[1]\n'
+  printf '    [FULL ]\n'
+  printf '  android.request.availableCapabilities:\n'
+  printf '    [BACKWARD_COMPATIBLE MANUAL_SENSOR RAW]\n'
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$SB_BIN/dumpsys"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+# 29b: Unrelated module mentioning Leica/Camera ONLY in description= must NOT false-positive!
+mkdir -p "$SB/modules/unrelated_theme_mod"
+cat > "$SB/modules/unrelated_theme_mod/module.prop" <<'EOF'
+id=unrelated_theme_mod
+name=HyperOS Clean Icons
+description=Works great alongside Leica Camera and HyperOS camera apps
+EOF
+printf 'CS_TIER_MODE=balanced_pro\n' > "$SB_STATE/config.prop"
+CORESURFACE_MODULES_DIR="$SB/modules" run_service
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_APK_VERSION=6.1.002400.0" "Multi-arg live dumpsys package com.android.camera parses APK version cleanly"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAL_LEVEL=FULL" "Multi-line Android 15/16 dumpsys media.camera parses [FULL ] cleanly"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LEICA_SOURCE=none" "Unrelated module mentioning Leica only in description= does NOT false-positive"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_COMPANION_ID=" "No false companion ID recorded"
+
+# 29c: Switching Tier Mode preserves Companion Leica verification state (no clobber!)
+mkdir -p "$SB/modules/real_leica_pack/system/priv-app/MiuiCamera"
+cat > "$SB/modules/real_leica_pack/module.prop" <<'EOF'
+id=real_leica_pack
+name=Real Leica Camera Port
+EOF
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  sh "$SB_MOD/lib/webui_ctl.sh" camera-health >/dev/null
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LEICA_BRIDGE=companion_active" "Real Leica companion verified before tier switch"
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  sh "$SB_MOD/lib/webui_ctl.sh" tier flagship >/dev/null
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LEICA_BRIDGE=companion_active" "Switching Tier preserves VERIFY_FEAT_LEICA_BRIDGE=companion_active"
+
+# 29d: Running hot-sync after auto_reverted preserves auto_reverted banner state
+cat > "$SB/cam_crash2.log" <<'EOF'
+Process: com.android.camera, PID: 1001
+Process: com.android.camera, PID: 1002
+EOF
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  CORESURFACE_CAMERA_CRASH_LOG="$SB/cam_crash2.log" \
+  sh "$SB_MOD/lib/webui_ctl.sh" camera-health >/dev/null
+assert_file_contains "$SB_STATE/camera_watchdog.state" "CAM_WATCHDOG_STATUS=auto_reverted" "Crash loop triggers auto_reverted"
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  CORESURFACE_CAMERA_CRASH_LOG="$SB/cam_crash2.log" \
+  sh "$SB_MOD/lib/webui_ctl.sh" hot-sync >/dev/null
+assert_file_contains "$SB_STATE/camera_watchdog.state" "CAM_WATCHDOG_STATUS=auto_reverted" "Subsequent hot-sync preserves auto_reverted status so WebUI alert stays visible"
+
+# 29e: Packager includes lib/camera_probe.sh in chmod and required flashable check
+# shellcheck disable=SC2016
+assert_file_contains "$REPO_ROOT/scripts/package.sh" '"$STAGE_DIR/lib/camera_probe.sh"' "package.sh marks lib/camera_probe.sh executable"
+assert_file_contains "$REPO_ROOT/scripts/package.sh" '"lib/camera_probe.sh"' "package.sh verifies lib/camera_probe.sh inside release ZIP"
+
+# 29f: Android 16 (SDK 36) numeric HAL enum ([3 ]=LEVEL_3), camera ID dedup & UNKNOWN cache auto-refresh
+cat > "$SB/cam_sdk36_num.txt" <<'EOF'
+== Camera device 0 static info: ==
+  android.info.supportedHardwareLevel (b0000): byte[1]
+    [3 ]
+  android.request.availableCapabilities:
+    [BACKWARD_COMPATIBLE MANUAL_SENSOR RAW]
+== Camera device 0 dynamic info: ==
+  Device 0 is closed, no client instance
+== Camera device 1 static info: ==
+  android.info.supportedHardwareLevel (b0000): byte[1]
+    [1 ]
+== Camera device 1 dynamic info: ==
+  Device 1 is closed, no client instance
+EOF
+cat > "$SB_STATE/camera_caps.prop" <<EOF
+CAM_SNAP_ID=|garnet|OS3.0
+CAM_PROBED=1
+CAM_HAL_LEVEL=UNKNOWN
+CAM_COMPANION_ID=
+EOF
+CORESURFACE_DUMPSYS_CAMERA="$SB/cam_sdk36_num.txt" \
+  CORESURFACE_MODULES_DIR="$SB/empty_mods" \
+  run_service
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAL_LEVEL=LEVEL_3" "Android 16 numeric [3 ] hardware level parsed as LEVEL_3 & refreshes stale UNKNOWN cache"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LENS_COUNT=2" "Duplicate static/dynamic/status entries for camera 0 & 1 deduplicate to 2 sensors"
+
+# ---------------------------------------------------------------------------
+printf '=== Test 30: Camera Pro Engine V2 Unlocks, Companion Readiness Profile & Mutable HOS3 RROs ===\n'
+setup_sandbox "t30_cam_v2_and_rro"
+write_mock_getprop "OS3.0" "" "36" "1" "kunzite" "Redmi Note 15 5G"
+printf 'ro.board.platform=garnet\nro.hardware=qcom\n' >> "$SB_PROPS_DB"
+write_mock_meminfo "7500000"
+write_sample_xml "$SB_XML_DIR1/kunzite.xml"
+cat > "$SB/cam_v2.txt" <<'EOF'
+== Camera device 0 static info: ==
+  android.info.supportedHardwareLevel (b0000): byte[1]
+    [1 ]
+  android.request.availableCapabilities:
+    [BACKWARD_COMPATIBLE MANUAL_SENSOR RAW LOGICAL_MULTI_CAMERA]
+  Stream 3840x2160 60fps minDuration=16666666
+== Camera device 1 static info: ==
+EOF
+cat > "$SB/cam_v2_pkg.txt" <<'EOF'
+  Package [com.android.camera]:
+    versionName=6.4.000430.0
+EOF
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+printf 'CS_TIER_MODE=flagship\n' > "$SB_STATE/config.prop"
+CORESURFACE_DUMPSYS_CAMERA="$SB/cam_v2.txt" \
+  CORESURFACE_DUMPSYS_CAMERA_PKG="$SB/cam_v2_pkg.txt" \
+  CORESURFACE_MODULES_DIR="$SB/empty_mods" \
+  run_service
+run_post_fs_data
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_movie_solid">true</bool>' "Camera Pro V2 unlocks Video EIS (support_camera_movie_solid)"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_gallery_raw_edit">true</bool>' "Camera Pro V2 unlocks Gallery RAW Edit when RAW+FULL"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_video_bokeh">true</bool>' "Camera Pro V2 unlocks Multi-Lens Video Bokeh when >= 2 sensors"
+assert_file_contains "$SB_STATE/work/device_features.xml" '<bool name="support_camera_quick_snap">true</bool>' "Camera Pro V2 unlocks Quick Snap utility"
+_t30_st=$(PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  sh "$SB_MOD/lib/webui_ctl.sh" status)
+printf '%s\n' "$_t30_st" > "$SB/t30_status.txt"
+assert_file_contains "$SB/t30_status.txt" "cam_active_unlocks=Pro Utilities, Pro Aids + EIS, True RAW/DNG, Multi-Lens Bokeh, 4K@60, Parallel Process" "Status emits accurate Active Camera Unlocks CSV"
+assert_file_contains "$SB/t30_status.txt" "cam_readiness_profile=HOS3-SDK36-SNAPDRAGON-HAL_FULL-CAM_6.4.000430.0" "Status emits deterministic Leica Companion Readiness Profile"
+assert_file_contains "$REPO_ROOT/overlays-src/thememanager/AndroidManifest.xml" 'android:isStatic="false"' "ThemeManager RRO is mutable for GetApps-updated HyperOS 3 activation"
+assert_file_contains "$REPO_ROOT/overlays-src/miuiaod/AndroidManifest.xml" 'android:isStatic="false"' "MiuiAod RRO is mutable for GetApps-updated HyperOS 3 activation"
+assert_file_contains "$REPO_ROOT/lib/settings_tx.sh" "runcon_shell" "settings_tx.sh supports Android 16 runcon u:r:shell:s0 Binder transport"
 
 # ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
