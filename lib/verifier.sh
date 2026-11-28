@@ -377,6 +377,9 @@ cs_score_tally() {
 
 cs_verifier_run() {
   cs_watchdog_init_dir || return 1
+  if [ -z "${CS_CAM_PROBED:-}" ] && command -v cs_camera_load_caps >/dev/null 2>&1; then
+    cs_camera_load_caps
+  fi
 
   CS_V_PROPS_TOTAL=0
   CS_V_PROPS_MATCHED=0

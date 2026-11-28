@@ -77,6 +77,9 @@ if cs_watchdog_monitor_systemui; then
   cs_cleanup_legacy_engine_once || true
   [ -s "$CS_HW_FPS_FILE" ] || cs_probe_hw_fps || true
   cs_camera_probe_hardware || true
+  if [ "${CS_CAM_NEWLY_PROBED:-0}" = "1" ] && [ "${EFF_FEAT_CAMERA_PRO:-0}" = "1" ] && [ "${CS_CAM_LEICA_SOURCE:-none}" != "native" ]; then
+    cs_log "Camera Probe (first live boot): cached HAL=${CS_CAM_HAL_LEVEL:-UNKNOWN} RAW=${CS_CAM_HAS_RAW:-0} Manual=${CS_CAM_HAS_MANUAL:-0} — reboot once to apply hardware-verified XML unlocks."
+  fi
   cs_camera_crash_inspect "$CS_CONFIG_FILE" || true
   cs_reassert_computility_props || true
   cs_rro_enable_staged || true

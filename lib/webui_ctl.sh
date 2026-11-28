@@ -303,6 +303,7 @@ cs_cmd_tier() {
   cs_write_config_key "CS_TIER_MODE" "$_cs_tm"
 
   cs_sync_rro_for_next_boot || true
+  cs_camera_load_caps
   cs_reassert_computility_props || true
   cs_settings_sync_all || true
   cs_verifier_run || true

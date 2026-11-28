@@ -1695,5 +1695,92 @@ assert_eq "$( [ -f "$SB/modules/leica_cam_pack/disable" ] && printf 'disabled' |
 assert_file_contains "$SB_STATE/config.prop" "FEAT_LEICA_BRIDGE=0" "1-tap rollback disables FEAT_LEICA_BRIDGE"
 
 # ---------------------------------------------------------------------------
+printf '=== Test 29: Full Audit Regression Guards (Multi-Arg dumpsys, Anti-False-Positive, State Preservation & Packaging) ===\n'
+setup_sandbox "t29_audit_regressions"
+write_mock_getprop "OS3.0" "" "36" "1" "garnet" "Redmi Note 13 Pro 5G"
+printf 'ro.board.platform=garnet\nro.hardware=qcom\n' >> "$SB_PROPS_DB"
+write_mock_meminfo "7800000"
+write_sample_xml "$SB_XML_DIR1/garnet.xml"
+
+# 29a: Mock live `dumpsys` verifying multi-arg `dumpsys package com.android.camera` & `dumpsys media.camera`
+cat > "$SB_BIN/dumpsys" <<'EOF'
+#!/bin/sh
+if [ "$1" = "package" ] && [ "$2" = "com.android.camera" ]; then
+  printf '  Package [com.android.camera] (abc):\n    versionName=6.1.002400.0\n'
+  exit 0
+fi
+if [ "$1" = "media.camera" ] && [ "$#" -eq 1 ]; then
+  printf '== Camera device 0 dynamic info: ==\n'
+  printf '  android.info.supportedHardwareLevel (e0000): byte[1]\n'
+  printf '    [FULL ]\n'
+  printf '  android.request.availableCapabilities:\n'
+  printf '    [BACKWARD_COMPATIBLE MANUAL_SENSOR RAW]\n'
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$SB_BIN/dumpsys"
+cat > "$SB_BIN/pidof" <<'EOF'
+#!/bin/sh
+printf '4242\n'
+exit 0
+EOF
+chmod +x "$SB_BIN/pidof"
+
+# 29b: Unrelated module mentioning Leica/Camera ONLY in description= must NOT false-positive!
+mkdir -p "$SB/modules/unrelated_theme_mod"
+cat > "$SB/modules/unrelated_theme_mod/module.prop" <<'EOF'
+id=unrelated_theme_mod
+name=HyperOS Clean Icons
+description=Works great alongside Leica Camera and HyperOS camera apps
+EOF
+printf 'CS_TIER_MODE=balanced_pro\n' > "$SB_STATE/config.prop"
+CORESURFACE_MODULES_DIR="$SB/modules" run_service
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_APK_VERSION=6.1.002400.0" "Multi-arg live dumpsys package com.android.camera parses APK version cleanly"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_HAL_LEVEL=FULL" "Multi-line Android 15/16 dumpsys media.camera parses [FULL ] cleanly"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_LEICA_SOURCE=none" "Unrelated module mentioning Leica only in description= does NOT false-positive"
+assert_file_contains "$SB_STATE/camera_caps.prop" "CAM_COMPANION_ID=" "No false companion ID recorded"
+
+# 29c: Switching Tier Mode preserves Companion Leica verification state (no clobber!)
+mkdir -p "$SB/modules/real_leica_pack/system/priv-app/MiuiCamera"
+cat > "$SB/modules/real_leica_pack/module.prop" <<'EOF'
+id=real_leica_pack
+name=Real Leica Camera Port
+EOF
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  sh "$SB_MOD/lib/webui_ctl.sh" camera-health >/dev/null
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LEICA_BRIDGE=companion_active" "Real Leica companion verified before tier switch"
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  sh "$SB_MOD/lib/webui_ctl.sh" tier flagship >/dev/null
+assert_file_contains "$SB_STATE/verify.state" "VERIFY_FEAT_LEICA_BRIDGE=companion_active" "Switching Tier preserves VERIFY_FEAT_LEICA_BRIDGE=companion_active"
+
+# 29d: Running hot-sync after auto_reverted preserves auto_reverted banner state
+cat > "$SB/cam_crash2.log" <<'EOF'
+Process: com.android.camera, PID: 1001
+Process: com.android.camera, PID: 1002
+EOF
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  CORESURFACE_CAMERA_CRASH_LOG="$SB/cam_crash2.log" \
+  sh "$SB_MOD/lib/webui_ctl.sh" camera-health >/dev/null
+assert_file_contains "$SB_STATE/camera_watchdog.state" "CAM_WATCHDOG_STATUS=auto_reverted" "Crash loop triggers auto_reverted"
+PATH="$SB_BIN:$PATH" CORESURFACE_STATE_DIR="$SB_STATE" CORESURFACE_MEMINFO="$SB_MEMINFO" \
+  CORESURFACE_XML_SEARCH_DIRS="$SB_XML_DIR1:$SB_XML_DIR2" \
+  CORESURFACE_MODULES_DIR="$SB/modules" \
+  CORESURFACE_CAMERA_CRASH_LOG="$SB/cam_crash2.log" \
+  sh "$SB_MOD/lib/webui_ctl.sh" hot-sync >/dev/null
+assert_file_contains "$SB_STATE/camera_watchdog.state" "CAM_WATCHDOG_STATUS=auto_reverted" "Subsequent hot-sync preserves auto_reverted status so WebUI alert stays visible"
+
+# 29e: Packager includes lib/camera_probe.sh in chmod and required flashable check
+# shellcheck disable=SC2016
+assert_file_contains "$REPO_ROOT/scripts/package.sh" '"$STAGE_DIR/lib/camera_probe.sh"' "package.sh marks lib/camera_probe.sh executable"
+assert_file_contains "$REPO_ROOT/scripts/package.sh" '"lib/camera_probe.sh"' "package.sh verifies lib/camera_probe.sh inside release ZIP"
+
+# ---------------------------------------------------------------------------
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

@@ -6,25 +6,50 @@
 CS_CAM_CAPS_FILE="$CS_STATE_DIR/camera_caps.prop"
 CS_CAM_WATCHDOG_FILE="$CS_STATE_DIR/camera_watchdog.state"
 
-# Internal helper: run dumpsys safely (mirrors cs_probe_hw_fps UID 2000 fallback)
-_cs_cam_dumpsys() {
-  _cs_cd_svc=$1
-  _cs_cd_out=""
-  if command -v dumpsys >/dev/null 2>&1; then
-    _cs_cd_out=$(dumpsys "$_cs_cd_svc" 2>/dev/null || true)
-    if [ -z "$_cs_cd_out" ] && command -v su >/dev/null 2>&1; then
-      _cs_cd_out=$(su 2000 -c "dumpsys ${_cs_cd_svc}" 2>/dev/null || true)
+# Safe timeout wrapper (supports Toybox/GNU `timeout <sec>` and legacy BusyBox `timeout -t <sec>`)
+_cs_cam_timeout_run() {
+  _cs_ctr_sec=$1
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    if timeout 1 true >/dev/null 2>&1; then
+      timeout "$_cs_ctr_sec" "$@"
+    else
+      timeout -t "$_cs_ctr_sec" "$@"
     fi
-    if [ -z "$_cs_cd_out" ]; then
-      for _cs_cbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
-        if [ -x "$_cs_cbb" ]; then
-          _cs_cd_out=$("$_cs_cbb" setuidgid 2000 dumpsys "$_cs_cd_svc" 2>/dev/null || true)
-          break
-        fi
-      done
-    fi
+  else
+    "$@"
   fi
-  printf '%s' "$_cs_cd_out"
+}
+
+# Stream dumpsys safely with variadic arguments (e.g., `_cs_cam_dumpsys package com.android.camera`)
+# Supports UID 2000 fallback for Android 15/16 KernelSU root Binder restrictions.
+_cs_cam_dumpsys() {
+  [ "$#" -ge 1 ] || return 1
+  command -v dumpsys >/dev/null 2>&1 || return 1
+
+  _cs_cd_tmp="${CS_STATE_DIR:-/tmp}/.cam_ds.$$"
+  rm -f "$_cs_cd_tmp" 2>/dev/null || true
+
+  _cs_cam_timeout_run 6 dumpsys "$@" > "$_cs_cd_tmp" 2>/dev/null || true
+  if [ ! -s "$_cs_cd_tmp" ] && command -v su >/dev/null 2>&1; then
+    _cs_cam_timeout_run 6 su 2000 -c "dumpsys $*" > "$_cs_cd_tmp" 2>/dev/null || true
+  fi
+  if [ ! -s "$_cs_cd_tmp" ]; then
+    for _cs_cbb in /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox /data/adb/magisk/busybox; do
+      if [ -x "$_cs_cbb" ]; then
+        _cs_cam_timeout_run 6 "$_cs_cbb" setuidgid 2000 dumpsys "$@" > "$_cs_cd_tmp" 2>/dev/null || true
+        break
+      fi
+    done
+  fi
+
+  if [ -s "$_cs_cd_tmp" ]; then
+    cat "$_cs_cd_tmp"
+    rm -f "$_cs_cd_tmp" 2>/dev/null || true
+    return 0
+  fi
+  rm -f "$_cs_cd_tmp" 2>/dev/null || true
+  return 1
 }
 
 # Detect SoC ISP family from ro.board.platform / ro.hardware (read-only)
@@ -50,6 +75,8 @@ cs_camera_detect_isp() {
 }
 
 # Detect active external/Mystivara Leica Camera Companion module in /data/adb/modules
+# Strict anti-false-positive rule: requires an actual MiuiCamera/Camera APK overlay directory
+# OR an explicit Leica/CoreCam match on `id=` / `name=` lines (NEVER arbitrary description= text).
 # Sets: CS_CAM_COMPANION_ID, CS_CAM_COMPANION_NAME
 cs_camera_detect_companion() {
   CS_CAM_COMPANION_ID=""
@@ -67,17 +94,20 @@ cs_camera_detect_companion() {
     _cs_mprop="$_cs_mdir/module.prop"
     _cs_is_leica=0
     _cs_mname=""
+    _cs_mid_prop=""
     if [ -r "$_cs_mprop" ]; then
       _cs_mname=$(awk -F '=' '$1 == "name" { sub(/^[^=]*=/, ""); print; exit }' "$_cs_mprop" 2>/dev/null | tr -d '\r')
-      if grep -i -E '(leica|corecam|miuicamera|hyperos.*cam|sevtinge|holybear)' "$_cs_mprop" >/dev/null 2>&1; then
-        _cs_is_leica=1
-      fi
+      _cs_mid_prop=$(awk -F '=' '$1 == "id" { sub(/^[^=]*=/, ""); print; exit }' "$_cs_mprop" 2>/dev/null | tr -d '\r')
     fi
 
-    if [ "$_cs_is_leica" = "0" ]; then
-      if [ -d "$_cs_mdir/system/priv-app/MiuiCamera" ] || [ -d "$_cs_mdir/system/product/priv-app/MiuiCamera" ] || [ -d "$_cs_mdir/system/system_ext/priv-app/MiuiCamera" ]; then
-        _cs_is_leica=1
-      fi
+    if [ -d "$_cs_mdir/system/priv-app/MiuiCamera" ] || \
+       [ -d "$_cs_mdir/system/product/priv-app/MiuiCamera" ] || \
+       [ -d "$_cs_mdir/system/system_ext/priv-app/MiuiCamera" ] || \
+       [ -d "$_cs_mdir/system/priv-app/Camera" ] || \
+       [ -d "$_cs_mdir/system/product/priv-app/Camera" ]; then
+      _cs_is_leica=1
+    elif printf '%s|%s\n' "$_cs_mid_prop" "$_cs_mname" | grep -i -E '(leica|corecam|miuicamera|sevtinge|holybear)' >/dev/null 2>&1; then
+      _cs_is_leica=1
     fi
 
     if [ "$_cs_is_leica" = "1" ]; then
@@ -128,6 +158,7 @@ cs_camera_probe_stock_leica() {
 # Initialize default camera capability globals
 cs_camera_reset_globals() {
   CS_CAM_PROBED="0"
+  CS_CAM_NEWLY_PROBED="0"
   CS_CAM_ISP="generic"
   CS_CAM_HAL_LEVEL="UNKNOWN"
   CS_CAM_HAS_RAW="0"
@@ -145,7 +176,7 @@ cs_camera_reset_globals() {
   CS_CAM_WATCHDOG_STATUS="healthy"
   CS_CAM_WATCHDOG_REASON="none"
   CS_CAM_SERVICE_HEALTH="unknown"
-  export CS_CAM_PROBED CS_CAM_ISP CS_CAM_HAL_LEVEL CS_CAM_HAS_RAW CS_CAM_HAS_MANUAL \
+  export CS_CAM_PROBED CS_CAM_NEWLY_PROBED CS_CAM_ISP CS_CAM_HAL_LEVEL CS_CAM_HAS_RAW CS_CAM_HAS_MANUAL \
     CS_CAM_HAS_10BIT CS_CAM_HAS_4K60 CS_CAM_HAS_LOGICAL_MULTI CS_CAM_LENS_COUNT \
     CS_CAM_APK_VERSION CS_CAM_STOCK_HAS_LEICA CS_CAM_LEICA_SOURCE \
     CS_CAM_COMPANION_ID CS_CAM_COMPANION_NAME \
@@ -196,12 +227,81 @@ cs_camera_load_caps() {
   fi
 }
 
+# Streaming AWK parser for dumpsys media.camera (0 shell-variable megabyte buffering)
+_cs_cam_parse_media_stream() {
+  awk '
+    function rank(lvl) {
+      if (lvl == "LEVEL_3") return 4
+      if (lvl == "FULL") return 3
+      if (lvl == "LIMITED") return 2
+      if (lvl == "LEGACY") return 1
+      return 0
+    }
+    BEGIN {
+      best_lvl = "UNKNOWN"
+      best_rank = 0
+      raw = 0
+      manual = 0
+      tenbit = 0
+      has4k60 = 0
+      multi = 0
+      lenses = 0
+      in_caps = 0
+      lines = 0
+    }
+    { lines++ }
+    /^== Camera device [0-9]+/ || /^[[:space:]]*Device [0-9]+ is / || /^[[:space:]]*Camera [0-9]+ / {
+      lenses++
+    }
+    /android\.info\.supportedHardwareLevel/ || /INFO_SUPPORTED_HARDWARE_LEVEL/ {
+      if (index($0, "LEVEL_3") > 0 && rank("LEVEL_3") > best_rank) { best_lvl = "LEVEL_3"; best_rank = 4 }
+      else if (index($0, "FULL") > 0 && rank("FULL") > best_rank) { best_lvl = "FULL"; best_rank = 3 }
+      else if (index($0, "LIMITED") > 0 && rank("LIMITED") > best_rank) { best_lvl = "LIMITED"; best_rank = 2 }
+      else if (index($0, "LEGACY") > 0 && rank("LEGACY") > best_rank) { best_lvl = "LEGACY"; best_rank = 1 }
+      next_lvl = 1
+      next
+    }
+    next_lvl == 1 {
+      if (index($0, "LEVEL_3") > 0 && rank("LEVEL_3") > best_rank) { best_lvl = "LEVEL_3"; best_rank = 4 }
+      else if (index($0, "FULL") > 0 && rank("FULL") > best_rank) { best_lvl = "FULL"; best_rank = 3 }
+      else if (index($0, "LIMITED") > 0 && rank("LIMITED") > best_rank) { best_lvl = "LIMITED"; best_rank = 2 }
+      else if (index($0, "LEGACY") > 0 && rank("LEGACY") > best_rank) { best_lvl = "LEGACY"; best_rank = 1 }
+      next_lvl = 0
+    }
+    /android\.request\.availableCapabilities/ || /REQUEST_AVAILABLE_CAPABILITIES/ {
+      in_caps = 1
+    }
+    in_caps == 1 {
+      if ($0 ~ /REQUEST_AVAILABLE_CAPABILITIES_RAW/ || $0 ~ /(^|[^A-Z0-9_])RAW([^A-Z0-9_]|$)/) raw = 1
+      if ($0 ~ /MANUAL_SENSOR/) manual = 1
+      if ($0 ~ /DYNAMIC_RANGE_TEN_BIT/) tenbit = 1
+      if ($0 ~ /LOGICAL_MULTI_CAMERA/) multi = 1
+      if ($0 ~ /^[[:space:]]*android\./ && $0 !~ /availableCapabilities/) in_caps = 0
+    }
+    /DYNAMIC_RANGE_TEN_BIT/ || /HLG10/ { tenbit = 1 }
+    /MANUAL_SENSOR/ { manual = 1 }
+    /LOGICAL_MULTI_CAMERA/ { multi = 1 }
+    /3840x2160/ {
+      if ($0 ~ /60(\.0+)?([[:space:]]*fps|Hz|,|\])?/ || $0 ~ /minDuration[=: ]*16[0-9]{6}/) {
+        has4k60 = 1
+      }
+    }
+    /4K_60FPS|3840x2160@60/ { has4k60 = 1 }
+    END {
+      if (lines > 0) {
+        printf "%s|%d|%d|%d|%d|%d|%d\n", best_lvl, raw, manual, tenbit, has4k60, multi, lenses
+      }
+    }
+  ' 2>/dev/null || true
+}
+
 # Hardware-Verified Camera2 Prober (called during customize.sh, service.sh, or on-demand)
 # Arg1: force=1 to bypass fingerprint cache
 cs_camera_probe_hardware() {
   _cs_cp_force=${1:-0}
   cs_watchdog_init_dir || return 0
   cs_camera_load_caps
+  _cs_was_probed="$CS_CAM_PROBED"
 
   _cs_cp_fp=$(cs_getprop "ro.build.fingerprint")
   _cs_cp_dev=$(cs_getprop "ro.product.device")
@@ -225,33 +325,16 @@ cs_camera_probe_hardware() {
   CS_CAM_COMPANION_ID="$_cs_cp_comp_id"
   CS_CAM_COMPANION_NAME="$_cs_cp_comp_name"
 
-  # Inspect stock MiuiCamera package version
-  _cs_pkg_dump=""
+  # Inspect stock MiuiCamera package version (streaming, multi-arg dumpsys)
+  _cs_ver=""
   if [ -n "${CORESURFACE_DUMPSYS_CAMERA_PKG:-}" ] && [ -r "${CORESURFACE_DUMPSYS_CAMERA_PKG}" ]; then
-    _cs_pkg_dump=$(cat "$CORESURFACE_DUMPSYS_CAMERA_PKG" 2>/dev/null || true)
+    _cs_ver=$(awk '/versionName=/ { sub(/^.*versionName=/, ""); sub(/[[:space:]].*$/, ""); print; exit }' "$CORESURFACE_DUMPSYS_CAMERA_PKG" 2>/dev/null | tr -d '\r')
   else
-    _cs_pkg_dump=$(_cs_cam_dumpsys "package com.android.camera")
+    _cs_ver=$(_cs_cam_dumpsys package com.android.camera | awk '/versionName=/ { sub(/^.*versionName=/, ""); sub(/[[:space:]].*$/, ""); print; exit }' 2>/dev/null | tr -d '\r')
   fi
-  if [ -n "$_cs_pkg_dump" ]; then
-    _cs_ver=$(printf '%s\n' "$_cs_pkg_dump" | awk '
-      /versionName=/ {
-        sub(/^.*versionName=/, "")
-        sub(/[[:space:]].*$/, "")
-        print
-        exit
-      }
-    ' 2>/dev/null | tr -d '\r')
-    [ -n "$_cs_ver" ] && CS_CAM_APK_VERSION="$_cs_ver"
-  fi
+  [ -n "$_cs_ver" ] && CS_CAM_APK_VERSION="$_cs_ver"
 
-  # Inspect real Camera2 HAL capabilities via dumpsys media.camera
-  _cs_cam_dump=""
-  if [ -n "${CORESURFACE_DUMPSYS_CAMERA:-}" ] && [ -r "${CORESURFACE_DUMPSYS_CAMERA}" ]; then
-    _cs_cam_dump=$(cat "$CORESURFACE_DUMPSYS_CAMERA" 2>/dev/null || true)
-  else
-    _cs_cam_dump=$(_cs_cam_dumpsys "media.camera")
-  fi
-
+  # Inspect real Camera2 HAL capabilities via streaming dumpsys media.camera
   CS_CAM_HAL_LEVEL="UNKNOWN"
   CS_CAM_HAS_RAW="0"
   CS_CAM_HAS_MANUAL="0"
@@ -261,83 +344,32 @@ cs_camera_probe_hardware() {
   CS_CAM_LENS_COUNT="0"
   CS_CAM_PROBED="0"
 
-  if [ -n "$_cs_cam_dump" ]; then
-    _cs_parsed=$(printf '%s\n' "$_cs_cam_dump" | awk '
-      function rank(lvl) {
-        if (lvl == "LEVEL_3") return 4
-        if (lvl == "FULL") return 3
-        if (lvl == "LIMITED") return 2
-        if (lvl == "LEGACY") return 1
-        return 0
-      }
-      BEGIN {
-        best_lvl = "UNKNOWN"
-        best_rank = 0
-        raw = 0
-        manual = 0
-        tenbit = 0
-        has4k60 = 0
-        multi = 0
-        lenses = 0
-        in_caps = 0
-      }
-      /^== Camera device [0-9]+/ || /^[[:space:]]*Device [0-9]+ is / || /^[[:space:]]*Camera [0-9]+ / {
-        lenses++
-      }
-      /android\.info\.supportedHardwareLevel/ || /INFO_SUPPORTED_HARDWARE_LEVEL/ {
-        if (index($0, "LEVEL_3") > 0 && rank("LEVEL_3") > best_rank) { best_lvl = "LEVEL_3"; best_rank = 4 }
-        else if (index($0, "FULL") > 0 && rank("FULL") > best_rank) { best_lvl = "FULL"; best_rank = 3 }
-        else if (index($0, "LIMITED") > 0 && rank("LIMITED") > best_rank) { best_lvl = "LIMITED"; best_rank = 2 }
-        else if (index($0, "LEGACY") > 0 && rank("LEGACY") > best_rank) { best_lvl = "LEGACY"; best_rank = 1 }
-        next_lvl = 1
-        next
-      }
-      next_lvl == 1 {
-        if (index($0, "LEVEL_3") > 0 && rank("LEVEL_3") > best_rank) { best_lvl = "LEVEL_3"; best_rank = 4 }
-        else if (index($0, "FULL") > 0 && rank("FULL") > best_rank) { best_lvl = "FULL"; best_rank = 3 }
-        else if (index($0, "LIMITED") > 0 && rank("LIMITED") > best_rank) { best_lvl = "LIMITED"; best_rank = 2 }
-        else if (index($0, "LEGACY") > 0 && rank("LEGACY") > best_rank) { best_lvl = "LEGACY"; best_rank = 1 }
-        next_lvl = 0
-      }
-      /android\.request\.availableCapabilities/ || /REQUEST_AVAILABLE_CAPABILITIES/ {
-        in_caps = 1
-      }
-      in_caps == 1 {
-        if ($0 ~ /REQUEST_AVAILABLE_CAPABILITIES_RAW/ || $0 ~ /(^|[^A-Z0-9_])RAW([^A-Z0-9_]|$)/) raw = 1
-        if ($0 ~ /MANUAL_SENSOR/) manual = 1
-        if ($0 ~ /DYNAMIC_RANGE_TEN_BIT/) tenbit = 1
-        if ($0 ~ /LOGICAL_MULTI_CAMERA/) multi = 1
-        if ($0 ~ /^[[:space:]]*android\./ && $0 !~ /availableCapabilities/) in_caps = 0
-      }
-      /DYNAMIC_RANGE_TEN_BIT/ || /HLG10/ { tenbit = 1 }
-      /MANUAL_SENSOR/ { manual = 1 }
-      /LOGICAL_MULTI_CAMERA/ { multi = 1 }
-      /3840x2160/ {
-        if ($0 ~ /60(\.0+)?([[:space:]]*fps|Hz|,|\])?/ || $0 ~ /minDuration[=: ]*16[0-9]{6}/) {
-          has4k60 = 1
-        }
-      }
-      /4K_60FPS|3840x2160@60/ { has4k60 = 1 }
-      END {
-        printf "%s|%d|%d|%d|%d|%d|%d\n", best_lvl, raw, manual, tenbit, has4k60, multi, lenses
-      }
-    ' 2>/dev/null || true)
+  _cs_parsed=""
+  if [ -n "${CORESURFACE_DUMPSYS_CAMERA:-}" ] && [ -r "${CORESURFACE_DUMPSYS_CAMERA}" ]; then
+    _cs_parsed=$(_cs_cam_parse_media_stream < "$CORESURFACE_DUMPSYS_CAMERA")
+  else
+    _cs_parsed=$(_cs_cam_dumpsys media.camera | _cs_cam_parse_media_stream)
+  fi
 
-    if [ -n "$_cs_parsed" ]; then
-      _cs_old_ifs=$IFS
-      IFS='|'
-      # shellcheck disable=SC2086
-      set -- $_cs_parsed
-      IFS=$_cs_old_ifs
-      CS_CAM_HAL_LEVEL="${1:-UNKNOWN}"
-      CS_CAM_HAS_RAW="${2:-0}"
-      CS_CAM_HAS_MANUAL="${3:-0}"
-      CS_CAM_HAS_10BIT="${4:-0}"
-      CS_CAM_HAS_4K60="${5:-0}"
-      CS_CAM_HAS_LOGICAL_MULTI="${6:-0}"
-      CS_CAM_LENS_COUNT="${7:-0}"
-      CS_CAM_PROBED="1"
-    fi
+  if [ -n "$_cs_parsed" ]; then
+    _cs_old_ifs=$IFS
+    IFS='|'
+    # shellcheck disable=SC2086
+    set -- $_cs_parsed
+    IFS=$_cs_old_ifs
+    CS_CAM_HAL_LEVEL="${1:-UNKNOWN}"
+    CS_CAM_HAS_RAW="${2:-0}"
+    CS_CAM_HAS_MANUAL="${3:-0}"
+    CS_CAM_HAS_10BIT="${4:-0}"
+    CS_CAM_HAS_4K60="${5:-0}"
+    CS_CAM_HAS_LOGICAL_MULTI="${6:-0}"
+    CS_CAM_LENS_COUNT="${7:-0}"
+    CS_CAM_PROBED="1"
+  fi
+
+  if [ "$_cs_was_probed" != "1" ] && [ "$CS_CAM_PROBED" = "1" ]; then
+    CS_CAM_NEWLY_PROBED="1"
+    export CS_CAM_NEWLY_PROBED
   fi
 
   # Determine honest Leica source (Native Flagship > Verified Companion > None)
@@ -423,23 +455,26 @@ _cs_cam_write_cfg_key() {
 }
 
 # On-Boot & On-Demand Camera Anti-Crash Inspector (0 KB Background Daemon)
-# Inspects crash buffer / dropbox for repeated com.android.camera crashes (>= 2).
+# Inspects crash buffer for repeated com.android.camera crashes (>= 2).
 # If crash loop detected while Leica Bridge/Companion is active -> auto-reverts fail-closed.
+# Preserves auto_reverted / reverted_by_user status across hot-sync until a clean reboot.
 cs_camera_crash_inspect() {
   _cs_ci_cfg=${1:-${CS_STATE_DIR}/config.prop}
   cs_watchdog_init_dir || return 0
   cs_camera_load_caps
-
-  _cs_crash_buf=""
-  if [ -n "${CORESURFACE_CAMERA_CRASH_LOG:-}" ] && [ -r "${CORESURFACE_CAMERA_CRASH_LOG}" ]; then
-    _cs_crash_buf=$(cat "$CORESURFACE_CAMERA_CRASH_LOG" 2>/dev/null || true)
-  elif command -v logcat >/dev/null 2>&1; then
-    _cs_crash_buf=$(logcat -d -b crash -t 250 2>/dev/null || true)
-  fi
+  _cs_prev_wd_status="$CS_CAM_WATCHDOG_STATUS"
+  _cs_prev_wd_reason="$CS_CAM_WATCHDOG_REASON"
 
   CS_CAM_CRASH_COUNT="0"
-  if [ -n "$_cs_crash_buf" ]; then
-    CS_CAM_CRASH_COUNT=$(printf '%s\n' "$_cs_crash_buf" | awk '
+  if [ -n "${CORESURFACE_CAMERA_CRASH_LOG:-}" ] && [ -r "${CORESURFACE_CAMERA_CRASH_LOG}" ]; then
+    CS_CAM_CRASH_COUNT=$(awk '
+      /Process:[[:space:]]*com\.android\.camera/ || /FATAL EXCEPTION.*com\.android\.camera/ || />>> com\.android\.camera <<</ {
+        c++
+      }
+      END { printf "%d\n", c + 0 }
+    ' "$CORESURFACE_CAMERA_CRASH_LOG" 2>/dev/null || printf '0\n')
+  elif command -v logcat >/dev/null 2>&1; then
+    CS_CAM_CRASH_COUNT=$(_cs_cam_timeout_run 4 logcat -d -b crash -t 250 2>/dev/null | awk '
       /Process:[[:space:]]*com\.android\.camera/ || /FATAL EXCEPTION.*com\.android\.camera/ || />>> com\.android\.camera <<</ {
         c++
       }
@@ -471,14 +506,23 @@ cs_camera_crash_inspect() {
       CS_CAM_WATCHDOG_STATUS="auto_reverted"
       CS_CAM_WATCHDOG_REASON="camera_crash_loop_${CS_CAM_CRASH_COUNT}x_${CS_CAM_ISP}_sdk${CS_ANDROID_SDK:-0}"
       cs_log "Camera Watchdog: detected ${CS_CAM_CRASH_COUNT} crashes in com.android.camera — auto-reverted Leica Bridge & disabled companion (${CS_CAM_COMPANION_ID:-none}) to protect Stock Camera + Pro Engine."
+    elif [ "$_cs_prev_wd_status" = "auto_reverted" ] || [ "$_cs_prev_wd_status" = "reverted_by_user" ]; then
+      # Preserve revert notice across hot-sync within the same boot session so WebUI banner remains visible
+      CS_CAM_WATCHDOG_STATUS="$_cs_prev_wd_status"
+      CS_CAM_WATCHDOG_REASON="$_cs_prev_wd_reason"
     else
       CS_CAM_WATCHDOG_STATUS="warning"
       CS_CAM_WATCHDOG_REASON="stock_camera_crashes_${CS_CAM_CRASH_COUNT}x"
       cs_log "Camera Watchdog: observed ${CS_CAM_CRASH_COUNT} crashes in com.android.camera (Leica Bridge inactive)."
     fi
   elif [ "${CS_CAM_CRASH_COUNT:-0}" -eq 1 ]; then
-    CS_CAM_WATCHDOG_STATUS="warning"
-    CS_CAM_WATCHDOG_REASON="single_camera_crash_observed"
+    if [ "$_cs_prev_wd_status" = "auto_reverted" ] || [ "$_cs_prev_wd_status" = "reverted_by_user" ]; then
+      CS_CAM_WATCHDOG_STATUS="$_cs_prev_wd_status"
+      CS_CAM_WATCHDOG_REASON="$_cs_prev_wd_reason"
+    else
+      CS_CAM_WATCHDOG_STATUS="warning"
+      CS_CAM_WATCHDOG_REASON="single_camera_crash_observed"
+    fi
   fi
 
   _cs_wtmp="${CS_CAM_WATCHDOG_FILE}.tmp.$$"
