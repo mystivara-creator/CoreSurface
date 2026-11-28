@@ -174,7 +174,7 @@ _cs_modpath=${MODPATH:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 _cs_state_dir=${CORESURFACE_STATE_DIR:-/data/adb/coresurface}
 _cs_rom_supported="0"
 
-_cs_ui_print "- Installing CoreSurface v1.3.0 (100% Standalone Flagship Experience)"
+_cs_ui_print "- Installing CoreSurface v1.4.0 (100% Standalone Flagship Experience)"
 
 mkdir -p "$_cs_state_dir" 2>/dev/null || true
 
@@ -237,6 +237,12 @@ if [ -r "$_cs_modpath/lib/watchdog.sh" ] && [ -r "$_cs_modpath/lib/rro.sh" ] && 
       . "$_cs_modpath/lib/xml_patcher.sh"
       cs_probe_hw_fps || true
     fi
+    if [ -r "$_cs_modpath/lib/camera_probe.sh" ]; then
+      # shellcheck source=lib/camera_probe.sh
+      . "$_cs_modpath/lib/camera_probe.sh"
+      cs_camera_probe_hardware || true
+      _cs_ui_print "- Camera Probe: HAL=${CS_CAM_HAL_LEVEL:-UNKNOWN} | ISP=${CS_CAM_ISP:-generic} | RAW=${CS_CAM_HAS_RAW:-0} | Leica=${CS_CAM_LEICA_SOURCE:-none}"
+    fi
     cs_rro_stage "$_cs_modpath" || true
     _cs_ui_print "- Staged ${CS_RRO_COUNT:-0} clean-room RRO overlay(s) for next boot"
     # On KernelSU / KernelSU-Next without a metamodule, warn user that RRO needs meta-overlayfs
@@ -276,6 +282,7 @@ _cs_set_exec "$_cs_modpath/lib/rro.sh"
 _cs_set_exec "$_cs_modpath/lib/settings_tx.sh"
 _cs_set_exec "$_cs_modpath/lib/verifier.sh"
 _cs_set_exec "$_cs_modpath/lib/os_bug_logic.sh"
+_cs_set_exec "$_cs_modpath/lib/camera_probe.sh"
 _cs_set_exec "$_cs_modpath/lib/webui_ctl.sh"
 
 _cs_ui_print "- Watchdog armed (auto safe-mode disable after 2 consecutive failed boots)"

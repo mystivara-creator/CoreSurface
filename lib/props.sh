@@ -441,6 +441,20 @@ cs_apply_feat_flagship_suite() {
   cs_set_prop "FEAT_FLAGSHIP_SUITE" "persist.sys.translate.state.supportVoiceTrans" "true"
 }
 
+cs_apply_feat_camera_pro() {
+  [ "${EFF_FEAT_CAMERA_PRO:-0}" = "1" ] || return 0
+  # Never-Downgrade Native Leica Passthrough
+  [ "${CS_CAM_LEICA_SOURCE:-none}" = "native" ] && return 0
+
+  # Strictly non-persistent user-space properties (zero ro.product.mod_device, zero /vendor/etc/camera)
+  if [ "${EFF_FEAT_FLAGSHIP_SUITE:-0}" != "1" ]; then
+    cs_set_prop "FEAT_CAMERA_PRO" "ro.camera.sound.forced" "0"
+  fi
+  if [ "${CS_EFF_TIER:-low}" != "low" ] && [ "${CS_RAM_MB:-0}" -ge 5500 ]; then
+    cs_set_prop "FEAT_CAMERA_PRO" "persist.sys.camera.parallel_process" "true"
+  fi
+}
+
 cs_apply_all_props() {
   _cs_ap_moddir=${1:-}
   cs_watchdog_init_dir || return 1
@@ -465,9 +479,10 @@ cs_apply_all_props() {
   cs_apply_feat_display_hz
   cs_apply_feat_flagship_audio
   cs_apply_feat_flagship_suite
+  cs_apply_feat_camera_pro
 
   _cs_count=$(wc -l < "$CS_PROPS_AUDIT_FILE" 2>/dev/null | tr -d ' \t\r\n')
   cs_state_set "APPLIED_PROPS_COUNT" "${_cs_count:-0}"
-  cs_log "Applied ${_cs_count:-0} verified non-persistent props (tier=${CS_EFF_TIER:-low}, blur=${EFF_FEAT_BLUR}, advtex=${EFF_FEAT_ADV_TEXTURES:-0}, anim=${EFF_FEAT_ANIMATIONS}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ}, audio=${EFF_FEAT_FLAGSHIP_AUDIO:-0}, suite=${EFF_FEAT_FLAGSHIP_SUITE:-0})."
+  cs_log "Applied ${_cs_count:-0} verified non-persistent props (tier=${CS_EFF_TIER:-low}, blur=${EFF_FEAT_BLUR}, advtex=${EFF_FEAT_ADV_TEXTURES:-0}, anim=${EFF_FEAT_ANIMATIONS}, multitask=${EFF_FEAT_MULTITASK}, hz=${EFF_FEAT_DISPLAY_HZ}, audio=${EFF_FEAT_FLAGSHIP_AUDIO:-0}, suite=${EFF_FEAT_FLAGSHIP_SUITE:-0}, cam=${EFF_FEAT_CAMERA_PRO:-0})."
   return 0
 }

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title>CoreSurface v1.3.0</title>
+  <title>CoreSurface v1.4.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
         <div>
           <span class="eyebrow">MYSTIVARA ECOSYSTEM</span>
           <h1>CoreSurface</h1>
-          <p class="subtitle">v1.3.0 · Standalone HyperOS 3/4 Flagship Experience</p>
+          <p class="subtitle">v1.4.0 · Standalone HyperOS 3/4 Flagship Experience</p>
         </div>
         <button id="btn-refresh" class="btn-icon" type="button" aria-label="Refresh status" title="Refresh status">↻</button>
       </div>
@@ -35,6 +35,11 @@
         <p id="safemode-reason">CoreSurface paused after 2 consecutive failed boots.</p>
       </div>
       <button id="btn-reset-safemode" class="btn btn-danger" type="button">Reset &amp; Re-enable</button>
+    </div>
+
+    <div id="cam-watchdog-banner" class="banner banner-warn hidden" role="alert">
+      <strong>Camera Watchdog Auto-Reverted Leica Bridge.</strong>
+      <p id="cam-watchdog-reason">Repeated crashes were detected in stock/companion camera. CoreSurface reverted cleanly to Stock Camera + Pro Engine.</p>
     </div>
 
     <div id="metamodule-banner" class="banner banner-warn hidden" role="status">
@@ -116,14 +121,43 @@
           </div>
         </div>
 
-        <div class="feat-card feat-roadmap" aria-label="Leica Camera Development Notice">
-          <div class="feat-head feat-head-compact">
+        <div class="feat-card">
+          <div class="feat-head">
             <div class="feat-title-wrap">
-              <h3>Leica Camera</h3>
-              <span class="v-pill v-warn">In Development</span>
+              <h3>Camera Pro Engine</h3>
+              <span id="verify-FEAT_CAMERA_PRO" class="v-pill v-neutral">-</span>
             </div>
-            <p class="feat-desc">* Leica Camera integration is currently in development and planned for a future CoreSurface update.</p>
+            <p id="cam-pro-desc" class="feat-desc">Strict fail-closed Camera2 hardware probe: unlocks Pro Aids (Histogram, Peaking, Zebra), true RAW/DNG, 4K60/10-bit &amp; RAM-gated Parallel Processing only where hardware supports it.</p>
           </div>
+          <div class="seg-group" data-key="FEAT_CAMERA_PRO" role="group" aria-label="Camera Pro Engine">
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+        </div>
+
+        <div class="feat-card feat-leica">
+          <div class="feat-head">
+            <div class="feat-title-wrap">
+              <h3>Leica Camera Bridge</h3>
+              <span id="verify-FEAT_LEICA_BRIDGE" class="v-pill v-warn">Checking…</span>
+            </div>
+            <p id="leica-bridge-desc" class="feat-desc">Dual-Support Bridge &amp; 0 KB Crash Inspector for Native Leica flagships and optional SDK/SoC-matched Leica Companion Packs (* Companion Pack still in development).</p>
+          </div>
+          <div class="seg-group" data-key="FEAT_LEICA_BRIDGE" role="group" aria-label="Leica Camera Bridge">
+            <button type="button" data-val="1">ON</button>
+            <button type="button" data-val="0">OFF</button>
+          </div>
+
+          <details class="cam-inspector">
+            <summary>Camera Hardware Inspector</summary>
+            <div id="cam-inspector-list" class="kv-list kv-list-compact">
+              <div class="kv-row"><span>Camera Probe</span><strong>Loading…</strong></div>
+            </div>
+            <div class="cam-actions">
+              <button id="btn-cam-health" class="btn btn-ghost" type="button">Camera Health Check</button>
+              <button id="btn-cam-rollback" class="btn btn-ghost btn-ghost-danger" type="button">Safe Rollback</button>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -154,7 +188,7 @@
 
     <footer class="footer">
       <span id="toast-msg" class="toast-msg" aria-live="polite"></span>
-      <p class="footer-note">CoreSurface v1.3.0 · Mystivara Ecosystem</p>
+      <p class="footer-note">CoreSurface v1.4.0 · Mystivara Ecosystem</p>
     </footer>
   </main>
 

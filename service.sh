@@ -23,6 +23,8 @@ MODDIR=${CORESURFACE_MODDIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}
 . "$MODDIR/lib/verifier.sh"
 # shellcheck source=lib/os_bug_logic.sh
 . "$MODDIR/lib/os_bug_logic.sh"
+# shellcheck source=lib/camera_probe.sh
+. "$MODDIR/lib/camera_probe.sh"
 
 CS_CONFIG_FILE="$CS_STATE_DIR/config.prop"
 
@@ -74,6 +76,8 @@ if cs_watchdog_monitor_systemui; then
 
   cs_cleanup_legacy_engine_once || true
   [ -s "$CS_HW_FPS_FILE" ] || cs_probe_hw_fps || true
+  cs_camera_probe_hardware || true
+  cs_camera_crash_inspect "$CS_CONFIG_FILE" || true
   cs_reassert_computility_props || true
   cs_rro_enable_staged || true
   cs_settings_sync_all || true

@@ -298,11 +298,14 @@ cs_load_config() {
   CFG_FEAT_COLOR_EXPERT="1"
   CFG_FEAT_FLAGSHIP_AUDIO="auto"
   CFG_FEAT_FLAGSHIP_SUITE="auto"
+  CFG_FEAT_CAMERA_PRO="auto"
+  CFG_FEAT_LEICA_BRIDGE="auto"
 
   export CFG_TIER_MODE CFG_FEAT_AOD_UNLOCK \
     CFG_FEAT_BLUR CFG_FEAT_ANIMATIONS CFG_FEAT_XML_PATCHER CFG_FEAT_RRO_OVERLAYS \
     CFG_FEAT_VIDEO_DEPTH CFG_FEAT_MULTITASK CFG_FEAT_DISPLAY_HZ CFG_FEAT_COLOR_EXPERT \
-    CFG_FEAT_FLAGSHIP_AUDIO CFG_FEAT_FLAGSHIP_SUITE
+    CFG_FEAT_FLAGSHIP_AUDIO CFG_FEAT_FLAGSHIP_SUITE \
+    CFG_FEAT_CAMERA_PRO CFG_FEAT_LEICA_BRIDGE
 
   [ -r "$_cs_cfg_file" ] || return 0
 
@@ -351,6 +354,12 @@ cs_load_config() {
       FEAT_FLAGSHIP_SUITE)
         case "$_cs_v" in auto|1|0) CFG_FEAT_FLAGSHIP_SUITE="$_cs_v" ;; esac
         ;;
+      FEAT_CAMERA_PRO)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_CAMERA_PRO="$_cs_v" ;; esac
+        ;;
+      FEAT_LEICA_BRIDGE)
+        case "$_cs_v" in auto|1|0) CFG_FEAT_LEICA_BRIDGE="$_cs_v" ;; esac
+        ;;
     esac
   done < "$_cs_cfg_file"
 }
@@ -383,13 +392,16 @@ cs_resolve_features() {
   EFF_FEAT_COLOR_EXPERT="0"
   EFF_FEAT_FLAGSHIP_AUDIO="0"
   EFF_FEAT_FLAGSHIP_SUITE="0"
+  EFF_FEAT_CAMERA_PRO="0"
+  EFF_FEAT_LEICA_BRIDGE="0"
 
   export CS_EFF_TIER CS_EFF_TIER_LABEL \
     EFF_FEAT_AOD_UNLOCK \
     EFF_FEAT_BLUR EFF_FEAT_ADV_TEXTURES EFF_FEAT_ANIMATIONS EFF_FEAT_XML_PATCHER \
     EFF_FEAT_RRO_OVERLAYS EFF_FEAT_VIDEO_DEPTH EFF_FEAT_MULTITASK \
     EFF_FEAT_DISPLAY_HZ EFF_FEAT_COLOR_EXPERT \
-    EFF_FEAT_FLAGSHIP_AUDIO EFF_FEAT_FLAGSHIP_SUITE
+    EFF_FEAT_FLAGSHIP_AUDIO EFF_FEAT_FLAGSHIP_SUITE \
+    EFF_FEAT_CAMERA_PRO EFF_FEAT_LEICA_BRIDGE
 
   # Native Flagship Passthrough (motion_only):
   # Factory ROM already has device_level >= 3 + blur -> skip redundant overrides cleanly!
@@ -399,6 +411,10 @@ cs_resolve_features() {
       EFF_FEAT_XML_PATCHER="1"
       EFF_FEAT_COLOR_EXPERT="1"
     fi
+    # Leica Bridge stays read-only/guard-aware on native flagships unless explicitly disabled
+    case "$CFG_FEAT_LEICA_BRIDGE" in
+      1|auto) EFF_FEAT_LEICA_BRIDGE="1" ;;
+    esac
     return 0
   fi
 
@@ -493,5 +509,16 @@ cs_resolve_features() {
         EFF_FEAT_FLAGSHIP_SUITE="1"
       fi
       ;;
+  esac
+
+  # Hardware-Verified Camera Pro Engine: ON across all non-passthrough tiers
+  # (Parallel Processing is strictly RAM-gated >= 5.5GB & non-Lite inside xml_patcher/props)
+  case "$CFG_FEAT_CAMERA_PRO" in
+    1|auto) EFF_FEAT_CAMERA_PRO="1" ;;
+  esac
+
+  # Dual-Support Leica Camera Bridge & Crash Inspector (0 KB daemon): ON unless explicitly disabled
+  case "$CFG_FEAT_LEICA_BRIDGE" in
+    1|auto) EFF_FEAT_LEICA_BRIDGE="1" ;;
   esac
 }
